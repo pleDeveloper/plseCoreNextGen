@@ -19,7 +19,7 @@ private class WorkflowRuntimeTest {
 
         System.assertEquals(1, results.size());
         WorkflowRuntime.AdvanceResult r = results[0];
-        System.assertEquals(true, r.success, r.error);
+        System.assertEquals(true, r.success, 'validTransition: error=' + r.error);
         System.assertEquals(false, r.idempotent);
         System.assertEquals('intake', r.fromState);
         System.assertEquals('review', r.toState);
@@ -104,7 +104,7 @@ private class WorkflowRuntimeTest {
         Test.stopTest();
 
         System.assertEquals(2, results.size());
-        System.assertEquals(true, results[0].success, results[0].error);
+        System.assertEquals(true, results[0].success, 'mixedBatch: error=' + results[0].error);
         System.assertEquals(false, results[1].success);
         System.assert(results[1].error.contains('not valid'), results[1].error);
 
@@ -137,7 +137,7 @@ private class WorkflowRuntimeTest {
         List<WorkflowRuntime.AdvanceResult> first = WorkflowRuntime.advance(
             new List<WorkflowAdvanceRequest>{ req1 }
         );
-        System.assertEquals(true, first[0].success, first[0].error);
+        System.assertEquals(true, first[0].success, 'First advance failed: ' + first[0].error);
         System.assertEquals(false, first[0].idempotent);
 
         // Retry same signal — instance is now at "review", so "submit" is not valid
@@ -185,7 +185,7 @@ private class WorkflowRuntimeTest {
         );
         Test.stopTest();
 
-        System.assertEquals(true, results[0].success, results[0].error);
+        System.assertEquals(true, results[0].success, 'terminalState: error=' + results[0].error);
         System.assertEquals('complete', results[0].toState);
 
         Workflow_Instance__c updated = [
