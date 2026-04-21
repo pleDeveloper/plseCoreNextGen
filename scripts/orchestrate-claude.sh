@@ -13,6 +13,7 @@ CLAUDE_LIVE_OUTPUT="${CLAUDE_LIVE_OUTPUT:-0}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-max}"
 CLAUDE_FALLBACK_MODEL="${CLAUDE_FALLBACK_MODEL:-}"
+CLAUDE_DISALLOWED_TOOLS="${CLAUDE_DISALLOWED_TOOLS:-Agent}"
 
 LANES=(
   "lane-a|lane-a-runtime|prompts/lane-a-runtime.txt|lane-a: runtime + contract"
@@ -52,6 +53,7 @@ Optional environment variables:
   CLAUDE_MODEL            Claude model alias/name (default: opus)
   CLAUDE_EFFORT           Claude effort level: low|medium|high|max (default: max)
   CLAUDE_FALLBACK_MODEL   Optional fallback model (e.g., sonnet) for -p runs
+  CLAUDE_DISALLOWED_TOOLS Comma/space list for --disallowedTools (default: Agent)
 EOF
 }
 
@@ -98,6 +100,10 @@ run_claude_prompt() {
 
   if [[ -n "$CLAUDE_FALLBACK_MODEL" ]]; then
     cmd+=(--fallback-model "$CLAUDE_FALLBACK_MODEL")
+  fi
+
+  if [[ -n "$CLAUDE_DISALLOWED_TOOLS" ]]; then
+    cmd+=(--disallowedTools "$CLAUDE_DISALLOWED_TOOLS")
   fi
 
   if [[ "$CLAUDE_STREAM_JSON" == "1" ]]; then
@@ -150,6 +156,9 @@ preflight() {
   say "Claude run profile: model=$CLAUDE_MODEL effort=$CLAUDE_EFFORT"
   if [[ -n "$CLAUDE_FALLBACK_MODEL" ]]; then
     say "Claude fallback model enabled: $CLAUDE_FALLBACK_MODEL"
+  fi
+  if [[ -n "$CLAUDE_DISALLOWED_TOOLS" ]]; then
+    say "Claude disallowed tools: $CLAUDE_DISALLOWED_TOOLS"
   fi
   say "Preflight checks passed."
 }
