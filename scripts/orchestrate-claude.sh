@@ -48,7 +48,8 @@ Commands:
   wave2           Run Wave 2 repair lanes (lane-c-fix + lane-b-fix) in parallel.
   merge-wave1     Merge Wave 1 lane branches into main in the defined order.
   merge-wave2     Merge Wave 2 fix branches into main.
-  validate        Deploy + run local Apex tests.
+  validate        Deploy + run local Apex tests. Set PKG=<name> to deploy one package.
+  validate-each   Dry-run deploy each package independently and report per-package results.
   logs [target]   Tail orchestration logs.
                   target: all|wave0|wave2|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix
   logs-pretty [target]
@@ -494,8 +495,40 @@ merge_wave1() {
 
 validate() {
   cd "$ROOT_DIR"
-  sf project deploy start -o "$ORG_ALIAS"
+  local source_dir="packages"
+  if [[ -n "${PKG:-}" ]]; then
+    source_dir="packages/$PKG"
+  fi
+  sf project deploy start -o "$ORG_ALIAS" --source-dir "$source_dir"
   sf apex run test -o "$ORG_ALIAS" --test-level RunLocalTests --wait 30
+}
+
+validate_each() {
+  cd "$ROOT_DIR"
+  local failed=0
+  for pkg_dir in packages/*/; do
+    local pkg_name
+    pkg_name="$(basename "$pkg_dir")"
+    # Skip empty packages (no classes/objects beyond .gitkeep)
+    local file_count
+    file_count=$(find "$pkg_dir" -name '*.cls' -o -name '*.object-meta.xml' -o -name '*.permissionset-meta.xml' -o -name '*.field-meta.xml' 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$file_count" -eq 0 ]]; then
+      say "$pkg_name: skipped (empty)"
+      continue
+    fi
+    local result
+    result=$(sf project deploy start -o "$ORG_ALIAS" --dry-run --source-dir "$pkg_dir" --ignore-conflicts --json 2>/dev/null \
+      | python3 -c "import sys,json; d=json.load(sys.stdin); r=d.get('result',{}); print(r.get('success'), r.get('numberComponentErrors'))")
+    say "$pkg_name: $result"
+    if [[ "$result" != "True 0" ]]; then
+      failed=1
+    fi
+  done
+  if [[ "$failed" -ne 0 ]]; then
+    echo "One or more packages failed validation." >&2
+    exit 1
+  fi
+  say "All packages validated successfully."
 }
 
 all() {
@@ -524,6 +557,7 @@ main() {
     merge-wave1) merge_wave1 ;;
     merge-wave2) merge_wave2 ;;
     validate) validate ;;
+    validate-each) validate_each ;;
     logs) logs "${2:-all}" ;;
     logs-pretty) logs_pretty "${2:-wave0}" ;;
     all) all ;;

@@ -1,12 +1,61 @@
 {
   "packageDirectories": [
     {
-      "path": "force-app",
-      "default": true
+      "path": "packages/pulse-core",
+      "default": true,
+      "package": "Pulse Core",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT"
+    },
+    {
+      "path": "packages/pulse-ai-anthropic",
+      "package": "Pulse AI - Anthropic",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "dependencies": [{ "package": "Pulse Core@0.1.0-1" }]
+    },
+    {
+      "path": "packages/pulse-tools-core",
+      "package": "Pulse Tools - Core",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "dependencies": [{ "package": "Pulse Core@0.1.0-1" }]
+    },
+    {
+      "path": "packages/pulse-conversations-core",
+      "package": "Pulse Conversations - Core",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "dependencies": [{ "package": "Pulse Core@0.1.0-1" }]
+    },
+    {
+      "path": "packages/pulse-conversations-recall",
+      "package": "Pulse Conversations - Recall",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "dependencies": [
+        { "package": "Pulse Core@0.1.0-1" },
+        { "package": "Pulse Conversations - Core@0.1.0-1" }
+      ]
+    },
+    {
+      "path": "packages/pulse-channels-slack",
+      "package": "Pulse Channels - Slack",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "dependencies": [{ "package": "Pulse Core@0.1.0-1" }]
     }
   ],
   "name": "pulse-core-next",
   "namespace": "plse",
   "sfdcLoginUrl": "https://login.salesforce.com",
-  "sourceApiVersion": "66.0"
+  "sourceApiVersion": "66.0",
+  "packageAliases": {
+    "Pulse Core": "0Ho000000000000AAA",
+    "Pulse AI - Anthropic": "0Ho000000000000BBB",
+    "Pulse Tools - Core": "0Ho000000000000CCC",
+    "Pulse Conversations - Core": "0Ho000000000000DDD",
+    "Pulse Conversations - Recall": "0Ho000000000000EEE",
+    "Pulse Channels - Slack": "0Ho000000000000FFF"
+  }
 }
