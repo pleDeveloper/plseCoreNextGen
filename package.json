@@ -1,0 +1,12 @@
+{
+  "name": "pulse-core-next",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "org:create": "sf org create scratch -f config/project-scratch-def.json -a pulse-core-next-dev -d -v PulseDevHub -y 30",
+    "org:open": "sf org open -o pulse-core-next-dev",
+    "deploy": "sf project deploy start -o pulse-core-next-dev",
+    "test": "sf apex run test -o pulse-core-next-dev --test-level RunLocalTests --wait 10"
+  },
+  "devDependencies": {}
+}

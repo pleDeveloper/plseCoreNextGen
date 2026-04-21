@@ -1,0 +1,21 @@
+.DS_Store
+
+# Salesforce local state / auth
+.sf/
+.sfdx/
+
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build and coverage artifacts
+coverage/
+dist/
+tmp/
+
+# OS/editor noise
+.idea/
+.vscode/*.log
