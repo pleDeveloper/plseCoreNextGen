@@ -1,0 +1,10 @@
+:host {
+    display: inline-block;
+}
+
+/* Icon slot: consumers pass inline SVG via <span slot="icon"> */
+::slotted([slot="icon"]) {
+    display: inline-flex;
+    align-items: center;
+    margin-right: var(--pulse-space-1, 4px);
+}

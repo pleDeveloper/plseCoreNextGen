@@ -1,0 +1,11 @@
+<template>
+    <div class={cardClass}>
+        <template lwc:if={hasIcon}>
+            <div class="pulse-card-icon" lwc:dom="manual"></div>
+        </template>
+        <template lwc:if={hasHeading}>
+            <h3 class="pulse-card-heading">{heading}</h3>
+        </template>
+        <slot></slot>
+    </div>
+</template>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>66.0</apiVersion>
+    <isExposed>false</isExposed>
+    <description>Shared loader for Pulse brand tokens and Poppins fonts. Import loadPulseBrandTokens and call from connectedCallback.</description>
+</LightningComponentBundle>

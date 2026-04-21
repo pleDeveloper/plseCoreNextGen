@@ -1,0 +1,91 @@
+:host {
+    display: contents;
+}
+
+.pulse-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(17, 24, 39, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.pulse-modal-dialog {
+    position: relative;
+    background: var(--pulse-white, #FFFFFF);
+    border-radius: var(--pulse-radius-2xl, 16px);
+    box-shadow: var(--pulse-shadow-lg, 0 8px 32px rgba(0, 0, 0, 0.08));
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: pulse-modal-enter 0.2s ease;
+}
+
+.pulse-modal-sm { width: 400px; }
+.pulse-modal-md { width: 560px; }
+.pulse-modal-lg { width: 720px; }
+.pulse-modal-xl { width: 960px; }
+
+@keyframes pulse-modal-enter {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.pulse-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--pulse-space-6, 24px) var(--pulse-space-8, 32px) 0;
+}
+
+.pulse-modal-title {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-h3, 24px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-dark, #111827);
+    line-height: var(--pulse-lh-subheading, 1.3);
+    margin: 0;
+}
+
+.pulse-modal-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: var(--pulse-radius-md, 8px);
+    background: transparent;
+    color: var(--pulse-slate, #6B7280);
+    cursor: pointer;
+    transition: all var(--pulse-transition-fast, 0.15s ease);
+}
+
+.pulse-modal-close:hover {
+    background: var(--pulse-light-gray, #F3F4F6);
+    color: var(--pulse-dark, #111827);
+}
+
+.pulse-modal-close:focus {
+    outline: none;
+    box-shadow: var(--pulse-shadow-focus-ring, 0 0 0 3px rgba(123, 47, 242, 0.1));
+}
+
+.pulse-modal-close-standalone {
+    position: absolute;
+    top: var(--pulse-space-4, 16px);
+    right: var(--pulse-space-4, 16px);
+}
+
+.pulse-modal-body {
+    padding: var(--pulse-space-6, 24px) var(--pulse-space-8, 32px) var(--pulse-space-8, 32px);
+}

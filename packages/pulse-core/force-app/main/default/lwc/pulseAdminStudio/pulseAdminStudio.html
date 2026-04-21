@@ -1,0 +1,60 @@
+<template>
+    <div class="pulse-surface studio-shell">
+        <!-- Top bar -->
+        <header class="studio-topbar">
+            <div class="studio-topbar-left">
+                <span class="studio-wordmark pulse-gradient-text">Pulse</span>
+                <span class="studio-wordmark-sub">Admin Studio</span>
+            </div>
+            <div class="studio-topbar-right">
+                <span class="studio-env-badge">Dev</span>
+                <div class="studio-user-menu" aria-label="User menu">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                </div>
+            </div>
+        </header>
+
+        <div class="studio-body">
+            <!-- Left sidebar -->
+            <nav class="studio-sidebar" aria-label="Admin Studio navigation">
+                <ul class="studio-nav-list" role="list">
+                    <template for:each={navItems} for:item="item">
+                        <li key={item.key} role="listitem">
+                            <button class={item.itemClass}
+                                    data-key={item.key}
+                                    aria-current={item.isActive}
+                                    onclick={handleNavClick}>
+                                <svg class="studio-nav-icon" width="20" height="20" viewBox="0 0 24 24"
+                                     fill="none" stroke="currentColor" stroke-width="2"
+                                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d={item.icon}></path>
+                                </svg>
+                                <span class="studio-nav-label">{item.label}</span>
+                            </button>
+                        </li>
+                    </template>
+                </ul>
+            </nav>
+
+            <!-- Main panel -->
+            <main class="studio-main">
+                <div class="pulse-card studio-placeholder-card">
+                    <div class="pulse-card-icon studio-placeholder-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d={activePanel.icon}></path>
+                        </svg>
+                    </div>
+                    <h2 class="studio-placeholder-heading">{panelHeading}</h2>
+                    <p class="studio-placeholder-desc">{panelDescription}</p>
+                    <span class="pulse-badge pulse-badge-purple">Coming in wave 3b</span>
+                </div>
+            </main>
+        </div>
+    </div>
+</template>

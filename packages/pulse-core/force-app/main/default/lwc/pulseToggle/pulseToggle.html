@@ -1,0 +1,22 @@
+<template>
+    <div class="pulse-surface pulse-toggle-wrapper">
+        <div class="pulse-toggle-row">
+            <div class={trackClass}
+                 role="switch"
+                 tabindex="0"
+                 aria-checked={ariaChecked}
+                 aria-labelledby={toggleId}
+                 aria-disabled={disabled}
+                 onclick={handleClick}
+                 onkeydown={handleKeyDown}>
+                <span class={thumbClass}></span>
+            </div>
+            <label id={toggleId} class="pulse-toggle-label" onclick={handleClick}>
+                {label}
+            </label>
+        </div>
+        <template lwc:if={hasHelpText}>
+            <p class="pulse-toggle-help">{helpText}</p>
+        </template>
+    </div>
+</template>

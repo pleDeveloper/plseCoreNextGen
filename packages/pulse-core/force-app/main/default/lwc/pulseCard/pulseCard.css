@@ -1,0 +1,16 @@
+:host {
+    display: block;
+}
+
+.pulse-card-heading {
+    font-size: var(--pulse-text-h4);
+    font-weight: var(--pulse-weight-semibold);
+    color: var(--pulse-dark);
+    margin-bottom: var(--pulse-space-3);
+    line-height: var(--pulse-lh-label);
+}
+
+.pulse-card-elevated:hover {
+    box-shadow: var(--pulse-shadow-lg);
+    transform: translateY(-2px);
+}
