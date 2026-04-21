@@ -1,0 +1,102 @@
+You are executing Wave 3b (Workflow Builder Canvas) for the Pulse Core Next project. This is the MVP piece — the "top-tier UI" that v4.1 §4.1 and §6 Chat 15 call for. Single-lane session on branch `wave3b-workflow-builder` off main. Precondition: Wave 3a must have merged (primitives and Admin Studio shell exist).
+
+# Canonical references
+- `docs/pulse-nextgen-architecture-review-and-build-plan.md` v4.1, specifically:
+  - §4.1 Product Surfaces — Admin Studio is an SPA for authors only
+  - §4.4 Workflow JSON Contract — this is what the builder manipulates
+  - §4.5 Projection Contract — this is what the "Show on record page" checkbox writes to
+  - §6 Chat 15 (Workflow Builder) — explicit LWC spec
+- `docs/brand-kit/README.md` — must load tokens, use `.pulse-surface` wrapper, primitives from Wave 3a
+- `packages/pulse-core/force-app/main/default/lwc/pulseUiPrimitives*` and `lwc/pulseAdminStudio/` — the existing shell and primitives you're building on
+
+# Goal
+Build the `pulseWorkflowBuilder` LWC that replaces the "Workflow Builder — coming soon" placeholder in the Admin Studio. The builder is a visual authoring surface for the `pulse.workflow.v1` JSON contract. An admin can:
+
+1. Create a new workflow (name, key, subject kinds)
+2. Add / edit / delete states (intake, review, complete, etc.) with drag-to-reorder
+3. Add / edit / delete transitions between states
+4. Add / edit / delete field definitions on each state (key, label, type, required, extraction hints)
+5. Toggle **"Show on record page & include in reports"** per field — the single checkbox that drives `Workflow_Projection__mdt`
+6. Live-preview the parent record layout and step-history entry as fields are toggled
+7. Publish the workflow → calls `SchemaProvisioningService.provision()` with the projected fields → surfaces deployment status
+
+# State management
+Per v4.1 §6 Chat 15: "lightweight, Redux-style state management pattern in front-end JavaScript." Build `packages/pulse-core/force-app/main/default/lwc/pulseStore/pulseStore.js` as a vanilla JS module (not an LWC):
+
+```javascript
+const listeners = new Set();
+let state = { /* initial workflow contract skeleton */ };
+
+export function getState() { return state; }
+export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+export function dispatch(action) {
+    state = reduce(state, action);
+    listeners.forEach(fn => fn(state));
+}
+```
+
+Actions at minimum:
+- `SET_WORKFLOW_META` (workflowKey, name, subjectKinds)
+- `ADD_STATE`, `UPDATE_STATE`, `REMOVE_STATE`, `REORDER_STATES`
+- `ADD_TRANSITION`, `UPDATE_TRANSITION`, `REMOVE_TRANSITION`
+- `ADD_FIELD`, `UPDATE_FIELD`, `REMOVE_FIELD`
+- `TOGGLE_FIELD_PROJECTION` (stateKey, fieldKey) — flips the "show on record page" bit
+- `LOAD_WORKFLOW` (existing JSON)
+- `PUBLISH_REQUESTED` (carries workflowDefinitionId + target object)
+
+Reducer in the same file, pure function. No Redux library — hand-rolled to avoid dependency weight.
+
+Include a Jest test for `pulseStore.js` that covers every action and verifies state transitions + listener notification.
+
+# LWC decomposition
+Under `packages/pulse-core/force-app/main/default/lwc/`:
+
+- **pulseWorkflowBuilder** (top-level, exposed for injection into Admin Studio shell)
+  - Left panel: workflow metadata + states list with drag-to-reorder
+  - Center canvas: visual state graph (simplified — list of state cards with transitions shown as arrows between them)
+  - Right panel: inspector for the selected state OR the selected field (context-dependent)
+  - Top bar: Publish button (opens the deploy orchestrator flow)
+- **pulseStateCard** — single state in the left list; shows state key + type chip + field count + transition count
+- **pulseStateGraph** — center visualization; renders state cards + SVG arrows for transitions. Click a state to select it; click an arrow to select a transition.
+- **pulseFieldEditor** — inspector subcomponent for editing a single field (key, label, type, required, the projection toggle, extraction hints)
+- **pulseLivePreview** — splits into two panels: "Referral page preview" showing fields that are projected (toggle ON) and "Step history entry" showing non-projected fields. Updates reactively as toggles flip.
+- **pulseDeployDialog** — modal that opens when Publish is clicked. Shows the diff (new fields to create, new projections to register), calls `provision()`, polls the `Deployment_Request__c` status, and closes when terminal.
+
+All LWCs must use Wave 3a's primitives (pulseButton, pulseInput, pulseBadge, pulseCard, pulseToggle, pulseModal) — do NOT use lightning-input, lightning-button, etc.
+
+# Apex hooks (minimal — rest is wave 3c+)
+Create an Apex class `PulseWorkflowBuilderController` in `packages/pulse-core/force-app/main/default/classes/` with `@AuraEnabled(cacheable=true)` methods:
+
+- `loadWorkflow(Id workflowDefinitionId)` — returns the Workflow_Definition__c record + parsed JSON
+- `saveWorkflow(Id workflowDefinitionId, String jsonBody)` — validates with `WorkflowContract.parse()` + `validate()`, writes to Workflow_Definition__c.Definition_JSON__c, returns validation errors or success
+- `publishWorkflow(Id workflowDefinitionId, String targetObject, List<FieldSpec> requestedFields)` — calls `SchemaProvisioningService.provision()`, returns ProvisioningResult
+
+Must be `global` (cross-package if we ever extract the builder into its own package later). Test class `PulseWorkflowBuilderControllerTest` with ≥90% coverage.
+
+# Design constraints — v4.1 Chat 15 discipline
+- No custom routing library. Single-page view state managed in pulseStore.
+- No external JS dependencies beyond what ships with LWC. No Redux, no Immer, no Lodash. Hand-rolled utilities where needed.
+- All CSS uses the brand tokens. No hardcoded hex.
+- Sentence case headings ("Add a state" not "Add A State").
+- Anti-buzzword UI copy. Buttons say "Publish workflow" not "Save & go live."
+
+# Live preview requirement (v4.1 Chat 15 explicit)
+The preview must update within 100ms of toggling a field projection. Use the pulseStore's subscribe pattern — no polling, no re-fetching.
+
+# Out of scope
+- Do not build the Record Stepper, Action Hub, or Conversation Hub. Those are Wave 3c.
+- Do not implement the real-time Named Credential setup for Tooling API. The publish flow calls the existing gateway which already works against a mocked or configured NC; the setup is a manual admin step per `docs/schema-provisioning-setup.md`.
+- Do not introduce any new object or CMDT. All persistence goes through the existing Workflow_Definition__c + Workflow_Projection__mdt + Deployment_Request__c + Pulse_Deployment_Status__e plumbing.
+- Do not change Apex API versions.
+- Do not implement tool-config panels (AI tool state editor). Defer to Wave 3c.
+
+# Validation gate
+1. `sf project deploy start -o pulse-core-next-dev --source-dir packages/pulse-core --ignore-conflicts` → Succeeded.
+2. `sf apex run test -o pulse-core-next-dev --test-level RunLocalTests --wait 30` → ≥128 tests + new PulseWorkflowBuilderControllerTest at ≥90% coverage, zero failures.
+3. `npx lwc-jest` → all pulseStore and LWC tests green.
+4. Visual sanity: Admin Studio → Workflow Builder → can create a workflow with 2 states, 1 transition, 3 fields, toggle projections, see live preview update, click Publish → Deploy Dialog shows flow (even if it fails at actual provisioning on a scratch without the NC).
+
+# Commit
+```
+git add -A && git commit -m "wave3b: workflow builder canvas with live projection preview"
+```

@@ -35,6 +35,14 @@ LANES_WAVE2B_SPLIT=(
   "wave2b-split|wave2b-package-split|prompts/wave2b-package-split.txt|wave2b: split repo into six 2GP managed packages"
 )
 
+LANES_WAVE3A=(
+  "wave3a-ui|wave3a-ui-foundation|prompts/wave3a-ui-foundation.txt|wave3a: UI foundation — primitives, Admin Studio shell, Poppins fonts"
+)
+
+LANES_WAVE3B=(
+  "wave3b-builder|wave3b-workflow-builder|prompts/wave3b-workflow-builder.txt|wave3b: workflow builder canvas with live projection preview"
+)
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -398,6 +406,56 @@ wave2b_split() {
   say "Wave 2b-split lane completed."
 }
 
+setup_wave3_lane() {
+  local lane_array_name="$1"  # LANES_WAVE3A or LANES_WAVE3B
+  cd "$ROOT_DIR"
+  mkdir -p "$WORKTREE_BASE"
+  ensure_main_branch
+
+  local -n lane_array="$lane_array_name"
+  for lane in "${lane_array[@]}"; do
+    IFS='|' read -r lane_name branch _ _ <<<"$lane"
+    if ! git show-ref --verify --quiet "refs/heads/$branch"; then
+      git branch "$branch"
+    fi
+    lane_dir="$WORKTREE_BASE/$lane_name"
+    if [[ ! -d "$lane_dir/.git" && ! -f "$lane_dir/.git" ]]; then
+      git worktree add "$lane_dir" "$branch"
+    fi
+  done
+  say "Wave 3 lane worktree is ready under $WORKTREE_BASE"
+}
+
+wave3a() {
+  setup_wave3_lane LANES_WAVE3A
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/wave3a-ui.log"
+  say "Follow log with: ./scripts/orchestrate-claude.sh logs wave3a-ui"
+
+  for lane in "${LANES_WAVE3A[@]}"; do
+    IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
+  done
+
+  say "Wave 3a lane completed."
+}
+
+wave3b() {
+  setup_wave3_lane LANES_WAVE3B
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/wave3b-builder.log"
+  say "Follow log with: ./scripts/orchestrate-claude.sh logs wave3b-builder"
+
+  for lane in "${LANES_WAVE3B[@]}"; do
+    IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
+  done
+
+  say "Wave 3b lane completed."
+}
+
 logs() {
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
@@ -406,7 +464,8 @@ logs() {
   touch "$LOG_DIR/wave0.log" "$LOG_DIR/lane-a.log" "$LOG_DIR/lane-b.log" \
         "$LOG_DIR/lane-c.log" "$LOG_DIR/lane-d.log" \
         "$LOG_DIR/lane-c-fix.log" "$LOG_DIR/lane-b-fix.log" \
-        "$LOG_DIR/lane-b-tooling.log" "$LOG_DIR/wave2b-split.log"
+        "$LOG_DIR/lane-b-tooling.log" "$LOG_DIR/wave2b-split.log" \
+        "$LOG_DIR/wave3a-ui.log" "$LOG_DIR/wave3b-builder.log"
 
   case "$target" in
     all)
@@ -424,12 +483,12 @@ logs() {
         "$LOG_DIR/lane-c-fix.log" \
         "$LOG_DIR/lane-b-fix.log"
       ;;
-    wave0|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix|lane-b-tooling|wave2b-split)
+    wave0|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix|lane-b-tooling|wave2b-split|wave3a-ui|wave3b-builder)
       tail -n 120 -F "$LOG_DIR/${target}.log"
       ;;
     *)
       echo "Invalid logs target: $target" >&2
-      echo "Use: all|wave0|wave2|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix|lane-b-tooling|wave2b-split" >&2
+      echo "Use: all|wave0|wave2|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix|lane-b-tooling|wave2b-split|wave3a-ui|wave3b-builder" >&2
       exit 1
       ;;
   esac
@@ -521,6 +580,8 @@ main() {
     wave2) wave2 ;;
     wave2b-tooling) wave2b_tooling ;;
     wave2b-split) wave2b_split ;;
+    wave3a) wave3a ;;
+    wave3b) wave3b ;;
     merge-wave1) merge_wave1 ;;
     merge-wave2) merge_wave2 ;;
     validate) validate ;;

@@ -1,0 +1,172 @@
+You are executing Wave 3a (UI Foundation) for the Pulse Core Next project. This is a single-lane session. You are working in a git worktree on branch `wave3a-ui-foundation` off `main`. Precondition: Wave 2b (package split) must have merged first, so the repo layout has `packages/pulse-core/force-app/main/default/...` as the Core source path.
+
+# Canonical references (read these FIRST before writing any code)
+- `docs/pulse-nextgen-architecture-review-and-build-plan.md` (v4.1), specifically:
+  - §4.1 Product Surfaces (Admin Studio is an SPA; end-user runtime is standard record-page LWCs)
+  - §5 Phase Plan — Phase 0B vertical slice
+  - §6 Chat 14 (Admin Studio shell) and the Claude Operating Rules
+- `docs/brand-kit/README.md` — how to load brand tokens, which CSS custom properties to use, in-product voice principles (distinct from marketing)
+- `force-app/main/default/staticresources/pulse_brand_tokens.css` (moved by Wave 2b to `packages/pulse-core/force-app/main/default/staticresources/pulse_brand_tokens.css`) — the CSS custom properties and prebuilt `.pulse-btn` / `.pulse-badge` / `.pulse-card` classes your LWCs will consume.
+
+# Goal
+Deliver the UI foundation that every subsequent Pulse LWC surface (workflow builder, record stepper, action hub, conversation hub) will depend on:
+
+1. **Poppins font static resource** — zipped woff2 files + @font-face CSS that ship inside the managed package so subscribers don't need external CSP trust.
+2. **LWC primitive library** (`pulseUiPrimitives` as a set of shared LWCs): `pulseButton`, `pulseInput`, `pulseBadge`, `pulseCard`, `pulseToggle`, `pulseModal`. These MUST consume brand tokens via CSS custom properties — no hardcoded hex, no SLDS base components.
+3. **Admin Studio shell LWC** (`pulseAdminStudio`): full-viewport SPA with sidebar navigation, top bar, and placeholder panels for Workflow Builder / Integrations Hub / AI Config / Library. Clicking nav items swaps the active panel via local state (no routing library).
+4. **Brand-token loader pattern** — every Pulse LWC loads `pulse_brand_tokens.css` via `loadStyle()` in `connectedCallback()`. The loader is factored into a shared utility `pulseBrandTokens.js` (module, not LWC) so each consumer calls one function.
+
+# Package target
+All artifacts land in `packages/pulse-core/force-app/main/default/...`. Core is where shared UI primitives and the Admin Studio shell belong per v4.1 §3.
+
+# Detailed scope
+
+## 1. Poppins font static resource
+
+Create `packages/pulse-core/force-app/main/default/staticresources/pulse_poppins_fonts/` (directory-style static resource, deploys as a zip).
+
+Download Poppins weights 300, 400, 500, 600, 700, 800 (Latin subset only — no Latin Extended, Cyrillic, etc.; we ship English-only for now) from Google Fonts CDN using `curl`:
+
+```
+curl -sL -o pulse_poppins_fonts/poppins-<weight>.woff2 \
+  "<CDN URL for that weight — fetch from https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap>"
+```
+
+The Google Fonts CSS at that URL enumerates the actual woff2 CDN URLs. Parse them and download each locally.
+
+Create `pulse_poppins_fonts/fonts.css` with `@font-face` declarations that reference the local woff2 files relative to the static resource root:
+
+```
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./poppins-300.woff2') format('woff2');
+}
+/* … repeat for 400, 500, 600, 700, 800 */
+```
+
+Create `pulse_poppins_fonts.resource-meta.xml` alongside with `contentType = application/zip` and cacheControl Public.
+
+## 2. Update pulse_brand_tokens.css
+
+At the top of `packages/pulse-core/force-app/main/default/staticresources/pulse_brand_tokens.css`, add an `@import url('../pulse_poppins_fonts/fonts.css');` OR better, have consumers load both resources explicitly via loadStyle (see §4). Prefer the explicit-loader path because `@import` inside a static resource is fragile across Salesforce CDN caching.
+
+## 3. Shared brand-token loader
+
+Create `packages/pulse-core/force-app/main/default/lwc/pulseBrandTokens/pulseBrandTokens.js`:
+
+```javascript
+import { loadStyle } from 'lightning/platformResourceLoader';
+import FONTS from '@salesforce/resourceUrl/pulse_poppins_fonts';
+import TOKENS from '@salesforce/resourceUrl/pulse_brand_tokens';
+
+let loadPromise;
+
+export function loadPulseBrandTokens(lwc) {
+    if (!loadPromise) {
+        loadPromise = Promise.all([
+            loadStyle(lwc, FONTS + '/fonts.css'),
+            loadStyle(lwc, TOKENS + '/pulse_brand_tokens.css'),
+        ]);
+    }
+    return loadPromise;
+}
+```
+
+Create `pulseBrandTokens.js-meta.xml` as an isExposed=false LWC module (helper only, not a rendered component).
+
+Every Pulse LWC will import this and call it in `connectedCallback()`:
+
+```javascript
+import { LightningElement } from 'lwc';
+import { loadPulseBrandTokens } from 'c/pulseBrandTokens';
+
+export default class PulseFoo extends LightningElement {
+    connectedCallback() {
+        loadPulseBrandTokens(this);
+    }
+}
+```
+
+## 4. LWC primitives
+
+Build under `packages/pulse-core/force-app/main/default/lwc/` as six separate LWCs. Each must:
+- Use the `.pulse-surface` wrapper class on the host element (via `.THIS :host` pattern in LWC CSS or manual classList setup in connectedCallback)
+- Reference only CSS custom properties from pulse_brand_tokens.css — never hardcoded hex values
+- Have API 66.0 in the meta xml
+- Be exposed only internally (isExposed=false) — these are building blocks, not admin-addable components
+- Have a `__tests__/` directory with a Jest-style test covering render + prop handling + accessibility (aria attributes, role, focus handling for interactive components)
+
+### pulseButton
+Props: `label` (String, required), `variant` (String: 'primary' | 'secondary' | 'dark' | 'ghost', default 'primary'), `size` (String: 'sm' | 'md' | 'lg', default 'md'), `disabled` (Boolean), `iconName` (String, optional — SLDS icon name for a leading icon). Emits `click` event. Renders the brand kit's `.pulse-btn` variant classes.
+
+### pulseInput
+Props: `label`, `value`, `placeholder`, `type` (text/email/number/password), `required`, `error` (String, optional — shows error text below input and applies error border), `helpText` (String, optional). Two-way binding via `value` prop and `change` event. Must render the label above, input with focus ring, optional error/help text below.
+
+### pulseBadge
+Props: `label`, `variant` ('purple' | 'magenta' | 'success' | 'warning' | 'error' | 'gray', default 'gray'). Static, no events. Renders the brand kit's `.pulse-badge` variant classes.
+
+### pulseCard
+Slotted content. Props: `heading` (optional), `iconHtml` (optional inline SVG or emoji for the card icon), `elevated` (Boolean, adds hover effect). Renders `.pulse-card` wrapper with optional `.pulse-card-icon` header.
+
+### pulseToggle
+The "one-checkbox" control from v4.1 §3.2. Props: `label` (String, required), `helpText` (String, optional), `checked` (Boolean), `disabled` (Boolean). Emits `change(detail: {checked: Boolean})`. Visually a switch (not a standard checkbox) — 44x24 pill with 20x20 thumb that slides between positions. Must meet WCAG AA contrast and support keyboard toggle (Space/Enter).
+
+### pulseModal
+Slotted content. Props: `open` (Boolean), `size` ('sm'|'md'|'lg'|'xl', default 'md'), `title` (optional heading), `dismissible` (Boolean, adds close X). Emits `close` event. Renders overlay + centered card with backdrop blur. Traps focus inside the modal while open. Escape key closes if dismissible.
+
+## 5. Admin Studio shell
+
+`packages/pulse-core/force-app/main/default/lwc/pulseAdminStudio/`:
+
+Single LWC, exposed to Lightning App Builder and Tab. Renders a full-viewport layout:
+
+- **Top bar**: Pulse wordmark (gradient-text treatment on the word "Pulse" — logo PNG assets not yet in repo), environment badge showing org id, user menu (placeholder).
+- **Left sidebar**: nav items for "Workflow Builder", "Integrations Hub", "AI Config", "Library", "Settings". Icons from SLDS utility set. Active item uses the gradient background, inactive items use hover states.
+- **Main panel**: swaps content based on active nav item. For this wave, each panel is a placeholder card with a heading ("Workflow Builder — coming soon") and a short description. The real panels arrive in Wave 3b/c.
+
+State: local reactive `@track activeNav`. No Lightning Data Service, no Apex calls in this wave.
+
+Must have a `pulseAdminStudio.js-meta.xml` with:
+- `isExposed = true`
+- `targets = lightning__AppPage, lightning__HomePage, lightning__Tab`
+- `masterLabel = 'Pulse Admin Studio'`
+
+## 6. Visual validation via puppeteer (optional but encouraged)
+
+If the scratch org is accessible via browser, verify the rendered Admin Studio matches the brand kit spec: Poppins loads, gradient wordmark renders, nav hover states work. If you can't do this interactively, note in the commit message that visual QA is a follow-up for the user.
+
+# Tests
+
+Each primitive LWC has a `__tests__/<name>.test.js` with Jest tests (Salesforce's lwc-jest runner). At minimum:
+- Render smoke test (component mounts)
+- Props test (variant switches CSS class)
+- Event test (click/change/close fire with right detail)
+- Accessibility test (aria attributes present, tabIndex correct)
+
+Admin Studio shell test: render smoke, clicking each nav item updates `activeNav` and re-renders the main panel heading.
+
+# Out of scope
+- Do not build the actual Workflow Builder canvas, Record Stepper, Action Hub, or Conversation Hub. Those are separate waves (3b, 3c).
+- Do not wire any Apex imports yet (besides namespace reference). No Apex @AuraEnabled calls in this wave.
+- Do not touch anything outside `packages/pulse-core/force-app/main/default/` and `docs/` (updates to brand-kit README if your loader pattern needs documenting).
+- Do not add routing libraries (lwc-router, etc.).
+- Do not add Jest as a new dev dependency; use the Salesforce-built-in lwc-jest runner.
+- Do not add any component that uses lightning-input, lightning-button, or other SLDS base components. We are building Pulse's own primitives per v4.1 §6 Chat 14.
+
+# Validation gate — MUST pass before you commit
+
+1. **Deploy**: `sf project deploy start -o pulse-core-next-dev --source-dir packages/pulse-core --ignore-conflicts` returns Succeeded.
+2. **Tests**: `sf apex run test -o pulse-core-next-dev --test-level RunLocalTests --wait 30` stays at 128/128 pass rate (no Apex regressions).
+3. **Jest**: `npx lwc-jest --no-cache` (or the project's configured Jest runner) passes all primitive + shell tests.
+4. **Visual sanity**: open the scratch org, navigate to the Pulse Admin Studio tab, confirm the gradient "Pulse" wordmark renders, Poppins displays, sidebar nav is functional.
+
+# Commit
+When gates pass:
+```
+git add -A && git commit -m "wave3a: UI foundation — primitives, Admin Studio shell, Poppins fonts"
+```
+
+Do not push. The orchestrator handles merging, and the user will review before merge.
