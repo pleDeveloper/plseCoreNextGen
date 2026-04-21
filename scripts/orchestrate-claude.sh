@@ -22,6 +22,11 @@ LANES=(
   "lane-d|lane-d-conversation|prompts/lane-d-conversation.txt|lane-d: conversation ingestion + extraction"
 )
 
+LANES_WAVE2=(
+  "lane-c-fix|lane-c-fix|prompts/wave2-lane-c-fix.txt|wave2-c: unblock AI lane compile"
+  "lane-b-fix|lane-b-fix|prompts/wave2-lane-b-fix.txt|wave2-b: unblock projection lane compile"
+)
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -32,12 +37,15 @@ Commands:
   setup-lanes     Create/update lane branches and worktrees.
   wave0           Run Wave 0 context lock + metadata foundation via Claude.
   wave1           Run Wave 1 lanes (A-D) in parallel via Claude.
-  merge-wave1     Merge lane branches into main in the defined order.
+  wave2           Run Wave 2 repair lanes (lane-c-fix + lane-b-fix) in parallel.
+  merge-wave1     Merge Wave 1 lane branches into main in the defined order.
+  merge-wave2     Merge Wave 2 fix branches into main.
   validate        Deploy + run local Apex tests.
-  logs [target]   Tail orchestration logs. target: all|wave0|lane-a|lane-b|lane-c|lane-d
+  logs [target]   Tail orchestration logs.
+                  target: all|wave0|wave2|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix
   logs-pretty [target]
                   Pretty-print Claude progress from logs (tools/thinking/stops).
-                  target: wave0|lane-a|lane-b|lane-c|lane-d
+                  target: wave0|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix
   all             Run: preflight -> setup-lanes -> wave0 -> wave1 -> merge-wave1 -> validate
 
 Optional environment variables:
@@ -252,12 +260,76 @@ wave1() {
   say "Wave 1 lanes completed."
 }
 
+setup_wave2_lanes() {
+  cd "$ROOT_DIR"
+  mkdir -p "$WORKTREE_BASE"
+  ensure_main_branch
+
+  for lane in "${LANES_WAVE2[@]}"; do
+    IFS='|' read -r lane_name branch _ _ <<<"$lane"
+    if ! git show-ref --verify --quiet "refs/heads/$branch"; then
+      git branch "$branch"
+    fi
+    lane_dir="$WORKTREE_BASE/$lane_name"
+    if [[ ! -d "$lane_dir/.git" && ! -f "$lane_dir/.git" ]]; then
+      git worktree add "$lane_dir" "$branch"
+    fi
+  done
+
+  say "Wave 2 lane worktrees are ready under $WORKTREE_BASE"
+}
+
+wave2() {
+  setup_wave2_lanes
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/lane-c-fix.log" "$LOG_DIR/lane-b-fix.log"
+  say "Follow logs with: ./scripts/orchestrate-claude.sh logs wave2"
+
+  pids=()
+  labels=()
+  for lane in "${LANES_WAVE2[@]}"; do
+    IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+
+    run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg" &
+    pids+=("$!")
+    labels+=("$lane_name")
+  done
+
+  failed=0
+  for i in "${!pids[@]}"; do
+    if ! wait "${pids[$i]}"; then
+      echo "Lane failed: ${labels[$i]} (see $LOG_DIR/${labels[$i]}.log)" >&2
+      failed=1
+    fi
+  done
+
+  if [[ "$failed" -ne 0 ]]; then
+    echo "One or more Wave 2 lanes failed. Fix lane logs before merging." >&2
+    exit 1
+  fi
+
+  say "Wave 2 lanes completed."
+}
+
+merge_wave2() {
+  cd "$ROOT_DIR"
+  ensure_main_branch
+
+  git merge --no-ff lane-c-fix -m "merge wave2 lane-c-fix"
+  git merge --no-ff lane-b-fix -m "merge wave2 lane-b-fix"
+
+  say "Wave 2 branches merged into main."
+}
+
 logs() {
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
   local target="${1:-all}"
 
-  touch "$LOG_DIR/wave0.log" "$LOG_DIR/lane-a.log" "$LOG_DIR/lane-b.log" "$LOG_DIR/lane-c.log" "$LOG_DIR/lane-d.log"
+  touch "$LOG_DIR/wave0.log" "$LOG_DIR/lane-a.log" "$LOG_DIR/lane-b.log" \
+        "$LOG_DIR/lane-c.log" "$LOG_DIR/lane-d.log" \
+        "$LOG_DIR/lane-c-fix.log" "$LOG_DIR/lane-b-fix.log"
 
   case "$target" in
     all)
@@ -266,14 +338,21 @@ logs() {
         "$LOG_DIR/lane-a.log" \
         "$LOG_DIR/lane-b.log" \
         "$LOG_DIR/lane-c.log" \
-        "$LOG_DIR/lane-d.log"
+        "$LOG_DIR/lane-d.log" \
+        "$LOG_DIR/lane-c-fix.log" \
+        "$LOG_DIR/lane-b-fix.log"
       ;;
-    wave0|lane-a|lane-b|lane-c|lane-d)
+    wave2)
+      tail -n 120 -F \
+        "$LOG_DIR/lane-c-fix.log" \
+        "$LOG_DIR/lane-b-fix.log"
+      ;;
+    wave0|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix)
       tail -n 120 -F "$LOG_DIR/${target}.log"
       ;;
     *)
       echo "Invalid logs target: $target" >&2
-      echo "Use: all|wave0|lane-a|lane-b|lane-c|lane-d" >&2
+      echo "Use: all|wave0|wave2|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix" >&2
       exit 1
       ;;
   esac
@@ -286,7 +365,7 @@ logs_pretty() {
   local log_file="$LOG_DIR/${target}.log"
 
   case "$target" in
-    wave0|lane-a|lane-b|lane-c|lane-d)
+    wave0|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix)
       touch "$log_file"
       tail -n 120 -F "$log_file" | jq -Rr '
         (try fromjson catch empty) as $j
@@ -318,7 +397,7 @@ logs_pretty() {
       ;;
     *)
       echo "Invalid logs-pretty target: $target" >&2
-      echo "Use: wave0|lane-a|lane-b|lane-c|lane-d" >&2
+      echo "Use: wave0|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix" >&2
       exit 1
       ;;
   esac
@@ -362,7 +441,9 @@ main() {
     setup-lanes) setup_lanes ;;
     wave0) wave0 ;;
     wave1) wave1 ;;
+    wave2) wave2 ;;
     merge-wave1) merge_wave1 ;;
+    merge-wave2) merge_wave2 ;;
     validate) validate ;;
     logs) logs "${2:-all}" ;;
     logs-pretty) logs_pretty "${2:-wave0}" ;;

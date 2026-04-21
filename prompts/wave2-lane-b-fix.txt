@@ -1,0 +1,65 @@
+You are executing Wave 2 Lane B (repair) for the Pulse Core Next project. Your entire job is to unblock the Apex compile in the projection / schema-provisioning lane. You are working in a git worktree on branch `lane-b-fix` off `main`.
+
+# Canonical blueprint
+Before you do anything else, read `docs/pulse-nextgen-architecture-review-and-build-plan.md` (v4.1), specifically:
+- §4.5 Projection Contract
+- §4.6 Schema Provisioning (and Correction 4 about not hard-committing to Metadata.CustomField)
+- §6 Claude Operating Rules
+
+# Problem statement
+`sf project deploy start -o pulse-core-next-dev --dry-run` currently returns Failed. Six unique errors live in your lane:
+
+- `SchemaProvisioningService` — "Invalid type: Metadata.CustomField", "Invalid type: Pulse_Deployment_Status__e", "Method does not exist or incorrect signature: addMetadata(Metadata.CustomField)", "Method does not exist or incorrect signature: publish(Pulse_Deployment_Status__e)", "Variable does not exist: Metadata.FieldType", "Variable does not exist: cf"
+- `SchemaProvisioningServiceTest` — "Dependent class is invalid and needs recompilation"
+
+## Likely root cause
+The platform event `Pulse_Deployment_Status__e` is currently located at:
+
+`force-app/main/default/platformEvents/Pulse_Deployment_Status__e.object-meta.xml`
+
+This is NOT a recognized DX source directory for API 66.0. Platform events must live under `objects/<EventName>/` just like other SObjects — and the fields that the Apex code references (`Deployment_Request_Id__c`, `Status__c`, `Message__c`, `Target_Object__c`) must live as separate files in a sibling `fields/` subdirectory.
+
+When `sf` can't locate the platform event, the Apex compiler can't resolve `Pulse_Deployment_Status__e` as a valid SObject type. The Apex compiler typically bails on the first unresolved type and reports every subsequent `Metadata.*` reference in the same file as cascading "Invalid type" errors even though the `Metadata` namespace itself is fine in scratch orgs. Fixing the platform event layout is likely sufficient to clear all six errors — but verify with a dry-run after you move it.
+
+## Required fixes
+1. **Move the platform event to the canonical layout.** Target shape:
+   ```
+   force-app/main/default/objects/Pulse_Deployment_Status__e/
+     Pulse_Deployment_Status__e.object-meta.xml   (the event header, no <fields> inline)
+     fields/
+       Deployment_Request_Id__c.field-meta.xml
+       Status__c.field-meta.xml
+       Message__c.field-meta.xml
+       Target_Object__c.field-meta.xml
+   ```
+   Read the existing `force-app/main/default/platformEvents/Pulse_Deployment_Status__e.object-meta.xml` and preserve every field definition verbatim — split the inline `<fields>` blocks into one file per field under `fields/`, and strip them from the object-meta. Retain `<eventType>HighVolume</eventType>` (or whatever the current setting is) and the `<publishBehavior>PublishAfterCommit</publishBehavior>` setting if present. Delete the old `platformEvents/` directory when the move is complete.
+
+2. **Re-run the dry-run deploy and inspect.** If `Metadata.CustomField` errors remain after the event move, read `SchemaProvisioningService.cls` carefully. `Metadata.CustomField`, `Metadata.FieldType.Text`, `Metadata.DeployContainer`, `Metadata.Operations.enqueueDeployment()`, and `Metadata.DeployCallback` are all part of standard Apex and compile by default in scratch orgs. If there is a real residual error, the issue is almost certainly a syntactic bug in the file that the earlier cascade was hiding — fix it.
+
+3. **Do NOT swap the gateway implementation.** Per v4.1 §4.6 Correction 4, the Apex Metadata API path is the current candidate, not a hard commitment. If it spikes-fail later, that is a separate session. Your job is only to make the class compile cleanly as written.
+
+# Out of scope — do NOT do any of this
+- Do not change any class in lanes A, C, or D (runtime, AI, conversation). If you see an issue there, leave it — lane C has its own Wave 2 session running in parallel.
+- Do not refactor `SchemaProvisioningService` logic or add features. Only the minimum to make it compile.
+- Do not add new tests, new fields, or new MDT records.
+- Do not touch the namespace, sfdx-project.json, or scratch-def.
+- Do not add FLS / PermissionSet payload generation. That is a future-wave scope item, not Wave 2.
+- Do not run tests yourself against the scratch org — deploy gate only.
+
+# Validation gate — MUST pass before you commit
+Run this command in the worktree:
+```
+sf project deploy start -o pulse-core-next-dev --dry-run --json 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); r=d.get('result',{}); print('success', r.get('success'), 'errors', r.get('numberComponentErrors')); fails=r.get('details',{}).get('componentFailures',[]); [print(' -', f.get('fullName'),'|', f.get('problem')[:140]) for f in fails[:30]]"
+```
+
+The expected output is `success True errors 0`.
+
+If after your fixes the only remaining errors are in the AI lane (`AnthropicAdapter`, `HitlService`, `PulseAgentRunner`, `PulseAiFacade`, `PulseEmailTool`, `PulseExternalApiTool`, `PulseRecordUpdateTool`, `PulseToolRegistry`, `PulseAiProvider`, `PulseTool`, or any `*Test` of those), that is acceptable — commit and let Wave 2 merge resolve both lanes together.
+
+# Commit
+When the gate passes (or only lane-c errors remain), commit all changes in the worktree with:
+```
+git add -A && git commit -m "wave2-b: unblock projection lane compile via platform-event layout fix"
+```
+
+Do not push. The orchestrator handles merging.

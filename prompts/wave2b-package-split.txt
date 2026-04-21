@@ -1,0 +1,190 @@
+You are executing Wave 2b for the Pulse Core Next project. This is a single-lane session (no parallel lanes) because a multi-package repo split must land as one coherent commit. You are working in a git worktree on branch `wave2b-package-split` off `main`.
+
+# Precondition
+Main must currently compile clean — `sf project deploy start -o pulse-core-next-dev --dry-run` must return 0 errors before you start. If it does not, stop and surface the failure. Wave 2 should have landed this gate before you were dispatched.
+
+# Canonical blueprint
+Read `docs/pulse-nextgen-architecture-review-and-build-plan.md` (v4.1), specifically:
+- §3 Product surfaces and package structure
+- §4 Revised Blueprint v4.1 (all subsections — object ownership matters for the split)
+
+Also read the existing `sfdx-project.json` and the memory note about the `plse` namespace being irreversibly claimed (do not try to rename it, do not attempt CLI namespace linking — it is already done in the DE org).
+
+# Goal
+Split the current single-package-directory layout into a **multi-package 2GP repo** that can be built, tested, and shipped as independent packages. Six packages total:
+
+| Dir | Package | Type | Namespace |
+|---|---|---|---|
+| `packages/pulse-core` | Pulse Core | 2GP Managed | `plse` (already claimed — use it) |
+| `packages/pulse-ai-anthropic` | Pulse AI – Anthropic | Unlocked | none (unnamespaced) |
+| `packages/pulse-tools-core` | Pulse Tools – Core | Unlocked | none |
+| `packages/pulse-conversations-core` | Pulse Conversations – Core | Unlocked | none |
+| `packages/pulse-conversations-recall` | Pulse Conversations – Recall | Unlocked | none |
+| `packages/pulse-channels-slack` | Pulse Channels – Slack | Unlocked | none (empty today; reserved) |
+
+The extensions are intentionally unnamespaced unlocked packages — they do not require separate DE signups and they install into customer orgs without consuming additional namespace slots.
+
+# Contents per package (exact file-move mapping)
+Move every file currently in `force-app/main/default/...` into the appropriate `packages/<pkg>/force-app/main/default/...` while preserving sub-directory structure.
+
+## Pulse Core (`packages/pulse-core`)
+Classes: `WorkflowContract`, `WorkflowRuntime`, `WorkflowAdvanceRequest`, `PulseAiProvider` (interface), `PulseAiModels`, `PulseAiFacade`, `PulseTool` (interface), `PulseToolModels`, `PulseToolRegistry`, `HitlService`, `PulseAgentRunner`, `SchemaDeploymentGateway`, `SchemaProvisioningService`, `ProjectionWriteService`, `PulseConversationAdapter` (interface only — the implementations live in conversation packages) — plus every `*Test` class for these.
+
+Objects: `Workflow_Definition__c`, `Workflow_Instance__c`, `Workflow_Event__c`, `Workflow_Step_Result__c`, `Workflow_Action__c`, `Deployment_Request__c`, `Pulse_Deployment_Status__e`.
+
+CMDTs: `Workflow_Projection__mdt`, `AI_Provider_Registration__mdt`, `Workflow_Tool_Registration__mdt`, `Channel_Adapter_Registration__mdt`, `Conversation_Source_Registration__mdt`, `Extraction_Profile__mdt`, `Feature_Flag__mdt`, `Calendar_Auto_Dispatch_Rule__mdt`.
+
+Platform Events: whatever ends up under `objects/Pulse_Deployment_Status__e/` after Wave 2 lane-b-fix.
+
+PermissionSets: the existing `permissionsets/*` definitions.
+
+## Pulse AI – Anthropic (`packages/pulse-ai-anthropic`)
+Classes: `AnthropicAdapter`, `AnthropicAdapterTest`.
+
+CMDT records (not the definition — the records): the seeded `AI_Provider_Registration__mdt.Anthropic*` rows if any exist under `customMetadata/`.
+
+## Pulse Tools – Core (`packages/pulse-tools-core`)
+Classes: `PulseEmailTool`, `PulseExternalApiTool`, `PulseRecordUpdateTool`, `PulseToolsTest`.
+
+CMDT records: seeded `Workflow_Tool_Registration__mdt` rows for these three tools if any exist.
+
+## Pulse Conversations – Core (`packages/pulse-conversations-core`)
+Classes: `ConversationIngestionService`, `ConversationIngestionServiceTest`, `PulseConversationExtractor`, `PulseConversationExtractorTest`.
+
+Objects: `Conversation__c`, `Conversation_Turn__c`, `Conversation_Extract__c`.
+
+Note: The `PulseConversationAdapter` interface stays in Core (it is the contract) but the implementations live in extension packages.
+
+## Pulse Conversations – Recall (`packages/pulse-conversations-recall`)
+Classes: `RecallAdapter`, `RecallAdapterTest`, `PulseRecallDispatcher`, `PulseRecallDispatcherTest`.
+
+CMDT records: seeded `Conversation_Source_Registration__mdt.Recall*` rows if any exist.
+
+## Pulse Channels – Slack (`packages/pulse-channels-slack`)
+Create the directory skeleton only (`packages/pulse-channels-slack/force-app/main/default/classes/.gitkeep`). Leave it empty — content arrives in a later wave.
+
+# Cross-package accessibility requirements
+Extension packages implement interfaces defined in Core. In Salesforce Apex, a `public` class is only visible inside its own namespace. Since Core is namespaced (`plse`) and extensions are not, the following types **must be declared `global`** in Core so extensions can reference them:
+
+- `PulseTool` (interface) — because `PulseEmailTool`, `PulseRecordUpdateTool`, `PulseExternalApiTool` implement it from the Tools-Core package.
+- `PulseToolModels` and all of its inner classes (`Context`, `Result`) — tool impls construct these.
+- `PulseAiProvider` (interface) — because `AnthropicAdapter` implements it from the AI-Anthropic package.
+- `PulseAiModels` and all of its inner classes (`Request`, `Response`, `Message`, `ToolCall`, `ToolDefinition`, `Usage`).
+- `PulseConversationAdapter` (interface) — because `RecallAdapter` implements it from the Conversations-Recall package.
+- Any input/output DTOs on `PulseConversationAdapter` — make globally-accessible DTOs.
+- `SchemaDeploymentGateway` (abstract class) and its inner DTOs (`FieldSpec`, `DeploymentPlan`, `DeploymentResult`) if we expect third-party deployer backends.
+
+Update the `public class`/`public interface` declarations to `global class`/`global interface`. Method signatures exposed to extensions must also be `global`. Inner class members referenced across namespace must be `global`. Tests in Core stay `@isTest private` — tests do not need `global`.
+
+Do not make everything global — only the surface that extensions legitimately need. Runtime internals like `WorkflowRuntime`, `HitlService`, `PulseAgentRunner`, `ProjectionWriteService`, `SchemaProvisioningService` stay `public` (they are consumed within Core only).
+
+# sfdx-project.json
+Replace the current single-directory config with the multi-package form:
+
+```json
+{
+  "packageDirectories": [
+    {
+      "path": "packages/pulse-core",
+      "default": true,
+      "package": "Pulse Core",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT"
+    },
+    {
+      "path": "packages/pulse-ai-anthropic",
+      "package": "Pulse AI - Anthropic",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "dependencies": [{ "package": "Pulse Core@0.1.0-1" }]
+    },
+    {
+      "path": "packages/pulse-tools-core",
+      "package": "Pulse Tools - Core",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "dependencies": [{ "package": "Pulse Core@0.1.0-1" }]
+    },
+    {
+      "path": "packages/pulse-conversations-core",
+      "package": "Pulse Conversations - Core",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "dependencies": [{ "package": "Pulse Core@0.1.0-1" }]
+    },
+    {
+      "path": "packages/pulse-conversations-recall",
+      "package": "Pulse Conversations - Recall",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "dependencies": [
+        { "package": "Pulse Core@0.1.0-1" },
+        { "package": "Pulse Conversations - Core@0.1.0-1" }
+      ]
+    },
+    {
+      "path": "packages/pulse-channels-slack",
+      "package": "Pulse Channels - Slack",
+      "versionName": "v0.1",
+      "versionNumber": "0.1.0.NEXT",
+      "dependencies": [{ "package": "Pulse Core@0.1.0-1" }]
+    }
+  ],
+  "name": "pulse-core-next",
+  "namespace": "plse",
+  "sfdcLoginUrl": "https://login.salesforce.com",
+  "sourceApiVersion": "66.0",
+  "packageAliases": {
+    "Pulse Core": "0Ho000000000000AAA",
+    "Pulse AI - Anthropic": "0Ho000000000000BBB",
+    "Pulse Tools - Core": "0Ho000000000000CCC",
+    "Pulse Conversations - Core": "0Ho000000000000DDD",
+    "Pulse Conversations - Recall": "0Ho000000000000EEE",
+    "Pulse Channels - Slack": "0Ho000000000000FFF"
+  }
+}
+```
+
+**Note on `namespace`**: Keep the top-level `namespace: "plse"` because that is the default applied to the default package directory (Pulse Core). Individual extension package directories do not need their own namespace declaration — they inherit unnamespaced.
+
+**Note on `packageAliases`**: The `0Ho...` placeholders above are fake. Do NOT run `sf package create` to generate real ones — that creates real package records in the Dev Hub and is not part of this wave. Leave the placeholders in the file and add a comment at the top of `sfdx-project.json` noting that `sf package create` must be run manually in a later wave to replace them. Actually sfdx-project.json does not support comments — instead, drop a short note in `docs/packaging-notes.md` explaining the placeholder `0Ho...` ids.
+
+# Orchestration script updates
+Update `scripts/orchestrate-claude.sh` to work with the new layout:
+
+1. `ORG_ALIAS` and `DEVHUB_ALIAS` stay the same.
+2. Add an `--source-dir packages/pulse-core` flag where appropriate to the `validate` and Wave-N deploy commands so the scratch org validation targets Core by default. Extensions deploy via their own directory.
+
+# Validation gate — MUST pass before you commit
+Each of these must succeed from the repo root:
+
+```
+sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages/pulse-core --json 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); r=d.get('result',{}); print('core', r.get('success'), r.get('numberComponentErrors'))"
+
+sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages/pulse-ai-anthropic --json 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); r=d.get('result',{}); print('anthropic', r.get('success'), r.get('numberComponentErrors'))"
+
+sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages/pulse-tools-core --json 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); r=d.get('result',{}); print('tools-core', r.get('success'), r.get('numberComponentErrors'))"
+
+sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages/pulse-conversations-core --json 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); r=d.get('result',{}); print('conv-core', r.get('success'), r.get('numberComponentErrors'))"
+
+sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages/pulse-conversations-recall --json 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); r=d.get('result',{}); print('conv-recall', r.get('success'), r.get('numberComponentErrors'))"
+```
+
+All five must print `True 0`. (Pulse Channels – Slack is empty, no dry-run needed.)
+
+If Core's dry-run fails with "Invalid type" on one of the `plse.Pulse*` global classes, it means an extension is referencing a Core type that is still `public` not `global`. Find the class in Core, change `public` → `global`, re-run.
+
+# Out of scope
+- Do not run `sf package create` or `sf package version create`. That is a later wave.
+- Do not add new features, new classes, or new tests.
+- Do not rewrite logic — only relocate files, adjust `global` visibility, and update `sfdx-project.json`.
+- Do not attempt to add a GitHub Actions CI workflow.
+- Do not touch anything in the `scripts/open-vscode-lanes-wave1.sh` file.
+
+# Commit
+When every dry-run prints `True 0`, commit with:
+```
+git add -A && git commit -m "wave2b: split repo into multi-package 2GP layout (core + 5 extensions)"
+```
+
+Do not push. The orchestrator handles merging.

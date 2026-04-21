@@ -1,0 +1,80 @@
+You are executing Wave 2 Lane C (repair) for the Pulse Core Next project. Your entire job is to unblock the Apex compile in the AI lane. You are working in a git worktree on branch `lane-c-fix` off `main`.
+
+# Canonical blueprint
+Before you do anything else, read `docs/pulse-nextgen-architecture-review-and-build-plan.md` (v4.1), specifically:
+- §4.3 Core Metadata
+- §4.7 AI and Agentic Execution
+- §6 Claude Operating Rules
+
+# Problem statement
+`sf project deploy start -o pulse-core-next-dev --dry-run` currently returns Failed with ~350 component errors cascading from three files in the AI lane. The merged branches compiled individually but not together. Your job is to fix these and drive the full package to a clean dry-run with 0 errors.
+
+## Root cause 1: `PulseTool.cls` and `PulseAiProvider.cls` declare inner classes inside a Salesforce `interface`
+Salesforce Apex does not allow inner class declarations inside an `interface` (unlike Java). Both files need to be restructured.
+
+- `force-app/main/default/classes/PulseTool.cls` — currently declares `public interface PulseTool` with inner `class Context` and `class Result`. This cannot compile.
+- `force-app/main/default/classes/PulseAiProvider.cls` — currently declares `public interface PulseAiProvider` with inner `class Request`, `class Response`, `class Message`, `class ToolCall`, `class ToolDefinition`, `class Usage`. This cannot compile.
+
+### Required pattern — companion-class split
+Keep each interface as a pure-method contract and move the DTOs to a companion class:
+
+- Create `force-app/main/default/classes/PulseToolModels.cls` (+ `.cls-meta.xml`, API 66.0) with `public class PulseToolModels { public class Context { ... } public class Result { ... } }` — preserving every field, constructor (`Context(Id instanceId, Map<String, Object> input)`), and static factory (`Result.ok(String)` / `Result.fail(String)`).
+- Rewrite `PulseTool.cls` to be:
+  ```
+  public interface PulseTool {
+      String getToolKey();
+      String getDescription();
+      Map<String, Object> getInputSchema();
+      String getDefaultHitlPolicy();
+      PulseToolModels.Result execute(PulseToolModels.Context ctx);
+  }
+  ```
+- Create `force-app/main/default/classes/PulseAiModels.cls` (+ `.cls-meta.xml`) with `public class PulseAiModels { public class Request { ... } public class Response { ... } public class Message { ... } public class ToolCall { ... } public class ToolDefinition { ... } public class Usage { ... } }` — preserving every field, constructor, and default (Request.maxTokens = 4096, Response.isError = false, etc.).
+- Rewrite `PulseAiProvider.cls` to be:
+  ```
+  public interface PulseAiProvider {
+      PulseAiModels.Response chat(PulseAiModels.Request req);
+  }
+  ```
+
+### Propagate the rename through every caller
+Update every reference to `PulseTool.Context` → `PulseToolModels.Context`, `PulseTool.Result` → `PulseToolModels.Result`, `PulseAiProvider.Request` → `PulseAiModels.Request`, `PulseAiProvider.Response` → `PulseAiModels.Response`, `PulseAiProvider.Message` → `PulseAiModels.Message`, `PulseAiProvider.ToolCall` → `PulseAiModels.ToolCall`, `PulseAiProvider.ToolDefinition` → `PulseAiModels.ToolDefinition`, `PulseAiProvider.Usage` → `PulseAiModels.Usage`.
+
+Files confirmed to reference these types (verify with grep — do not assume this list is exhaustive):
+- `AnthropicAdapter.cls` and `AnthropicAdapterTest.cls`
+- `HitlService.cls` and `HitlServiceTest.cls`
+- `PulseAgentRunner.cls` and `PulseAgentRunnerTest.cls`
+- `PulseAiFacade.cls` and `PulseAiFacadeTest.cls`
+- `PulseEmailTool.cls`, `PulseExternalApiTool.cls`, `PulseRecordUpdateTool.cls`
+- `PulseToolRegistry.cls`
+- `PulseToolsTest.cls`
+
+## Root cause 2: `PulseRecordUpdateTool.cls` uses a reserved word
+The file contains a local variable named `desc` (used as `Schema.DescribeSObjectResult desc = ...`). `desc` collides with SOQL's `DESC` keyword in Apex's lexer in at least some contexts and produces "Unexpected token 'desc'" parse errors. Rename every such local to `describeResult` (or similar) throughout that class.
+
+# Out of scope — do NOT do any of this
+- Do not change any class in lanes A, B, or D (runtime, projection, schema, conversation). If you see an issue there, leave it — lane B has its own Wave 2 session running in parallel.
+- Do not refactor logic inside the Anthropic adapter, HITL service, agent runner, or tools beyond the type renames and `desc` rename.
+- Do not add new features, new tools, new tests, or new files beyond the two companion classes.
+- Do not touch the namespace, sfdx-project.json, or scratch-def.
+- Do not run tests yourself against the scratch org — deploy gate only.
+
+# Validation gate — MUST pass before you commit
+Run this command in the worktree:
+```
+sf project deploy start -o pulse-core-next-dev --dry-run --json 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); r=d.get('result',{}); print('success', r.get('success'), 'errors', r.get('numberComponentErrors')); fails=r.get('details',{}).get('componentFailures',[]); [print(' -', f.get('fullName'),'|', f.get('problem')[:140]) for f in fails[:30]]"
+```
+
+The expected output is `success True errors 0`.
+
+If there are still errors, it means either (a) you missed a call site, or (b) lane-b-fix has a parallel issue that is cascading into your lane. Run the command above and inspect the output. Only fix errors whose `fullName` is one of the AI-lane files listed above; ignore `SchemaProvisioningService` / `Pulse_Deployment_Status__e` errors because lane-b-fix owns those.
+
+If after your fixes the only remaining errors are lane-b ones, that is acceptable — commit and let Wave 2 merge resolve both lanes together.
+
+# Commit
+When the gate passes (or only lane-b errors remain), commit all changes in the worktree with:
+```
+git add -A && git commit -m "wave2-c: unblock AI lane compile via interface companion-class pattern"
+```
+
+Do not push. The orchestrator handles merging.
