@@ -8,7 +8,7 @@ private class AnthropicAdapterTest {
             + '"usage":{"input_tokens":100,"output_tokens":50}}';
 
         AnthropicAdapter adapter = new AnthropicAdapter('TestCredential', 'claude-sonnet-4-20250514');
-        PulseAiProvider.Response resp = adapter.parseResponse(responseBody);
+        PulseAiModels.Response resp = adapter.parseResponse(responseBody);
 
         System.assertEquals(false, resp.isError, 'Should not be error');
         System.assertEquals('Here is my response', resp.text);
@@ -27,13 +27,13 @@ private class AnthropicAdapterTest {
             + '"usage":{"input_tokens":200,"output_tokens":100}}';
 
         AnthropicAdapter adapter = new AnthropicAdapter('TestCredential', 'claude-sonnet-4-20250514');
-        PulseAiProvider.Response resp = adapter.parseResponse(responseBody);
+        PulseAiModels.Response resp = adapter.parseResponse(responseBody);
 
         System.assertEquals(false, resp.isError);
         System.assertEquals('I will send an email', resp.text);
         System.assertEquals(1, resp.toolCalls.size());
 
-        PulseAiProvider.ToolCall tc = resp.toolCalls[0];
+        PulseAiModels.ToolCall tc = resp.toolCalls[0];
         System.assertEquals('toolu_001', tc.id);
         System.assertEquals('send_email', tc.toolKey);
 
@@ -44,7 +44,7 @@ private class AnthropicAdapterTest {
     @IsTest
     static void testParseMalformedResponse() {
         AnthropicAdapter adapter = new AnthropicAdapter('TestCredential', 'claude-sonnet-4-20250514');
-        PulseAiProvider.Response resp = adapter.parseResponse('not json at all');
+        PulseAiModels.Response resp = adapter.parseResponse('not json at all');
 
         System.assertEquals(true, resp.isError);
         System.assert(resp.errorMessage.contains('Failed to parse'), resp.errorMessage);
@@ -54,12 +54,12 @@ private class AnthropicAdapterTest {
     static void testBuildHttpRequest() {
         AnthropicAdapter adapter = new AnthropicAdapter('TestCredential', 'claude-sonnet-4-20250514');
 
-        PulseAiProvider.Request req = new PulseAiProvider.Request();
+        PulseAiModels.Request req = new PulseAiModels.Request();
         req.systemPrompt = 'You are a test assistant';
-        req.messages.add(new PulseAiProvider.Message('user', 'Hello'));
+        req.messages.add(new PulseAiModels.Message('user', 'Hello'));
         req.maxTokens = 1024;
 
-        PulseAiProvider.ToolDefinition toolDef = new PulseAiProvider.ToolDefinition(
+        PulseAiModels.ToolDefinition toolDef = new PulseAiModels.ToolDefinition(
             'send_email', 'Send an email',
             new Map<String, Object>{ 'type' => 'object' }
         );
@@ -82,17 +82,17 @@ private class AnthropicAdapterTest {
     static void testBuildHttpRequestWithToolResultMessage() {
         AnthropicAdapter adapter = new AnthropicAdapter('TestCred', 'claude-sonnet-4-20250514');
 
-        PulseAiProvider.Request req = new PulseAiProvider.Request();
+        PulseAiModels.Request req = new PulseAiModels.Request();
 
-        PulseAiProvider.Message assistantMsg = new PulseAiProvider.Message('assistant', 'I will call a tool');
-        PulseAiProvider.ToolCall tc = new PulseAiProvider.ToolCall();
+        PulseAiModels.Message assistantMsg = new PulseAiModels.Message('assistant', 'I will call a tool');
+        PulseAiModels.ToolCall tc = new PulseAiModels.ToolCall();
         tc.id = 'toolu_001';
         tc.toolKey = 'send_email';
         tc.inputJson = '{"toAddress":"a@b.com"}';
-        assistantMsg.toolCalls = new List<PulseAiProvider.ToolCall>{ tc };
+        assistantMsg.toolCalls = new List<PulseAiModels.ToolCall>{ tc };
         req.messages.add(assistantMsg);
 
-        PulseAiProvider.Message toolResultMsg = new PulseAiProvider.Message('user', '{"status":"sent"}');
+        PulseAiModels.Message toolResultMsg = new PulseAiModels.Message('user', '{"status":"sent"}');
         toolResultMsg.toolCallId = 'toolu_001';
         req.messages.add(toolResultMsg);
 
@@ -107,11 +107,11 @@ private class AnthropicAdapterTest {
         Test.setMock(HttpCalloutMock.class, new AnthropicSuccessMock());
 
         AnthropicAdapter adapter = new AnthropicAdapter('TestCredential', 'claude-sonnet-4-20250514');
-        PulseAiProvider.Request req = new PulseAiProvider.Request();
-        req.messages.add(new PulseAiProvider.Message('user', 'Hello'));
+        PulseAiModels.Request req = new PulseAiModels.Request();
+        req.messages.add(new PulseAiModels.Message('user', 'Hello'));
 
         Test.startTest();
-        PulseAiProvider.Response resp = adapter.chat(req);
+        PulseAiModels.Response resp = adapter.chat(req);
         Test.stopTest();
 
         System.assertEquals(false, resp.isError);
@@ -123,11 +123,11 @@ private class AnthropicAdapterTest {
         Test.setMock(HttpCalloutMock.class, new AnthropicErrorMock());
 
         AnthropicAdapter adapter = new AnthropicAdapter('TestCredential', 'claude-sonnet-4-20250514');
-        PulseAiProvider.Request req = new PulseAiProvider.Request();
-        req.messages.add(new PulseAiProvider.Message('user', 'Hello'));
+        PulseAiModels.Request req = new PulseAiModels.Request();
+        req.messages.add(new PulseAiModels.Message('user', 'Hello'));
 
         Test.startTest();
-        PulseAiProvider.Response resp = adapter.chat(req);
+        PulseAiModels.Response resp = adapter.chat(req);
         Test.stopTest();
 
         System.assertEquals(true, resp.isError);
@@ -143,7 +143,7 @@ private class AnthropicAdapterTest {
             + '],"usage":{"input_tokens":50,"output_tokens":25}}';
 
         AnthropicAdapter adapter = new AnthropicAdapter('TestCred', 'claude-sonnet-4-20250514');
-        PulseAiProvider.Response resp = adapter.parseResponse(responseBody);
+        PulseAiModels.Response resp = adapter.parseResponse(responseBody);
 
         System.assertEquals(2, resp.toolCalls.size());
         System.assertEquals('send_email', resp.toolCalls[0].toolKey);

@@ -43,19 +43,19 @@ public with sharing class PulseExternalApiTool implements PulseTool {
         return 'Approval_Required';
     }
 
-    public PulseTool.Result execute(PulseTool.Context ctx) {
+    public PulseToolModels.Result execute(PulseToolModels.Context ctx) {
         String namedCred = (String) ctx.input.get('namedCredential');
         String path = (String) ctx.input.get('path');
         String method = (String) ctx.input.get('method');
         String body = (String) ctx.input.get('body');
 
         if (String.isBlank(namedCred) || String.isBlank(path) || String.isBlank(method)) {
-            return PulseTool.Result.fail('Missing required: namedCredential, path, method');
+            return PulseToolModels.fail('Missing required: namedCredential, path, method');
         }
 
         method = method.toUpperCase();
         if (!ALLOWED_METHODS.contains(method)) {
-            return PulseTool.Result.fail('Invalid HTTP method: ' + method);
+            return PulseToolModels.fail('Invalid HTTP method: ' + method);
         }
 
         HttpRequest req = new HttpRequest();
@@ -77,11 +77,11 @@ public with sharing class PulseExternalApiTool implements PulseTool {
             };
 
             if (res.getStatusCode() >= 200 && res.getStatusCode() < 300) {
-                return PulseTool.Result.ok(JSON.serialize(output));
+                return PulseToolModels.ok(JSON.serialize(output));
             }
-            return PulseTool.Result.fail('HTTP ' + res.getStatusCode() + ': ' + res.getBody());
+            return PulseToolModels.fail('HTTP ' + res.getStatusCode() + ': ' + res.getBody());
         } catch (Exception e) {
-            return PulseTool.Result.fail('Callout failed: ' + e.getMessage());
+            return PulseToolModels.fail('Callout failed: ' + e.getMessage());
         }
     }
 }

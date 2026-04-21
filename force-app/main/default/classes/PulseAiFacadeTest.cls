@@ -34,7 +34,7 @@ private class PulseAiFacadeTest {
         PulseToolRegistry.registerToolForTest('send_email', new PulseEmailTool());
 
         Test.startTest();
-        PulseAiProvider.Request req = PulseAiFacade.buildRequest(inst);
+        PulseAiModels.Request req = PulseAiFacade.buildRequest(inst);
         Test.stopTest();
 
         System.assert(req.systemPrompt.contains('facade_test_wf'),
@@ -67,7 +67,7 @@ private class PulseAiFacadeTest {
         PulseToolRegistry.clearForTest();
 
         Test.startTest();
-        PulseAiProvider.Request req = PulseAiFacade.buildRequest(inst);
+        PulseAiModels.Request req = PulseAiFacade.buildRequest(inst);
         Test.stopTest();
 
         System.assert(req.messages[0].content.contains('{}'),
@@ -78,11 +78,11 @@ private class PulseAiFacadeTest {
     static void testInvokeWithMockProvider() {
         PulseAiFacade.setProviderForTest(new MockTextProvider());
 
-        PulseAiProvider.Request req = new PulseAiProvider.Request();
-        req.messages.add(new PulseAiProvider.Message('user', 'test'));
+        PulseAiModels.Request req = new PulseAiModels.Request();
+        req.messages.add(new PulseAiModels.Message('user', 'test'));
 
         Test.startTest();
-        PulseAiProvider.Response resp = PulseAiFacade.invoke(req);
+        PulseAiModels.Response resp = PulseAiFacade.invoke(req);
         Test.stopTest();
 
         System.assertEquals(false, resp.isError);
@@ -93,8 +93,8 @@ private class PulseAiFacadeTest {
     static void testNoProviderConfigured() {
         PulseAiFacade.clearProviderForTest();
 
-        PulseAiProvider.Request req = new PulseAiProvider.Request();
-        req.messages.add(new PulseAiProvider.Message('user', 'test'));
+        PulseAiModels.Request req = new PulseAiModels.Request();
+        req.messages.add(new PulseAiModels.Message('user', 'test'));
 
         Test.startTest();
         try {
@@ -107,11 +107,11 @@ private class PulseAiFacadeTest {
     }
 
     private class MockTextProvider implements PulseAiProvider {
-        public PulseAiProvider.Response chat(PulseAiProvider.Request req) {
-            PulseAiProvider.Response resp = new PulseAiProvider.Response();
+        public PulseAiModels.Response chat(PulseAiModels.Request req) {
+            PulseAiModels.Response resp = new PulseAiModels.Response();
             resp.text = 'Mocked response';
             resp.providerRequestId = 'mock_123';
-            resp.usage = new PulseAiProvider.Usage();
+            resp.usage = new PulseAiModels.Usage();
             resp.usage.inputTokens = 5;
             resp.usage.outputTokens = 3;
             return resp;

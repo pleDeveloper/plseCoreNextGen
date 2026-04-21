@@ -29,7 +29,7 @@ public with sharing class HitlService {
         return actions;
     }
 
-    public static PulseTool.Result resolveApproval(Id actionId, Boolean approved, Id resolvedById) {
+    public static PulseToolModels.Result resolveApproval(Id actionId, Boolean approved, Id resolvedById) {
         Workflow_Action__c action = [
             SELECT Id, Tool_Key__c, Request_JSON__c, Status__c, Workflow_Instance__c
             FROM Workflow_Action__c
@@ -38,7 +38,7 @@ public with sharing class HitlService {
         ];
 
         if (action.Status__c != 'Pending') {
-            return PulseTool.Result.fail('Action is not Pending: ' + action.Status__c);
+            return PulseToolModels.fail('Action is not Pending: ' + action.Status__c);
         }
 
         if (!approved) {
@@ -50,7 +50,7 @@ public with sharing class HitlService {
             writeAuditEvent(action.Workflow_Instance__c, 'TOOL_REJECTED', action.Tool_Key__c,
                 JSON.serialize(new Map<String, String>{ 'actionId' => actionId }));
 
-            return PulseTool.Result.ok('{"status":"rejected"}');
+            return PulseToolModels.ok('{"status":"rejected"}');
         }
 
         PulseTool tool = PulseToolRegistry.getTool(action.Tool_Key__c);
@@ -60,16 +60,16 @@ public with sharing class HitlService {
             action.Resolved_By__c = resolvedById;
             action.Resolved_Date__c = Datetime.now();
             update action;
-            return PulseTool.Result.fail('Tool not found: ' + action.Tool_Key__c);
+            return PulseToolModels.fail('Tool not found: ' + action.Tool_Key__c);
         }
 
         Map<String, Object> inputMap = (Map<String, Object>) JSON.deserializeUntyped(
             String.isNotBlank(action.Request_JSON__c) ? action.Request_JSON__c : '{}'
         );
-        PulseTool.Context ctx = new PulseTool.Context(action.Workflow_Instance__c, inputMap);
+        PulseToolModels.Context ctx = new PulseToolModels.Context(action.Workflow_Instance__c, inputMap);
         ctx.actorUserId = resolvedById;
 
-        PulseTool.Result result = tool.execute(ctx);
+        PulseToolModels.Result result = tool.execute(ctx);
 
         action.Status__c = result.success ? 'Executed' : 'Failed';
         action.Response_JSON__c = result.success ? result.outputJson : result.errorMessage;

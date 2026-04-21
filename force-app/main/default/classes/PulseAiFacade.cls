@@ -2,8 +2,8 @@ public with sharing class PulseAiFacade {
 
     private static PulseAiProvider providerOverride;
 
-    public static PulseAiProvider.Request buildRequest(Workflow_Instance__c instance) {
-        PulseAiProvider.Request req = new PulseAiProvider.Request();
+    public static PulseAiModels.Request buildRequest(Workflow_Instance__c instance) {
+        PulseAiModels.Request req = new PulseAiModels.Request();
 
         req.systemPrompt = 'You are an AI assistant for Pulse workflow automation. '
             + 'You are operating on workflow "' + instance.Workflow_Definition__r.Workflow_Key__c + '" '
@@ -11,7 +11,7 @@ public with sharing class PulseAiFacade {
             + 'Use the available tools to complete the required actions. '
             + 'Only call tools that are necessary. Explain your reasoning.';
 
-        PulseAiProvider.Message userMsg = new PulseAiProvider.Message('user',
+        PulseAiModels.Message userMsg = new PulseAiModels.Message('user',
             'Workflow context: ' + (String.isNotBlank(instance.Context_JSON__c)
                 ? instance.Context_JSON__c : '{}'));
         req.messages.add(userMsg);
@@ -21,7 +21,7 @@ public with sharing class PulseAiFacade {
         return req;
     }
 
-    public static PulseAiProvider.Response invoke(PulseAiProvider.Request req) {
+    public static PulseAiModels.Response invoke(PulseAiModels.Request req) {
         PulseAiProvider provider = getProvider();
         return provider.chat(req);
     }
