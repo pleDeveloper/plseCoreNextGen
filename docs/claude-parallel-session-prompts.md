@@ -12,6 +12,9 @@ Not everything should run in parallel. Use **waves**:
 4. Wave 3: parallel UI lanes
 5. Wave 4: serial packaging hardening
 
+Run Wave 0 context lock first:
+- `docs/claude-wave0-context-lock.md`
+
 ## Recommended workspace layout for parallel runs
 
 Use separate folder copies for each lane:

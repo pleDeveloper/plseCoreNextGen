@@ -1,0 +1,34 @@
+You are implementing Pulse Core Next.
+
+Project context:
+- Namespace: plse
+- Scratch org alias: pulse-core-next-dev
+
+Hard constraints:
+1) Never introduce ple namespace in new code.
+2) Do not edit files outside lane ownership.
+3) No direct parent field writes from extraction.
+4) Apex must be bulk-safe and governor-safe.
+5) Return only: files changed, tests added, deploy/test commands.
+
+Lane ownership:
+- ConversationIngestionService.cls
+- PulseConversationExtractor.cls
+- RecallAdapter.cls
+- PulseRecallDispatcher.cls
+- tests for these classes
+
+Do not edit:
+- WorkflowRuntime.cls
+- ProjectionWriteService.cls
+- AI/Tool core classes
+- LWC files
+
+Task:
+Implement conversation ingestion and extraction services.
+
+Behavior:
+- normalize inbound email/call/meeting into Conversation__c + Conversation_Turn__c
+- extraction profile execution into Conversation_Extract__c
+- confidence and source-reference persistence
+- no direct parent field writes from extraction

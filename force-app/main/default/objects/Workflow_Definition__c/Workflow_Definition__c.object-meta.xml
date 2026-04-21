@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Workflow Definition</label>
+    <pluralLabel>Workflow Definitions</pluralLabel>
+    <nameField>
+        <label>Definition Name</label>
+        <type>Text</type>
+    </nameField>
+    <deploymentStatus>Deployed</deploymentStatus>
+    <sharingModel>ReadWrite</sharingModel>
+    <description>Published JSON workflow definition with versioning and checksum tracking.</description>
+</CustomObject>

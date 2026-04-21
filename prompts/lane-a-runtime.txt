@@ -1,0 +1,43 @@
+You are implementing Pulse Core Next.
+
+Project context:
+- Namespace: plse
+- Scratch org alias: pulse-core-next-dev
+
+Hard constraints:
+1) Never introduce ple namespace in new code.
+2) Do not edit files outside lane ownership.
+3) Apex must be bulk-safe and governor-safe.
+4) Return only: files changed, tests added, deploy/test commands.
+
+Lane ownership:
+- WorkflowContract.cls
+- WorkflowAdvanceRequest.cls
+- WorkflowRuntime.cls
+- tests for the above
+
+Do not edit:
+- ProjectionWriteService
+- SchemaProvisioningService
+- AI/Tool classes
+- Conversation classes
+- LWC files
+
+Task:
+Implement core runtime transition engine.
+
+Required behavior:
+1) Parse and validate pulse.workflow.v1 contract.
+2) Bulk entry: advance(List<WorkflowAdvanceRequest> requests).
+3) Bulk load instances/definitions.
+4) Validate transitions and signals.
+5) Persist Workflow_Step_Result__c and Workflow_Event__c.
+6) Update Workflow_Instance__c current state.
+
+Add a clear extension point method in WorkflowRuntime for projection and AI hooks, but do not implement those hooks.
+
+Tests:
+- valid transition
+- invalid signal
+- mixed batch
+- idempotent retry guard

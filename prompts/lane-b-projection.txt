@@ -1,0 +1,41 @@
+You are implementing Pulse Core Next.
+
+Project context:
+- Namespace: plse
+- Scratch org alias: pulse-core-next-dev
+
+Hard constraints:
+1) Never introduce ple namespace in new code.
+2) Do not edit files outside lane ownership.
+3) Apex must be bulk-safe and governor-safe.
+4) Return only: files changed, tests added, deploy/test commands.
+
+Lane ownership:
+- ProjectionWriteService.cls
+- SchemaDeploymentGateway.cls
+- SchemaProvisioningService.cls
+- deployment status event metadata
+- tests for these classes
+
+Do not edit:
+- WorkflowRuntime.cls
+- AI/Tool classes
+- Conversation classes
+- LWC files
+
+Task:
+Implement projection and schema provisioning services.
+
+Projection behavior:
+- map field keys to parent fields via Workflow_Projection__mdt
+- type compatibility checks
+- object/field allowlist checks
+- shared vs workflow-scoped precedence
+- audit to Workflow_Event__c
+
+Schema behavior:
+- plan + enqueue model via Deployment_Request__c
+- status publication
+- swappable gateway abstraction
+
+Do not wire into WorkflowRuntime in this lane.

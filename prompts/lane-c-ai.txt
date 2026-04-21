@@ -1,0 +1,43 @@
+You are implementing Pulse Core Next.
+
+Project context:
+- Namespace: plse
+- Scratch org alias: pulse-core-next-dev
+
+Hard constraints:
+1) Never introduce ple namespace in new code.
+2) Use Named Credentials for external calls.
+3) Do not edit files outside lane ownership.
+4) Apex must be bulk-safe and governor-safe.
+5) Return only: files changed, tests added, deploy/test commands.
+
+Lane ownership:
+- PulseAiProvider.cls
+- AnthropicAdapter.cls
+- PulseTool.cls
+- PulseToolRegistry.cls
+- PulseEmailTool.cls
+- PulseRecordUpdateTool.cls
+- PulseExternalApiTool.cls
+- HitlService.cls
+- PulseAgentRunner.cls
+- PulseAiFacade.cls
+- tests for these classes
+
+Do not edit:
+- WorkflowRuntime.cls
+- ProjectionWriteService.cls
+- Conversation classes
+- LWC files
+
+Task:
+Implement AI execution plane.
+
+Behavior:
+- AI suggests tool calls
+- platform validates schema + policy
+- autonomous executes
+- approval-required creates Workflow_Action__c and pauses
+- audit to Workflow_Event__c
+
+Do not wire runtime callbacks in this lane.

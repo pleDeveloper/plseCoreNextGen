@@ -15,6 +15,7 @@ pnpm-debug.log*
 coverage/
 dist/
 tmp/
+.orchestration-logs/
 
 # OS/editor noise
 .idea/

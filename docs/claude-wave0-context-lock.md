@@ -1,0 +1,98 @@
+# Wave 0: Blueprint Context Lock (Paste-Ready)
+
+Run Wave 0 in a single Claude session before any parallel lanes.
+
+## Why Wave 0
+
+Wave 0 aligns all later sessions to the same architecture decisions and prevents lane drift.
+
+## Step 0A — Context Ingestion Prompt
+
+Paste this entire block into Claude:
+
+```text
+Before implementing anything, ingest and lock context from this repository.
+
+Read these files first:
+1) CLAUDE.md
+2) docs/pulse-nextgen-architecture-review-and-build-plan.md
+3) docs/claude-orchestration-pulse-core-next.md
+4) docs/claude-parallel-session-prompts.md
+5) docs/claude-session-prompts-paste-ready.md
+
+Then produce:
+1) A concise "Architecture Lock Summary" with no more than 20 bullets.
+2) A list of non-negotiables you will enforce in every subsequent session.
+3) A list of open risks that need explicit treatment during implementation.
+
+Do not write or modify code in this step.
+```
+
+## Step 0B — Foundation Bootstrap Prompt
+
+In the same session, paste this block:
+
+```text
+Now execute Wave 0 foundation bootstrap only.
+
+Constraints:
+1) Namespace target is plse.
+2) No new ple artifacts.
+3) Keep this step metadata-focused.
+4) Do not implement business runtime logic yet.
+
+Create or update:
+- Workflow_Definition__c
+- Workflow_Instance__c
+- Workflow_Step_Result__c
+- Workflow_Event__c
+- Workflow_Action__c
+- Deployment_Request__c
+- Conversation__c
+- Conversation_Turn__c
+- Conversation_Extract__c
+
+Add migration hooks where relevant:
+- External_Source__c
+- External_Source_Id__c
+- Migration_Batch_Id__c
+
+Create CMDT:
+- Workflow_Projection__mdt
+- Workflow_Tool_Registration__mdt
+- AI_Provider_Registration__mdt
+- Conversation_Source_Registration__mdt
+- Extraction_Profile__mdt
+- Calendar_Auto_Dispatch_Rule__mdt
+- Channel_Adapter_Registration__mdt
+- Feature_Flag__mdt
+
+Add permission sets:
+- Pulse_Core_Admin
+- Pulse_Runtime_User
+
+Output:
+1) files changed
+2) deployment command
+3) anything still blocking Wave 1 parallel lanes
+```
+
+## Step 0C — Validate Foundation
+
+Run:
+
+```bash
+sf project deploy start -o pulse-core-next-dev
+```
+
+If deploy passes, start Wave 1 lanes.
+
+## Optional: Seed every lane with one short guard prompt
+
+Paste at the top of each lane session:
+
+```text
+Use CLAUDE.md and the Wave 0 Architecture Lock Summary as strict constraints.
+Do not violate namespace, packaging boundary, bulk-safety, or verification rules.
+If a requested change conflicts with those rules, stop and flag it.
+```
