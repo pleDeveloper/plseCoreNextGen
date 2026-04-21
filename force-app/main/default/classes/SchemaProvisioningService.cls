@@ -120,9 +120,10 @@ public with sharing class SchemaProvisioningService {
             'deploymentId' => gwResult.deploymentId,
             'message'      => gwResult.message
         });
-        if (gwResult.status == 'Completed' || gwResult.status == 'Failed') {
+        if (gwResult.status == 'Completed' || gwResult.status == 'Failed' ||
+            gwResult.status == 'Partial') {
             req.Completed_Date__c = Datetime.now();
-            if (gwResult.status == 'Failed') {
+            if (gwResult.status == 'Failed' || gwResult.status == 'Partial') {
                 req.Error_Message__c = gwResult.message;
             }
         }
@@ -152,7 +153,7 @@ public with sharing class SchemaProvisioningService {
 
         // Terminal states — nothing to poll
         if (req.Status__c == 'Completed' || req.Status__c == 'Failed' ||
-            req.Status__c == 'Cancelled') {
+            req.Status__c == 'Cancelled' || req.Status__c == 'Partial') {
             result.status  = req.Status__c;
             result.message = 'Deployment already in terminal state';
             return result;
@@ -215,10 +216,11 @@ public with sharing class SchemaProvisioningService {
         if (gatewayOverride != null) {
             return gatewayOverride;
         }
-        // Default implementation — Apex Metadata API gateway.
-        // Swap this for SOAP wrapper / external deployer by changing
-        // this factory method or introducing a Feature_Flag__mdt lookup.
-        return new MetadataApiDeploymentGateway();
+        // Default implementation — Tooling API REST gateway.
+        // See architecture doc §4.6 Correction 4: Apex Metadata.CustomField
+        // is not available in this org; we use the Tooling API via a
+        // Named Credential self-org callout instead.
+        return new ToolingApiDeploymentGateway();
     }
 
     private static void publishStatus(
@@ -238,210 +240,4 @@ public with sharing class SchemaProvisioningService {
         EventBus.publish(evt);
     }
 
-    // ── Default gateway implementation ──────────────────────────────────
-
-    /**
-     * Metadata API deployment gateway using Apex Metadata operations.
-     *
-     * NOTE: This implementation uses Metadata.Operations.enqueueDeployment()
-     * which is asynchronous.  Subscriber-org and 2GP behavior MUST be
-     * verified manually per architecture doc §4.6 / Correction 4.
-     *
-     * If this path proves unviable in subscriber orgs, replace this class
-     * with an external-deployer or guided-setup gateway — the provisioning
-     * service does not need to change.
-     */
-    @TestVisible
-    private class MetadataApiDeploymentGateway extends SchemaDeploymentGateway {
-
-        public override SchemaDeploymentGateway.DeploymentPlan buildPlan(
-            String targetObject,
-            String workflowKey,
-            List<SchemaDeploymentGateway.FieldSpec> requestedFields
-        ) {
-            SchemaDeploymentGateway.DeploymentPlan plan =
-                new SchemaDeploymentGateway.DeploymentPlan();
-            plan.targetObject = targetObject;
-            plan.workflowKey  = workflowKey;
-
-            // Validate object exists
-            Map<String, Schema.SObjectType> gd = Schema.getGlobalDescribe();
-            if (!gd.containsKey(targetObject)) {
-                plan.validationErrors.add('Target object does not exist: ' + targetObject);
-                return plan;
-            }
-
-            // Field budget check
-            Integer existing = countCustomFields(targetObject);
-            Integer budgetLimit = getFieldBudgetLimit();
-            Integer newFieldCount = 0;
-
-            for (SchemaDeploymentGateway.FieldSpec fs : requestedFields) {
-                // Skip fields that already exist
-                if (fieldExists(targetObject, fs.fieldApiName)) {
-                    continue;
-                }
-                newFieldCount++;
-                plan.fields.add(fs);
-            }
-
-            if (existing + newFieldCount > budgetLimit) {
-                plan.validationErrors.add(
-                    'Field budget exceeded on ' + targetObject + ': ' +
-                    existing + ' existing + ' + newFieldCount + ' new > ' +
-                    budgetLimit + ' limit'
-                );
-            }
-
-            // Type feasibility — reject unsupported types early
-            Set<String> supported = new Set<String>{
-                'Text', 'Number', 'Date', 'DateTime', 'Picklist',
-                'Checkbox', 'Currency', 'Percent', 'LongTextArea'
-            };
-            for (SchemaDeploymentGateway.FieldSpec fs : plan.fields) {
-                if (!supported.contains(fs.fieldType)) {
-                    plan.validationErrors.add(
-                        'Unsupported field type "' + fs.fieldType +
-                        '" for field ' + fs.fieldApiName
-                    );
-                }
-            }
-
-            return plan;
-        }
-
-        public override SchemaDeploymentGateway.DeploymentResult enqueue(
-            Id deploymentRequestId,
-            SchemaDeploymentGateway.DeploymentPlan plan
-        ) {
-            Metadata.DeployContainer container = new Metadata.DeployContainer();
-
-            for (SchemaDeploymentGateway.FieldSpec fs : plan.fields) {
-                Metadata.CustomField cf = new Metadata.CustomField();
-                cf.fullName  = plan.targetObject + '.' + fs.fieldApiName;
-                cf.label     = fs.fieldLabel;
-
-                if (fs.fieldType == 'Text') {
-                    cf.type   = Metadata.FieldType.Text;
-                    cf.length = fs.length != null ? fs.length : 255;
-                } else if (fs.fieldType == 'Number') {
-                    cf.type      = Metadata.FieldType.Number;
-                    cf.precision = fs.precision != null ? fs.precision : 18;
-                    cf.scale_x   = fs.scale != null ? fs.scale : 0;
-                } else if (fs.fieldType == 'Date') {
-                    cf.type = Metadata.FieldType.Date;
-                } else if (fs.fieldType == 'DateTime') {
-                    cf.type = Metadata.FieldType.DateTime;
-                } else if (fs.fieldType == 'Checkbox') {
-                    cf.type = Metadata.FieldType.Checkbox;
-                } else if (fs.fieldType == 'Currency') {
-                    cf.type      = Metadata.FieldType.Currency;
-                    cf.precision = fs.precision != null ? fs.precision : 18;
-                    cf.scale_x   = fs.scale != null ? fs.scale : 2;
-                } else if (fs.fieldType == 'Percent') {
-                    cf.type      = Metadata.FieldType.Percent;
-                    cf.precision = fs.precision != null ? fs.precision : 5;
-                    cf.scale_x   = fs.scale != null ? fs.scale : 2;
-                } else if (fs.fieldType == 'LongTextArea') {
-                    cf.type           = Metadata.FieldType.LongTextArea;
-                    cf.length         = fs.length != null ? fs.length : 32768;
-                    cf.visibleLines   = 6;
-                } else if (fs.fieldType == 'Picklist') {
-                    cf.type = Metadata.FieldType.Picklist;
-                    // Picklist values require a ValueSet — handled separately
-                    // in the deploy callback or via post-deploy step.
-                    // Marking as text-fallback here is the safe default;
-                    // the full picklist deploy path requires additional
-                    // 2GP verification.
-                    cf.type   = Metadata.FieldType.Text;
-                    cf.length = 255;
-                }
-
-                container.addMetadata(cf);
-            }
-
-            // Enqueue async deployment with callback
-            // NOTE: Metadata.Operations.enqueueDeployment() is subject to
-            // daily Apex Metadata API limits and subscriber-org restrictions.
-            // 2GP behavior must be manually verified.
-            Id asyncId = Metadata.Operations.enqueueDeployment(
-                container,
-                new DeploymentCallback(deploymentRequestId)
-            );
-
-            SchemaDeploymentGateway.DeploymentResult dr =
-                new SchemaDeploymentGateway.DeploymentResult();
-            dr.status       = 'Queued';
-            dr.message      = 'Metadata deployment enqueued';
-            dr.deploymentId = asyncId;
-            return dr;
-        }
-
-        public override SchemaDeploymentGateway.DeploymentResult getStatus(
-            Id deploymentRequestId
-        ) {
-            // The Apex Metadata API uses a callback pattern rather than
-            // poll-based status.  Status is updated by DeploymentCallback
-            // on completion.  This method reads the persisted state.
-            Deployment_Request__c req = [
-                SELECT Status__c, Result_JSON__c, Error_Message__c
-                FROM   Deployment_Request__c
-                WHERE  Id = :deploymentRequestId
-                LIMIT  1
-            ];
-
-            SchemaDeploymentGateway.DeploymentResult dr =
-                new SchemaDeploymentGateway.DeploymentResult();
-            dr.status  = req.Status__c;
-            dr.message = req.Error_Message__c;
-            return dr;
-        }
-    }
-
-    // ── Metadata deploy callback ────────────────────────────────────────
-
-    /**
-     * Callback invoked by the platform when Metadata.Operations deployment
-     * completes.  Updates Deployment_Request__c and publishes status event.
-     */
-    public class DeploymentCallback implements Metadata.DeployCallback {
-        private Id deploymentRequestId;
-
-        public DeploymentCallback(Id deploymentRequestId) {
-            this.deploymentRequestId = deploymentRequestId;
-        }
-
-        public void handleResult(
-            Metadata.DeployResult result,
-            Metadata.DeployCallbackContext context
-        ) {
-            Deployment_Request__c req = [
-                SELECT Id, Status__c, Target_Object__c
-                FROM   Deployment_Request__c
-                WHERE  Id = :deploymentRequestId
-                LIMIT  1
-            ];
-
-            if (result != null && result.status == Metadata.DeployStatus.Succeeded) {
-                req.Status__c         = 'Completed';
-                req.Completed_Date__c = Datetime.now();
-                req.Result_JSON__c    = '{"status":"Succeeded"}';
-            } else {
-                req.Status__c         = 'Failed';
-                req.Completed_Date__c = Datetime.now();
-                String errMsg = result != null
-                    ? 'Deployment failed: ' + result.status
-                    : 'Deployment result was null';
-                req.Error_Message__c = errMsg;
-                req.Result_JSON__c   = '{"status":"Failed"}';
-            }
-            update req;
-
-            publishStatus(
-                req.Id, req.Status__c,
-                req.Error_Message__c != null ? req.Error_Message__c : 'Deployment succeeded',
-                req.Target_Object__c
-            );
-        }
-    }
 }
