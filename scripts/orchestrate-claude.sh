@@ -27,6 +27,10 @@ LANES_WAVE2=(
   "lane-b-fix|lane-b-fix|prompts/wave2-lane-b-fix.txt|wave2-b: unblock projection lane compile"
 )
 
+LANES_WAVE2B_TOOLING=(
+  "lane-b-tooling|lane-b-tooling|prompts/wave2-lane-b-tooling.txt|wave2-b-tooling: Tooling API schema gateway"
+)
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -322,6 +326,40 @@ merge_wave2() {
   say "Wave 2 branches merged into main."
 }
 
+setup_wave2b_tooling_lane() {
+  cd "$ROOT_DIR"
+  mkdir -p "$WORKTREE_BASE"
+  ensure_main_branch
+
+  for lane in "${LANES_WAVE2B_TOOLING[@]}"; do
+    IFS='|' read -r lane_name branch _ _ <<<"$lane"
+    if ! git show-ref --verify --quiet "refs/heads/$branch"; then
+      git branch "$branch"
+    fi
+    lane_dir="$WORKTREE_BASE/$lane_name"
+    if [[ ! -d "$lane_dir/.git" && ! -f "$lane_dir/.git" ]]; then
+      git worktree add "$lane_dir" "$branch"
+    fi
+  done
+
+  say "Wave 2b-tooling lane worktree is ready under $WORKTREE_BASE"
+}
+
+wave2b_tooling() {
+  setup_wave2b_tooling_lane
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/lane-b-tooling.log"
+  say "Follow log with: ./scripts/orchestrate-claude.sh logs lane-b-tooling"
+
+  for lane in "${LANES_WAVE2B_TOOLING[@]}"; do
+    IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
+  done
+
+  say "Wave 2b-tooling lane completed."
+}
+
 logs() {
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
@@ -329,7 +367,8 @@ logs() {
 
   touch "$LOG_DIR/wave0.log" "$LOG_DIR/lane-a.log" "$LOG_DIR/lane-b.log" \
         "$LOG_DIR/lane-c.log" "$LOG_DIR/lane-d.log" \
-        "$LOG_DIR/lane-c-fix.log" "$LOG_DIR/lane-b-fix.log"
+        "$LOG_DIR/lane-c-fix.log" "$LOG_DIR/lane-b-fix.log" \
+        "$LOG_DIR/lane-b-tooling.log"
 
   case "$target" in
     all)
@@ -347,12 +386,12 @@ logs() {
         "$LOG_DIR/lane-c-fix.log" \
         "$LOG_DIR/lane-b-fix.log"
       ;;
-    wave0|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix)
+    wave0|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix|lane-b-tooling)
       tail -n 120 -F "$LOG_DIR/${target}.log"
       ;;
     *)
       echo "Invalid logs target: $target" >&2
-      echo "Use: all|wave0|wave2|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix" >&2
+      echo "Use: all|wave0|wave2|lane-a|lane-b|lane-c|lane-d|lane-c-fix|lane-b-fix|lane-b-tooling" >&2
       exit 1
       ;;
   esac
@@ -442,6 +481,7 @@ main() {
     wave0) wave0 ;;
     wave1) wave1 ;;
     wave2) wave2 ;;
+    wave2b-tooling) wave2b_tooling ;;
     merge-wave1) merge_wave1 ;;
     merge-wave2) merge_wave2 ;;
     validate) validate ;;

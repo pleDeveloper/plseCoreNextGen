@@ -1,0 +1,193 @@
+You are executing Wave 2 Lane B (retry — Tooling API gateway) for the Pulse Core Next project. This supersedes the earlier `wave2-lane-b-fix.txt` prompt, whose dispatched session swapped `Metadata.CustomField` for `Metadata.CustomMetadata` and was rejected because that silently changes what the feature does (creating CMDT records is not the same as creating SObject fields). This prompt replaces that work with a real, production-shape gateway built on the Tooling API.
+
+You are working in a git worktree on branch `lane-b-tooling` off `main`. The branch and worktree have already been created by the orchestrator.
+
+# Canonical blueprint
+Before you do anything else, read `docs/pulse-nextgen-architecture-review-and-build-plan.md` (v4.1):
+- §4.5 Projection Contract
+- §4.6 Schema Provisioning — especially Correction 4 (Apex `Metadata.CustomField` is NOT exposed in this scratch org; verified empirically 2026-04-21)
+- §6 Claude Operating Rules
+
+# Empirical finding you must respect
+We verified by running anonymous Apex (`sf apex run -o pulse-core-next-dev`):
+
+```
+Metadata.CustomField cf = new Metadata.CustomField();
+// → Error (executeCompileFailure): Invalid type: Metadata.CustomField
+```
+
+The Apex `Metadata` namespace in this scratch org exposes `DeployContainer`, `DeployCallback`, `DeployResult`, `CustomMetadata`, `CustomMetadataValue`, `DeployStatus` — it does NOT expose `CustomField`, `FieldType`, or any other SObject schema-creation types. This is a platform constraint, not a code bug, and §4.6 Correction 4 of the blueprint explicitly anticipated it.
+
+Do NOT try to make `Metadata.CustomField` work. Do NOT substitute `Metadata.CustomMetadata` (that creates CMDT records, not SObject fields — completely different semantics). The mechanism must change.
+
+# Goal — build a real Tooling API REST gateway
+Replace the current `MetadataApiDeploymentGateway` inner class inside `SchemaProvisioningService.cls` with a new top-level class `ToolingApiDeploymentGateway extends SchemaDeploymentGateway`, stored in its own file `force-app/main/default/classes/ToolingApiDeploymentGateway.cls` (+ `.cls-meta.xml`, API 66.0).
+
+The gateway will use the Tooling API REST endpoint to create `CustomField` records via HTTP callout through a Named Credential that points back at the same org (self-org callout pattern).
+
+## API contract
+Endpoint:  `POST /services/data/v62.0/tooling/sobjects/CustomField`
+
+Named Credential: `callout:Pulse_Self_Org_Tooling` (configured manually per-org; do NOT try to deploy it — see the docs file below).
+
+Request body for a Text field (example):
+```
+{
+  "FullName": "Account.Authorization_Number__c",
+  "Metadata": {
+    "type": "Text",
+    "label": "Authorization Number",
+    "length": 80,
+    "required": false
+  }
+}
+```
+
+Supported types map (fieldType → Tooling API `Metadata.type`):
+- `"Text"` → `"Text"` with `length` (default 255)
+- `"LongTextArea"` → `"LongTextArea"` with `length` (default 32768) and `visibleLines` (default 6)
+- `"Number"` → `"Number"` with `precision` (default 18) and `scale` (default 0)
+- `"Currency"` → `"Currency"` with `precision`/`scale` (defaults 18/2)
+- `"Percent"` → `"Percent"` with `precision`/`scale` (defaults 5/2)
+- `"Date"` → `"Date"`
+- `"DateTime"` → `"DateTime"`
+- `"Checkbox"` → `"Checkbox"` with `defaultValue: false`
+- `"Picklist"` → Unsupported for Wave 2. Throw an `UnsupportedOperationException` with message `'Picklist CustomField creation via Tooling API requires a valueSet payload — deferred to a later wave.'` so the admin hears a honest error instead of silently getting the wrong field type.
+
+Success response (HTTP 201):
+```
+{ "id": "00N...", "success": true, "errors": [] }
+```
+
+Failure response (HTTP 400):
+```
+[{ "message": "...", "errorCode": "DUPLICATE_VALUE" }]
+```
+
+## Implementation shape
+Inside `ToolingApiDeploymentGateway.cls`:
+
+```apex
+public with sharing class ToolingApiDeploymentGateway extends SchemaDeploymentGateway {
+    @TestVisible private static final String NAMED_CREDENTIAL = 'callout:Pulse_Self_Org_Tooling';
+    @TestVisible private static final String API_VERSION = 'v62.0';
+    @TestVisible private static HttpCalloutMock mockInstance;
+
+    public override SchemaDeploymentGateway.DeploymentPlan buildPlan(
+        String targetObject,
+        String workflowKey,
+        List<SchemaDeploymentGateway.FieldSpec> requestedFields
+    ) {
+        // Preserve the validation semantics already in MetadataApiDeploymentGateway:
+        // object-exists check, field-budget check, collision check, supported-type check.
+        // Copy this logic verbatim from the old class before you delete it.
+    }
+
+    public override SchemaDeploymentGateway.DeploymentResult enqueue(
+        Id deploymentRequestId,
+        SchemaDeploymentGateway.DeploymentPlan plan
+    ) {
+        // For each FieldSpec in plan.fields:
+        //   1. Build the JSON body per the type map above.
+        //   2. POST to callout:Pulse_Self_Org_Tooling/services/data/vXX.X/tooling/sobjects/CustomField
+        //   3. Check HTTP status; on non-2xx, collect error and aggregate.
+        //   4. On 2xx, record the created field Id.
+        //
+        // This is synchronous per-field but the overall enqueue still runs in one
+        // Apex transaction. For Wave 2, a synchronous loop is fine — if volume
+        // grows, the gateway can be re-homed to Queueable in a future wave.
+        //
+        // After all fields are processed, return DeploymentResult with:
+        //   - status = 'Completed' if every field succeeded
+        //   - status = 'Partial'   if some succeeded and some failed
+        //   - status = 'Failed'    if every field failed
+        //   - message = concatenated error messages for failed fields
+    }
+
+    public override SchemaDeploymentGateway.DeploymentResult getStatus(Id deploymentRequestId) {
+        // Tooling API creates are synchronous — the status is already terminal by
+        // the time enqueue() returns. Read the persisted state from
+        // Deployment_Request__c and map it back to DeploymentResult.
+    }
+
+    // Private helper: build Tooling API metadata JSON for one FieldSpec.
+    @TestVisible
+    private static String buildFieldPayload(String targetObject, SchemaDeploymentGateway.FieldSpec fs) { ... }
+
+    // Private helper: invoke the callout (extracted so tests can mock via Test.setMock).
+    @TestVisible
+    private static HttpResponse invokeToolingApi(String method, String path, String body) { ... }
+}
+```
+
+## Factory swap in SchemaProvisioningService
+In `SchemaProvisioningService.resolveGateway()`, change the default from `new MetadataApiDeploymentGateway()` to `new ToolingApiDeploymentGateway()`. Delete the entire `MetadataApiDeploymentGateway` inner class and its `DeploymentCallback` inner class — those were tied to the Apex Metadata API pattern which we have abandoned.
+
+Also delete the inline `publishStatus()` call to `EventBus.publish(Pulse_Deployment_Status__e)` ONLY IF the `Pulse_Deployment_Status__e` platform event is not being picked up by `sf` after the layout move below. Verify by running a dry-run after the event move — if the event resolves, keep the publishStatus path. The event is part of the real product surface.
+
+# The platform event also needs relocating
+`Pulse_Deployment_Status__e` currently lives at `force-app/main/default/platformEvents/Pulse_Deployment_Status__e.object-meta.xml` (the Wave 1 lane-b dropped it there). DX source format in API 66.0 does not treat `platformEvents/` as a tracked directory. Move it to:
+
+```
+force-app/main/default/objects/Pulse_Deployment_Status__e/
+  Pulse_Deployment_Status__e.object-meta.xml   (event header, no inline <fields>)
+  fields/
+    Deployment_Request_Id__c.field-meta.xml
+    Status__c.field-meta.xml
+    Message__c.field-meta.xml
+    Target_Object__c.field-meta.xml
+```
+
+Preserve every field definition. Preserve `<eventType>`, `<publishBehavior>` if present. Delete the old `platformEvents/` directory.
+
+# Documentation — Named Credential setup
+Write a new file `docs/schema-provisioning-setup.md` (markdown, under 150 lines) that documents exactly how to configure the `Pulse_Self_Org_Tooling` Named Credential in a subscriber org. Include:
+
+- Why the Named Credential is needed (Apex `Metadata.CustomField` is not available; we use Tooling API via a self-org callout).
+- Step-by-step: Setup → Named Credentials → New Legacy; URL = `https://<org-mydomain>.my.salesforce.com`; Identity Type = Named Principal; Auth Protocol = Password Authentication with username = `{!$User.Username}` and password = `{!$Api.Session_ID}`. OR the preferred modern approach: External Credential + Named Credential combo using the Session ID principal.
+- What scopes/permissions the calling user needs (`Modify Metadata Through Metadata API Functions`, `Customize Application`).
+- What breaks if the NC is misconfigured (specific HTTP status codes → specific admin-facing messages the gateway will surface).
+- Verification step: Anonymous Apex one-liner the admin can run to prove the NC works.
+
+# Test coverage
+Write/update `SchemaProvisioningServiceTest.cls` to cover the new gateway via `Test.setMock(HttpCalloutMock.class, new MyMock())`. You must hit:
+
+1. Happy path: 3 fields enqueued, all return HTTP 201, Deployment_Request__c ends Status='Completed', the correct `Pulse_Deployment_Status__e` event is published.
+2. Partial failure: first field returns 201, second returns 400 DUPLICATE_VALUE, third returns 201. Status ends 'Partial', Error_Message__c contains the middle field's error.
+3. Full failure: all fields return 400. Status='Failed'.
+4. Validation failure (plan not valid): object doesn't exist → plan returned early with validationErrors populated, no callout made.
+5. Picklist field: plan is valid but enqueue throws `UnsupportedOperationException` with the documented message.
+6. Budget exceeded: field budget is at cap; plan.isValid() is false.
+
+The existing ProjectionWriteService tests should not be touched — they are green and cover a different layer.
+
+# Out of scope — do NOT do any of this
+- Do not touch the AI lane, conversation lane, or runtime lane classes. Those are green.
+- Do not add new objects, new MDTs, new platform events, or new custom settings.
+- Do not try to deploy or configure the Named Credential itself. Setup is a manual admin step per the docs file.
+- Do not add retry/backoff logic beyond a single try/catch. That's a later wave.
+- Do not wire FLS auto-grant via PermissionSet updates. That's a follow-on wave.
+- Do not build any LWC. That's Wave 3.
+- Do not modify `scripts/orchestrate-claude.sh`.
+- Do not run real callouts against the scratch org. Tests must use `Test.setMock`.
+
+# Validation gate — MUST pass before you commit
+Run this command from the worktree root:
+
+```
+sf project deploy start -o pulse-core-next-dev --dry-run --ignore-conflicts --json 2>/dev/null | python3 -c "import sys, json; d=json.load(sys.stdin); r=d.get('result',{}); print('success', r.get('success'), 'errors', r.get('numberComponentErrors')); fails=r.get('details',{}).get('componentFailures',[]); [print(' -', f.get('fullName'),'|', f.get('problem')[:140]) for f in fails[:30]]"
+```
+
+Expected output: `success True errors 0`.
+
+If the gate is red after a fix, inspect the error list and keep fixing. Do not commit until the gate is green. The orchestrator's RESULT success check relies on log content — a partial fix that leaves red errors will still trigger RESULT success, but the merge reviewer will reject it. Be thorough.
+
+# Commit
+When the gate passes, commit with:
+```
+git add -A && git commit -m "wave2-b: real schema provisioning gateway via Tooling API REST"
+```
+
+Include in the commit: the new `ToolingApiDeploymentGateway.cls` and meta, the rewritten `SchemaProvisioningService.cls`, the updated `SchemaProvisioningServiceTest.cls`, the moved platform event under `objects/`, the removed `platformEvents/` directory, the new `docs/schema-provisioning-setup.md`.
+
+Do not push. The orchestrator handles merging, and I personally will review the diff line-by-line before green-lighting.
