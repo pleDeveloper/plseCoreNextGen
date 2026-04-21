@@ -52,12 +52,13 @@ public with sharing class SchemaProvisioningService {
         ProvisioningResult result = new ProvisioningResult();
         SchemaDeploymentGateway gw = resolveGateway();
 
-        // 1. Build plan (validates budget, collisions, type feasibility)
+        // 1. Build plan (validates budget, collisions, type feasibility) — no DML, no callout
         SchemaDeploymentGateway.DeploymentPlan plan = gw.buildPlan(
             targetObject, workflowKey, requestedFields
         );
 
-        // 2. Create Deployment_Request__c in Draft with plan JSON
+        // 2. Build Deployment_Request__c in memory — defer DML until after any
+        //    callout, since Apex forbids DML before callout in the same transaction.
         Deployment_Request__c req = new Deployment_Request__c(
             Status__c              = 'Draft',
             Target_Object__c       = targetObject,
@@ -65,16 +66,15 @@ public with sharing class SchemaProvisioningService {
             Plan_JSON__c           = JSON.serialize(plan),
             Requested_By__c        = UserInfo.getUserId()
         );
-        insert req;
-        result.deploymentRequestId = req.Id;
 
-        // 3. If plan has validation errors, mark Failed and return early
+        // 3. Validation failure — no callout will happen, safe to DML
         if (!plan.isValid()) {
-            req.Status__c       = 'Failed';
-            req.Error_Message__c = String.join(plan.validationErrors, '\n');
+            req.Status__c         = 'Failed';
+            req.Error_Message__c  = String.join(plan.validationErrors, '\n');
             req.Completed_Date__c = Datetime.now();
-            update req;
+            insert req;
 
+            result.deploymentRequestId = req.Id;
             result.status           = 'Failed';
             result.message          = 'Plan validation failed';
             result.validationErrors = plan.validationErrors;
@@ -83,13 +83,14 @@ public with sharing class SchemaProvisioningService {
             return result;
         }
 
-        // 4. No fields to deploy — mark Completed immediately
+        // 4. Empty plan — no callout, safe to DML
         if (plan.fields == null || plan.fields.isEmpty()) {
             req.Status__c         = 'Completed';
             req.Completed_Date__c = Datetime.now();
             req.Result_JSON__c    = '{"fieldsDeployed":0}';
-            update req;
+            insert req;
 
+            result.deploymentRequestId = req.Id;
             result.status  = 'Completed';
             result.message = 'No new fields required';
 
@@ -97,24 +98,31 @@ public with sharing class SchemaProvisioningService {
             return result;
         }
 
-        // 5. Enqueue deployment via gateway
+        // 5. Enqueue deployment via gateway — may perform HTTP callouts.
+        //    No DML has happened yet in this transaction.
         SchemaDeploymentGateway.DeploymentResult gwResult;
+        String enqueueError = null;
         try {
-            gwResult = gw.enqueue(req.Id, plan);
+            gwResult = gw.enqueue(null /* req.Id not yet assigned */, plan);
         } catch (Exception ex) {
-            req.Status__c        = 'Failed';
-            req.Error_Message__c = ex.getMessage();
-            req.Completed_Date__c = Datetime.now();
-            update req;
+            enqueueError = ex.getMessage();
+        }
 
+        // 6. Now persist the Deployment_Request__c with the gateway outcome.
+        if (enqueueError != null) {
+            req.Status__c         = 'Failed';
+            req.Error_Message__c  = enqueueError;
+            req.Completed_Date__c = Datetime.now();
+            insert req;
+
+            result.deploymentRequestId = req.Id;
             result.status  = 'Failed';
-            result.message = 'Enqueue failed: ' + ex.getMessage();
+            result.message = 'Enqueue failed: ' + enqueueError;
 
             publishStatus(req.Id, 'Failed', result.message, targetObject);
             return result;
         }
 
-        // 6. Persist gateway response
         req.Status__c      = gwResult.status;
         req.Result_JSON__c = JSON.serialize(new Map<String, String>{
             'deploymentId' => gwResult.deploymentId,
@@ -127,8 +135,9 @@ public with sharing class SchemaProvisioningService {
                 req.Error_Message__c = gwResult.message;
             }
         }
-        update req;
+        insert req;
 
+        result.deploymentRequestId = req.Id;
         result.status  = gwResult.status;
         result.message = gwResult.message;
 
