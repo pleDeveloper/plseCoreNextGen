@@ -1,0 +1,9 @@
+<template>
+    <button class={buttonClass}
+            disabled={disabled}
+            aria-disabled={disabled}
+            onclick={handleClick}>
+        <slot name="icon"></slot>
+        {label}
+    </button>
+</template>

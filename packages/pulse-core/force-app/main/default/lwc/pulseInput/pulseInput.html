@@ -1,0 +1,26 @@
+<template>
+    <div class="pulse-surface pulse-input-wrapper">
+        <label class="pulse-input-label" for={inputId}>
+            {label}
+            <template lwc:if={required}>
+                <abbr class="pulse-input-required" title="required">*</abbr>
+            </template>
+        </label>
+        <input id={inputId}
+               class={inputClass}
+               type={type}
+               value={value}
+               placeholder={placeholder}
+               required={required}
+               aria-required={required}
+               aria-invalid={hasError}
+               aria-describedby={ariaDescribedBy}
+               oninput={handleInput} />
+        <template lwc:if={hasError}>
+            <p id={errorId} class="pulse-input-error-text" role="alert">{error}</p>
+        </template>
+        <template lwc:if={hasHelpText}>
+            <p id={helpId} class="pulse-input-help-text">{helpText}</p>
+        </template>
+    </div>
+</template>

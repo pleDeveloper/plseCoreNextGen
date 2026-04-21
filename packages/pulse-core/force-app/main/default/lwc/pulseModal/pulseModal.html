@@ -1,0 +1,40 @@
+<template>
+    <template lwc:if={open}>
+        <div class="pulse-modal-backdrop" onclick={handleBackdropClick}>
+            <div class={dialogClass}
+                 role="dialog"
+                 aria-modal="true"
+                 aria-label={title}
+                 onclick={handleDialogClick}>
+                <template lwc:if={hasTitle}>
+                    <div class="pulse-modal-header">
+                        <h2 class="pulse-modal-title">{title}</h2>
+                        <template lwc:if={dismissible}>
+                            <button class="pulse-modal-close"
+                                    aria-label="Close"
+                                    onclick={handleCloseClick}>
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                    <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                            </button>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:if={showCloseOnly}>
+                    <template lwc:if={dismissible}>
+                        <button class="pulse-modal-close pulse-modal-close-standalone"
+                                aria-label="Close"
+                                onclick={handleCloseClick}>
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </template>
+                </template>
+                <div class="pulse-modal-body">
+                    <slot></slot>
+                </div>
+            </div>
+        </div>
+    </template>
+</template>
