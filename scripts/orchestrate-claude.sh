@@ -8,6 +8,11 @@ DEVHUB_ALIAS="${DEVHUB_ALIAS:-PulseDevHub}"
 WORKTREE_BASE="${WORKTREE_BASE:-/tmp/pulse-core-next-worktrees}"
 LOG_DIR="${LOG_DIR:-$ROOT_DIR/.orchestration-logs}"
 CLAUDE_PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-bypass}"
+CLAUDE_STREAM_JSON="${CLAUDE_STREAM_JSON:-1}"
+CLAUDE_LIVE_OUTPUT="${CLAUDE_LIVE_OUTPUT:-0}"
+CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"
+CLAUDE_EFFORT="${CLAUDE_EFFORT:-max}"
+CLAUDE_FALLBACK_MODEL="${CLAUDE_FALLBACK_MODEL:-}"
 
 LANES=(
   "lane-a|lane-a-runtime|prompts/lane-a-runtime.txt|lane-a: runtime + contract"
@@ -28,6 +33,10 @@ Commands:
   wave1           Run Wave 1 lanes (A-D) in parallel via Claude.
   merge-wave1     Merge lane branches into main in the defined order.
   validate        Deploy + run local Apex tests.
+  logs [target]   Tail orchestration logs. target: all|wave0|lane-a|lane-b|lane-c|lane-d
+  logs-pretty [target]
+                  Pretty-print Claude progress from logs (tools/thinking/stops).
+                  target: wave0|lane-a|lane-b|lane-c|lane-d
   all             Run: preflight -> setup-lanes -> wave0 -> wave1 -> merge-wave1 -> validate
 
 Optional environment variables:
@@ -38,6 +47,11 @@ Optional environment variables:
   LOG_DIR         Log output path (default: .orchestration-logs)
   CLAUDE_PERMISSION_MODE  Claude permission mode: bypass|auto (default: bypass)
   CLAUDE_UNSAFE           Backward-compatible override; set to 1 for bypass
+  CLAUDE_STREAM_JSON      1 enables stream-json + partial messages in logs (default: 1)
+  CLAUDE_LIVE_OUTPUT      1 mirrors Claude output to terminal via tee (default: 0)
+  CLAUDE_MODEL            Claude model alias/name (default: opus)
+  CLAUDE_EFFORT           Claude effort level: low|medium|high|max (default: max)
+  CLAUDE_FALLBACK_MODEL   Optional fallback model (e.g., sonnet) for -p runs
 EOF
 }
 
@@ -75,10 +89,38 @@ run_claude_prompt() {
   local log_file="$3"
   local flags
   flags="$(claude_flags)"
+  local -a cmd
+  cmd=(
+    "$CLAUDE_BIN" -p "$(cat "$prompt_file")"
+    --model "$CLAUDE_MODEL"
+    --effort "$CLAUDE_EFFORT"
+  )
+
+  if [[ -n "$CLAUDE_FALLBACK_MODEL" ]]; then
+    cmd+=(--fallback-model "$CLAUDE_FALLBACK_MODEL")
+  fi
+
+  if [[ "$CLAUDE_STREAM_JSON" == "1" ]]; then
+    cmd+=(--output-format stream-json --include-partial-messages --verbose)
+  fi
+
+  # shellcheck disable=SC2206
+  cmd+=($flags)
+
   (
     cd "$cwd"
-    "$CLAUDE_BIN" -p "$(cat "$prompt_file")" $flags >"$log_file" 2>&1
+    if [[ "$CLAUDE_LIVE_OUTPUT" == "1" ]]; then
+      "${cmd[@]}" 2>&1 | tee "$log_file"
+    else
+      "${cmd[@]}" >"$log_file" 2>&1
+    fi
   )
+
+  # Guardrail: Claude sometimes prints error text but exits 0.
+  if grep -Eq '(^Execution error$|^Error: )' "$log_file"; then
+    echo "Claude execution failed (see $log_file)" >&2
+    return 1
+  fi
 }
 
 preflight() {
@@ -105,6 +147,10 @@ preflight() {
   sf org display -o "$DEVHUB_ALIAS" --json >/dev/null
   sf org display -o "$ORG_ALIAS" --json >/dev/null
 
+  say "Claude run profile: model=$CLAUDE_MODEL effort=$CLAUDE_EFFORT"
+  if [[ -n "$CLAUDE_FALLBACK_MODEL" ]]; then
+    say "Claude fallback model enabled: $CLAUDE_FALLBACK_MODEL"
+  fi
   say "Preflight checks passed."
 }
 
@@ -168,6 +214,8 @@ run_lane() {
 wave1() {
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/lane-a.log" "$LOG_DIR/lane-b.log" "$LOG_DIR/lane-c.log" "$LOG_DIR/lane-d.log"
+  say "Follow logs with: ./scripts/orchestrate-claude.sh logs all"
 
   pids=()
   labels=()
@@ -193,6 +241,78 @@ wave1() {
   fi
 
   say "Wave 1 lanes completed."
+}
+
+logs() {
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  local target="${1:-all}"
+
+  touch "$LOG_DIR/wave0.log" "$LOG_DIR/lane-a.log" "$LOG_DIR/lane-b.log" "$LOG_DIR/lane-c.log" "$LOG_DIR/lane-d.log"
+
+  case "$target" in
+    all)
+      tail -n 80 -F \
+        "$LOG_DIR/wave0.log" \
+        "$LOG_DIR/lane-a.log" \
+        "$LOG_DIR/lane-b.log" \
+        "$LOG_DIR/lane-c.log" \
+        "$LOG_DIR/lane-d.log"
+      ;;
+    wave0|lane-a|lane-b|lane-c|lane-d)
+      tail -n 120 -F "$LOG_DIR/${target}.log"
+      ;;
+    *)
+      echo "Invalid logs target: $target" >&2
+      echo "Use: all|wave0|lane-a|lane-b|lane-c|lane-d" >&2
+      exit 1
+      ;;
+  esac
+}
+
+logs_pretty() {
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  local target="${1:-wave0}"
+  local log_file="$LOG_DIR/${target}.log"
+
+  case "$target" in
+    wave0|lane-a|lane-b|lane-c|lane-d)
+      touch "$log_file"
+      tail -n 120 -F "$log_file" | jq -Rr '
+        (try fromjson catch empty) as $j
+        | if ($j|type)!="object" then empty
+          elif $j.type=="assistant" then
+            ($j.message.content[]?
+              | if .type=="tool_use" then
+                  "[tool] " + (.name // "")
+                  + (if (.input.description? // "") != "" then " - " + .input.description else "" end)
+                else empty end)
+          elif $j.type=="system" and $j.subtype=="task_started" then
+            "[agent] started: " + ($j.description // "")
+          elif $j.type=="stream_event"
+               and $j.event.type=="content_block_start"
+               and $j.event.content_block.type=="tool_use" then
+            "[tool] " + ($j.event.content_block.name // "")
+          elif $j.type=="stream_event"
+               and $j.event.type=="content_block_delta"
+               and $j.event.delta.type=="thinking_delta" then
+            "[thinking] " + ($j.event.delta.thinking // "")
+          elif $j.type=="stream_event"
+               and $j.event.type=="message_delta"
+               and ($j.event.delta.stop_reason != null) then
+            "[stop] " + ($j.event.delta.stop_reason|tostring)
+          elif $j.type=="result" then
+            "[result] " + ($j.subtype // "done")
+          else empty end
+      '
+      ;;
+    *)
+      echo "Invalid logs-pretty target: $target" >&2
+      echo "Use: wave0|lane-a|lane-b|lane-c|lane-d" >&2
+      exit 1
+      ;;
+  esac
 }
 
 merge_wave1() {
@@ -235,6 +355,8 @@ main() {
     wave1) wave1 ;;
     merge-wave1) merge_wave1 ;;
     validate) validate ;;
+    logs) logs "${2:-all}" ;;
+    logs-pretty) logs_pretty "${2:-wave0}" ;;
     all) all ;;
     *) usage; exit 1 ;;
   esac
