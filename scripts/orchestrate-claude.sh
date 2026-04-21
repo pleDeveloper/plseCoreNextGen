@@ -407,35 +407,32 @@ wave2b_split() {
   say "Wave 2b-split lane completed."
 }
 
-setup_wave3_lane() {
-  local lane_array_name="$1"  # LANES_WAVE3A or LANES_WAVE3B
+setup_wave3_lane_inline() {
+  # Takes lane descriptor pipe-string directly (bash 3.2 compatible — no local -n).
   cd "$ROOT_DIR"
   mkdir -p "$WORKTREE_BASE"
   ensure_main_branch
 
-  local -n lane_array="$lane_array_name"
-  for lane in "${lane_array[@]}"; do
-    IFS='|' read -r lane_name branch _ _ <<<"$lane"
-    if ! git show-ref --verify --quiet "refs/heads/$branch"; then
-      git branch "$branch"
-    fi
-    lane_dir="$WORKTREE_BASE/$lane_name"
-    if [[ ! -d "$lane_dir/.git" && ! -f "$lane_dir/.git" ]]; then
-      git worktree add "$lane_dir" "$branch"
-    fi
-  done
-  say "Wave 3 lane worktree is ready under $WORKTREE_BASE"
+  IFS='|' read -r lane_name branch _ _ <<<"$1"
+  if ! git show-ref --verify --quiet "refs/heads/$branch"; then
+    git branch "$branch"
+  fi
+  local lane_dir="$WORKTREE_BASE/$lane_name"
+  if [[ ! -d "$lane_dir/.git" && ! -f "$lane_dir/.git" ]]; then
+    git worktree add "$lane_dir" "$branch"
+  fi
+  say "Wave 3 lane worktree ready: $lane_dir"
 }
 
 wave3a() {
-  setup_wave3_lane LANES_WAVE3A
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
   touch "$LOG_DIR/wave3a-ui.log"
-  say "Follow log with: ./scripts/orchestrate-claude.sh logs wave3a-ui"
 
   for lane in "${LANES_WAVE3A[@]}"; do
+    setup_wave3_lane_inline "$lane"
     IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    say "Follow log with: ./scripts/orchestrate-claude.sh logs wave3a-ui"
     run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
   done
 
@@ -443,14 +440,14 @@ wave3a() {
 }
 
 wave3b() {
-  setup_wave3_lane LANES_WAVE3B
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
   touch "$LOG_DIR/wave3b-builder.log"
-  say "Follow log with: ./scripts/orchestrate-claude.sh logs wave3b-builder"
 
   for lane in "${LANES_WAVE3B[@]}"; do
+    setup_wave3_lane_inline "$lane"
     IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    say "Follow log with: ./scripts/orchestrate-claude.sh logs wave3b-builder"
     run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
   done
 
