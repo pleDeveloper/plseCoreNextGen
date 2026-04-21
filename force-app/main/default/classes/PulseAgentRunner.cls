@@ -36,8 +36,8 @@ public with sharing class PulseAgentRunner {
             return result;
         }
 
-        PulseAiProvider.Request aiReq = PulseAiFacade.buildRequest(instance);
-        PulseAiProvider.Response aiResp = PulseAiFacade.invoke(aiReq);
+        PulseAiModels.Request aiReq = PulseAiFacade.buildRequest(instance);
+        PulseAiModels.Response aiResp = PulseAiFacade.invoke(aiReq);
 
         Workflow_Event__c callEvent = new Workflow_Event__c(
             Workflow_Instance__c = instanceId,
@@ -78,10 +78,10 @@ public with sharing class PulseAgentRunner {
 
     private static void processToolCalls(
         Workflow_Instance__c instance,
-        List<PulseAiProvider.ToolCall> toolCalls,
+        List<PulseAiModels.ToolCall> toolCalls,
         RunResult result
     ) {
-        for (PulseAiProvider.ToolCall tc : toolCalls) {
+        for (PulseAiModels.ToolCall tc : toolCalls) {
             PulseTool tool = PulseToolRegistry.getTool(tc.toolKey);
 
             if (tool == null) {
@@ -136,13 +136,13 @@ public with sharing class PulseAgentRunner {
                 continue;
             }
 
-            PulseTool.Context ctx = new PulseTool.Context(instance.Id, inputMap);
+            PulseToolModels.Context ctx = new PulseToolModels.Context(instance.Id, inputMap);
             ctx.parentRecordId = instance.Parent_Record_Id__c != null
                 ? Id.valueOf(instance.Parent_Record_Id__c) : null;
             ctx.parentObjectType = instance.Parent_Object_Type__c;
             ctx.actorUserId = UserInfo.getUserId();
 
-            PulseTool.Result toolResult = tool.execute(ctx);
+            PulseToolModels.Result toolResult = tool.execute(ctx);
 
             String eventType = toolResult.success ? 'TOOL_EXECUTED' : 'TOOL_FAILED';
             result.auditEvents.add(buildAuditEvent(

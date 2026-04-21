@@ -241,10 +241,10 @@ private class PulseAgentRunnerTest {
         private String scenario;
         MockProvider(String scenario) { this.scenario = scenario; }
 
-        public PulseAiProvider.Response chat(PulseAiProvider.Request req) {
-            PulseAiProvider.Response resp = new PulseAiProvider.Response();
+        public PulseAiModels.Response chat(PulseAiModels.Request req) {
+            PulseAiModels.Response resp = new PulseAiModels.Response();
             resp.providerRequestId = 'mock_req_123';
-            resp.usage = new PulseAiProvider.Usage();
+            resp.usage = new PulseAiModels.Usage();
             resp.usage.inputTokens = 10;
             resp.usage.outputTokens = 5;
 
@@ -252,14 +252,14 @@ private class PulseAgentRunnerTest {
                 resp.text = 'I have analyzed the context.';
             } else if (scenario == 'autonomous_tool') {
                 resp.text = 'I will update the record.';
-                PulseAiProvider.ToolCall tc = new PulseAiProvider.ToolCall();
+                PulseAiModels.ToolCall tc = new PulseAiModels.ToolCall();
                 tc.id = 'toolu_001';
                 tc.toolKey = 'update_record';
                 tc.inputJson = '{"recordId":"001000000000001","objectType":"Account","fields":{"Name":"Test"}}';
                 resp.toolCalls.add(tc);
             } else if (scenario == 'approval_tool') {
                 resp.text = 'I will send an email.';
-                PulseAiProvider.ToolCall tc = new PulseAiProvider.ToolCall();
+                PulseAiModels.ToolCall tc = new PulseAiModels.ToolCall();
                 tc.id = 'toolu_002';
                 tc.toolKey = 'send_email';
                 tc.inputJson = '{"toAddress":"test@test.com","subject":"Hi","body":"Hello"}';
@@ -268,13 +268,13 @@ private class PulseAgentRunnerTest {
                 resp.isError = true;
                 resp.errorMessage = 'Provider error: timeout';
             } else if (scenario == 'malformed_input') {
-                PulseAiProvider.ToolCall tc = new PulseAiProvider.ToolCall();
+                PulseAiModels.ToolCall tc = new PulseAiModels.ToolCall();
                 tc.id = 'toolu_003';
                 tc.toolKey = 'send_email';
                 tc.inputJson = 'not valid json [[[';
                 resp.toolCalls.add(tc);
             } else if (scenario == 'disabled_tool') {
-                PulseAiProvider.ToolCall tc = new PulseAiProvider.ToolCall();
+                PulseAiModels.ToolCall tc = new PulseAiModels.ToolCall();
                 tc.id = 'toolu_004';
                 tc.toolKey = 'send_email';
                 tc.inputJson = '{}';
@@ -299,8 +299,8 @@ private class PulseAgentRunnerTest {
             return new Map<String, Object>{ 'type' => 'object' };
         }
         public String getDefaultHitlPolicy() { return policy; }
-        public PulseTool.Result execute(PulseTool.Context ctx) {
-            return PulseTool.Result.ok('{"status":"done"}');
+        public PulseToolModels.Result execute(PulseToolModels.Context ctx) {
+            return PulseToolModels.ok('{"status":"done"}');
         }
     }
 }

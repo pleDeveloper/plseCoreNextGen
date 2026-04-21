@@ -57,12 +57,12 @@ public with sharing class PulseToolRegistry {
         return 'Approval_Required';
     }
 
-    public static List<PulseAiProvider.ToolDefinition> getToolDefinitions() {
+    public static List<PulseAiModels.ToolDefinition> getToolDefinitions() {
         initialize();
-        List<PulseAiProvider.ToolDefinition> defs = new List<PulseAiProvider.ToolDefinition>();
+        List<PulseAiModels.ToolDefinition> defs = new List<PulseAiModels.ToolDefinition>();
         for (String key : toolsByKey.keySet()) {
             PulseTool tool = toolsByKey.get(key);
-            defs.add(new PulseAiProvider.ToolDefinition(
+            defs.add(new PulseAiModels.ToolDefinition(
                 tool.getToolKey(),
                 tool.getDescription(),
                 tool.getInputSchema()

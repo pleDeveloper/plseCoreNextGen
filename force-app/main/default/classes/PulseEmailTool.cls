@@ -39,14 +39,14 @@ public with sharing class PulseEmailTool implements PulseTool {
         return 'Approval_Required';
     }
 
-    public PulseTool.Result execute(PulseTool.Context ctx) {
+    public PulseToolModels.Result execute(PulseToolModels.Context ctx) {
         String toAddress = (String) ctx.input.get('toAddress');
         String subject = (String) ctx.input.get('subject');
         String body = (String) ctx.input.get('body');
         String ccAddress = (String) ctx.input.get('ccAddress');
 
         if (String.isBlank(toAddress) || String.isBlank(subject) || String.isBlank(body)) {
-            return PulseTool.Result.fail('Missing required fields: toAddress, subject, body');
+            return PulseToolModels.fail('Missing required fields: toAddress, subject, body');
         }
 
         Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
@@ -63,7 +63,7 @@ public with sharing class PulseEmailTool implements PulseTool {
                 new List<Messaging.SingleEmailMessage>{ email }
             );
             if (results[0].isSuccess()) {
-                return PulseTool.Result.ok(JSON.serialize(new Map<String, String>{
+                return PulseToolModels.ok(JSON.serialize(new Map<String, String>{
                     'status' => 'sent',
                     'toAddress' => toAddress
                 }));
@@ -72,9 +72,9 @@ public with sharing class PulseEmailTool implements PulseTool {
             for (Messaging.SendEmailError err : results[0].getErrors()) {
                 errors += err.getMessage() + '; ';
             }
-            return PulseTool.Result.fail('Email send failed: ' + errors);
+            return PulseToolModels.fail('Email send failed: ' + errors);
         } catch (Exception e) {
-            return PulseTool.Result.fail('Email exception: ' + e.getMessage());
+            return PulseToolModels.fail('Email exception: ' + e.getMessage());
         }
     }
 }

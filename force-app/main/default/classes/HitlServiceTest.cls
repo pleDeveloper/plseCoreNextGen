@@ -54,7 +54,7 @@ private class HitlServiceTest {
         );
 
         Test.startTest();
-        PulseTool.Result result = HitlService.resolveApproval(
+        PulseToolModels.Result result = HitlService.resolveApproval(
             action.Id, false, UserInfo.getUserId()
         );
         Test.stopTest();
@@ -84,7 +84,7 @@ private class HitlServiceTest {
         update action;
 
         Test.startTest();
-        PulseTool.Result result = HitlService.resolveApproval(
+        PulseToolModels.Result result = HitlService.resolveApproval(
             action.Id, true, UserInfo.getUserId()
         );
         Test.stopTest();
@@ -102,7 +102,7 @@ private class HitlServiceTest {
         );
 
         Test.startTest();
-        PulseTool.Result result = HitlService.resolveApproval(
+        PulseToolModels.Result result = HitlService.resolveApproval(
             action.Id, true, UserInfo.getUserId()
         );
         Test.stopTest();
@@ -127,7 +127,7 @@ private class HitlServiceTest {
         );
 
         Test.startTest();
-        PulseTool.Result result = HitlService.resolveApproval(
+        PulseToolModels.Result result = HitlService.resolveApproval(
             action.Id, true, UserInfo.getUserId()
         );
         Test.stopTest();
@@ -202,8 +202,8 @@ private class HitlServiceTest {
             return new Map<String, Object>{ 'type' => 'object' };
         }
         public String getDefaultHitlPolicy() { return 'Approval_Required'; }
-        public PulseTool.Result execute(PulseTool.Context ctx) {
-            return PulseTool.Result.ok('{"status":"done"}');
+        public PulseToolModels.Result execute(PulseToolModels.Context ctx) {
+            return PulseToolModels.ok('{"status":"done"}');
         }
     }
 }

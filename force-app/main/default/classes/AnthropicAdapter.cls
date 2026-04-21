@@ -8,7 +8,7 @@ public with sharing class AnthropicAdapter implements PulseAiProvider {
         this.defaultModelId = modelId;
     }
 
-    public PulseAiProvider.Response chat(PulseAiProvider.Request req) {
+    public PulseAiModels.Response chat(PulseAiModels.Request req) {
         HttpRequest httpReq = buildHttpRequest(req);
         HttpResponse httpRes;
 
@@ -28,7 +28,7 @@ public with sharing class AnthropicAdapter implements PulseAiProvider {
     }
 
     @TestVisible
-    private HttpRequest buildHttpRequest(PulseAiProvider.Request req) {
+    private HttpRequest buildHttpRequest(PulseAiModels.Request req) {
         HttpRequest httpReq = new HttpRequest();
         httpReq.setEndpoint('callout:' + this.namedCredential + '/v1/messages');
         httpReq.setMethod('POST');
@@ -54,13 +54,13 @@ public with sharing class AnthropicAdapter implements PulseAiProvider {
         return httpReq;
     }
 
-    private List<Object> buildMessages(List<PulseAiProvider.Message> messages) {
+    private List<Object> buildMessages(List<PulseAiModels.Message> messages) {
         List<Object> result = new List<Object>();
         if (messages == null) {
             return result;
         }
 
-        for (PulseAiProvider.Message msg : messages) {
+        for (PulseAiModels.Message msg : messages) {
             Map<String, Object> m = new Map<String, Object>();
             m.put('role', msg.role);
 
@@ -72,7 +72,7 @@ public with sharing class AnthropicAdapter implements PulseAiProvider {
                         'text' => msg.content
                     });
                 }
-                for (PulseAiProvider.ToolCall tc : msg.toolCalls) {
+                for (PulseAiModels.ToolCall tc : msg.toolCalls) {
                     contentBlocks.add(new Map<String, Object>{
                         'type' => 'tool_use',
                         'id' => tc.id,
@@ -98,9 +98,9 @@ public with sharing class AnthropicAdapter implements PulseAiProvider {
         return result;
     }
 
-    private List<Object> buildTools(List<PulseAiProvider.ToolDefinition> tools) {
+    private List<Object> buildTools(List<PulseAiModels.ToolDefinition> tools) {
         List<Object> result = new List<Object>();
-        for (PulseAiProvider.ToolDefinition td : tools) {
+        for (PulseAiModels.ToolDefinition td : tools) {
             result.add(new Map<String, Object>{
                 'name' => td.name,
                 'description' => td.description,
@@ -111,8 +111,8 @@ public with sharing class AnthropicAdapter implements PulseAiProvider {
     }
 
     @TestVisible
-    private PulseAiProvider.Response parseResponse(String body) {
-        PulseAiProvider.Response resp = new PulseAiProvider.Response();
+    private PulseAiModels.Response parseResponse(String body) {
+        PulseAiModels.Response resp = new PulseAiModels.Response();
         resp.rawJson = body;
 
         Map<String, Object> parsed;
@@ -128,7 +128,7 @@ public with sharing class AnthropicAdapter implements PulseAiProvider {
 
         Map<String, Object> usageMap = (Map<String, Object>) parsed.get('usage');
         if (usageMap != null) {
-            resp.usage = new PulseAiProvider.Usage();
+            resp.usage = new PulseAiModels.Usage();
             resp.usage.inputTokens = (Integer) usageMap.get('input_tokens');
             resp.usage.outputTokens = (Integer) usageMap.get('output_tokens');
         }
@@ -142,7 +142,7 @@ public with sharing class AnthropicAdapter implements PulseAiProvider {
                 if (blockType == 'text') {
                     resp.text = (String) b.get('text');
                 } else if (blockType == 'tool_use') {
-                    PulseAiProvider.ToolCall tc = new PulseAiProvider.ToolCall();
+                    PulseAiModels.ToolCall tc = new PulseAiModels.ToolCall();
                     tc.id = (String) b.get('id');
                     tc.toolKey = (String) b.get('name');
                     Object inputObj = b.get('input');
@@ -155,8 +155,8 @@ public with sharing class AnthropicAdapter implements PulseAiProvider {
         return resp;
     }
 
-    private PulseAiProvider.Response buildErrorResponse(String message) {
-        PulseAiProvider.Response resp = new PulseAiProvider.Response();
+    private PulseAiModels.Response buildErrorResponse(String message) {
+        PulseAiModels.Response resp = new PulseAiModels.Response();
         resp.isError = true;
         resp.errorMessage = message;
         return resp;
