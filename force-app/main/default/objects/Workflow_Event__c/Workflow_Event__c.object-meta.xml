@@ -9,5 +9,5 @@
     </nameField>
     <deploymentStatus>Deployed</deploymentStatus>
     <sharingModel>ReadWrite</sharingModel>
-    <description>Append-only audit and event stream for transitions, tool calls, signals, and failures.</description>
+    <description>Append-only audit and event stream for transitions, tool calls, signals, and failures. Uses Lookup to survive operational cleanup.</description>
 </CustomObject>

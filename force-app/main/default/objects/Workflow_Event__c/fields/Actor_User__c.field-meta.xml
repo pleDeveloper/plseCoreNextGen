@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Actor_User__c</fullName>
+    <label>Actor User</label>
+    <type>Lookup</type>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Workflow Events as Actor</relationshipLabel>
+    <relationshipName>Workflow_Events_Actor</relationshipName>
+    <deleteConstraint>SetNull</deleteConstraint>
+</CustomField>

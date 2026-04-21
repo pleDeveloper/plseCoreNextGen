@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Reviewed_By__c</fullName>
+    <label>Reviewed By</label>
+    <type>Lookup</type>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Reviewed Extracts</relationshipLabel>
+    <relationshipName>Reviewed_Extracts</relationshipName>
+    <deleteConstraint>SetNull</deleteConstraint>
+</CustomField>

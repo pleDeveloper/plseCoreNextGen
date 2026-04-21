@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Conversation Turn</label>
+    <pluralLabel>Conversation Turns</pluralLabel>
+    <nameField>
+        <label>Turn Number</label>
+        <displayFormat>CT-{00000}</displayFormat>
+        <type>AutoNumber</type>
+    </nameField>
+    <deploymentStatus>Deployed</deploymentStatus>
+    <sharingModel>ControlledByParent</sharingModel>
+    <description>Speaker and message-level transcript row within a conversation.</description>
+</CustomObject>

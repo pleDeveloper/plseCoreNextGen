@@ -8,6 +8,6 @@
         <type>AutoNumber</type>
     </nameField>
     <deploymentStatus>Deployed</deploymentStatus>
-    <sharingModel>ReadWrite</sharingModel>
-    <description>One row per step execution capturing values, actor, timestamps, and outcome.</description>
+    <sharingModel>ControlledByParent</sharingModel>
+    <description>One row per step execution with values, actor, timestamps, and outcome.</description>
 </CustomObject>
