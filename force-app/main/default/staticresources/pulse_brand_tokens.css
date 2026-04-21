@@ -1,0 +1,293 @@
+/* ============================================================
+   PULSE BRAND TOKENS — v1.0 (2026-04)
+   ============================================================
+   Single source of truth for Pulse visual identity.
+   Referenced from every LWC stylesheet in the Admin Studio,
+   Record Stepper, Conversation Hub, and Action Hub surfaces.
+
+   Load via:
+       import TOKENS from '@salesforce/resourceUrl/pulse_brand_tokens';
+       const link = document.createElement('link');
+       link.rel = 'stylesheet';
+       link.href = TOKENS + '/pulse_brand_tokens.css';
+       this.template.appendChild(link);
+
+   Or inline in an LWC CSS via :host and design system reference.
+   ============================================================ */
+
+:host,
+:root {
+  /* ── Primary palette ──────────────────────────────── */
+  --pulse-purple:        #7B2FF2;
+  --pulse-purple-dark:   #5A1DB8;
+  --pulse-magenta:       #D946EF;
+  --pulse-gradient:      linear-gradient(135deg, #D946EF 0%, #7B2FF2 100%);
+  --pulse-gradient-hover: linear-gradient(135deg, #E068F5 0%, #8F47F5 100%);
+
+  /* ── Neutrals ─────────────────────────────────────── */
+  --pulse-dark:          #111827;
+  --pulse-slate-dark:    #374151;
+  --pulse-slate:         #6B7280;
+  --pulse-slate-light:   #9CA3AF;
+  --pulse-border:        #E5E7EB;
+  --pulse-light-gray:    #F3F4F6;
+  --pulse-off-white:     #F9FAFB;
+  --pulse-white:         #FFFFFF;
+
+  /* ── Semantic ─────────────────────────────────────── */
+  --pulse-success:       #10B981;
+  --pulse-warning:       #F59E0B;
+  --pulse-error:         #EF4444;
+  --pulse-info:          #3B82F6;
+
+  /* ── Typography ───────────────────────────────────── */
+  --pulse-font-primary:  'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --pulse-font-mono:     'SF Mono', 'Fira Code', 'Menlo', monospace;
+
+  /* Type scale */
+  --pulse-text-caption:  12px;    /* uppercase, 1px tracking */
+  --pulse-text-small:    14px;
+  --pulse-text-body:     16px;
+  --pulse-text-h4:       18px;
+  --pulse-text-h3:       24px;
+  --pulse-text-h2:       36px;
+  --pulse-text-h1:       48px;
+  --pulse-text-display:  56px;
+
+  /* Weights */
+  --pulse-weight-light:      300;
+  --pulse-weight-regular:    400;
+  --pulse-weight-medium:     500;
+  --pulse-weight-semibold:   600;
+  --pulse-weight-bold:       700;
+  --pulse-weight-extrabold:  800;
+
+  /* Line heights (body uses 1.7 for readability) */
+  --pulse-lh-heading:    1.1;
+  --pulse-lh-subheading: 1.3;
+  --pulse-lh-label:      1.4;
+  --pulse-lh-body:       1.7;
+
+  /* ── Spacing (4/8/16 scale) ───────────────────────── */
+  --pulse-space-1:   4px;
+  --pulse-space-2:   8px;
+  --pulse-space-3:   12px;
+  --pulse-space-4:   16px;
+  --pulse-space-5:   20px;
+  --pulse-space-6:   24px;
+  --pulse-space-8:   32px;
+  --pulse-space-10:  40px;
+  --pulse-space-12:  48px;
+  --pulse-space-16:  64px;
+  --pulse-space-20:  80px;
+
+  /* ── Radii ────────────────────────────────────────── */
+  --pulse-radius-sm:     6px;
+  --pulse-radius-md:     8px;
+  --pulse-radius-lg:     10px;  /* buttons */
+  --pulse-radius-xl:     12px;  /* inputs, small cards */
+  --pulse-radius-2xl:    16px;  /* cards, modals */
+  --pulse-radius-pill:   100px; /* badges, tags */
+
+  /* ── Elevation ────────────────────────────────────── */
+  --pulse-shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.04);
+  --pulse-shadow-md:     0 4px 12px rgba(0, 0, 0, 0.06);
+  --pulse-shadow-lg:     0 8px 32px rgba(0, 0, 0, 0.08);
+  --pulse-shadow-purple: 0 4px 16px rgba(123, 47, 242, 0.25);
+  --pulse-shadow-purple-hover: 0 6px 24px rgba(123, 47, 242, 0.35);
+  --pulse-shadow-focus-ring:   0 0 0 3px rgba(123, 47, 242, 0.1);
+
+  /* ── Motion ───────────────────────────────────────── */
+  --pulse-transition-fast:   0.15s ease;
+  --pulse-transition-base:   0.2s ease;
+  --pulse-transition-slow:   0.3s ease;
+}
+
+/* ============================================================
+   GLOBAL BRAND APPLIED TO THE PULSE NAMESPACE
+   ============================================================
+   These base rules ensure every Pulse LWC that opts into the
+   brand gets consistent defaults. Scope via a class rather than
+   global html/body to avoid fighting SLDS on non-Pulse pages.
+   ============================================================ */
+
+.pulse-surface {
+  font-family: var(--pulse-font-primary);
+  color: var(--pulse-dark);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.pulse-surface h1,
+.pulse-surface h2,
+.pulse-surface h3,
+.pulse-surface h4 {
+  color: var(--pulse-dark);
+  line-height: var(--pulse-lh-heading);
+  letter-spacing: -0.01em;
+}
+
+.pulse-surface h1 { font-size: var(--pulse-text-h1); font-weight: var(--pulse-weight-extrabold); }
+.pulse-surface h2 { font-size: var(--pulse-text-h2); font-weight: var(--pulse-weight-bold);      }
+.pulse-surface h3 { font-size: var(--pulse-text-h3); font-weight: var(--pulse-weight-semibold);  line-height: var(--pulse-lh-subheading); }
+.pulse-surface h4 { font-size: var(--pulse-text-h4); font-weight: var(--pulse-weight-semibold);  line-height: var(--pulse-lh-label); }
+
+.pulse-surface p {
+  font-size: var(--pulse-text-body);
+  line-height: var(--pulse-lh-body);
+  color: var(--pulse-slate-dark);
+}
+
+.pulse-surface .pulse-caption {
+  font-size: var(--pulse-text-caption);
+  font-weight: var(--pulse-weight-medium);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--pulse-magenta);
+}
+
+/* Gradient text helper */
+.pulse-surface .pulse-gradient-text {
+  background: var(--pulse-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================================
+   CORE COMPONENTS
+   ============================================================ */
+
+/* Buttons */
+.pulse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pulse-space-2);
+  font-family: var(--pulse-font-primary);
+  font-weight: var(--pulse-weight-semibold);
+  font-size: 15px;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--pulse-radius-lg);
+  padding: var(--pulse-space-3) var(--pulse-space-6);
+  transition: all var(--pulse-transition-base);
+  text-decoration: none;
+}
+
+.pulse-btn-primary {
+  background: var(--pulse-gradient);
+  color: var(--pulse-white);
+  box-shadow: var(--pulse-shadow-purple);
+}
+.pulse-btn-primary:hover {
+  background: var(--pulse-gradient-hover);
+  box-shadow: var(--pulse-shadow-purple-hover);
+  transform: translateY(-1px);
+}
+
+.pulse-btn-secondary {
+  background: var(--pulse-white);
+  color: var(--pulse-purple);
+  border: 2px solid var(--pulse-purple);
+}
+.pulse-btn-secondary:hover { background: rgba(123, 47, 242, 0.04); }
+
+.pulse-btn-dark  { background: var(--pulse-dark); color: var(--pulse-white); }
+.pulse-btn-dark:hover { background: #1F2937; }
+
+.pulse-btn-ghost { background: transparent; color: var(--pulse-slate-dark); padding: var(--pulse-space-3) var(--pulse-space-4); }
+.pulse-btn-ghost:hover { color: var(--pulse-purple); }
+
+.pulse-btn-sm { padding: var(--pulse-space-2) var(--pulse-space-4); font-size: 13px; border-radius: var(--pulse-radius-md); }
+.pulse-btn-lg { padding: var(--pulse-space-4) var(--pulse-space-8); font-size: 17px; border-radius: var(--pulse-radius-xl); }
+
+.pulse-btn:disabled,
+.pulse-btn.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Form inputs */
+.pulse-input {
+  width: 100%;
+  padding: var(--pulse-space-3) var(--pulse-space-4);
+  border: 1.5px solid var(--pulse-border);
+  border-radius: var(--pulse-radius-lg);
+  font-family: var(--pulse-font-primary);
+  font-size: var(--pulse-text-body) + - 1px;
+  color: var(--pulse-dark);
+  background: var(--pulse-white);
+  transition: border-color var(--pulse-transition-base),
+              box-shadow var(--pulse-transition-base);
+  outline: none;
+}
+.pulse-input:focus {
+  border-color: var(--pulse-purple);
+  box-shadow: var(--pulse-shadow-focus-ring);
+}
+.pulse-input::placeholder { color: var(--pulse-slate-light); }
+
+.pulse-input-label {
+  display: block;
+  font-size: 13px;
+  font-weight: var(--pulse-weight-semibold);
+  color: var(--pulse-slate-dark);
+  margin-bottom: var(--pulse-space-2);
+}
+
+/* Badges */
+.pulse-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--pulse-space-1) var(--pulse-space-3);
+  border-radius: var(--pulse-radius-pill);
+  font-size: var(--pulse-text-caption);
+  font-weight: var(--pulse-weight-semibold);
+}
+.pulse-badge-purple  { background: rgba(123, 47, 242, 0.10); color: var(--pulse-purple); }
+.pulse-badge-magenta { background: rgba(217, 70, 239, 0.10); color: var(--pulse-magenta); }
+.pulse-badge-success { background: rgba(16, 185, 129, 0.10); color: var(--pulse-success); }
+.pulse-badge-warning { background: rgba(245, 158, 11, 0.10); color: var(--pulse-warning); }
+.pulse-badge-error   { background: rgba(239, 68, 68, 0.10);  color: var(--pulse-error); }
+.pulse-badge-gray    { background: var(--pulse-light-gray);  color: var(--pulse-slate); }
+
+/* Cards */
+.pulse-card {
+  border: 1px solid var(--pulse-border);
+  border-radius: var(--pulse-radius-2xl);
+  padding: var(--pulse-space-8);
+  background: var(--pulse-white);
+  transition: box-shadow var(--pulse-transition-base),
+              transform var(--pulse-transition-base);
+}
+.pulse-card:hover {
+  box-shadow: var(--pulse-shadow-lg);
+  transform: translateY(-2px);
+}
+
+.pulse-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--pulse-radius-xl);
+  background: var(--pulse-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pulse-white);
+  font-size: 22px;
+  margin-bottom: var(--pulse-space-4);
+}
+
+/* Pill with gradient border (used for "NEW" / "BETA" ribbons) */
+.pulse-pill-gradient {
+  display: inline-block;
+  padding: var(--pulse-space-1) var(--pulse-space-4);
+  border-radius: var(--pulse-radius-pill);
+  background: rgba(123, 47, 242, 0.08);
+  color: var(--pulse-purple);
+  font-size: 13px;
+  font-weight: var(--pulse-weight-semibold);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
