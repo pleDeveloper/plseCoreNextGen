@@ -12,33 +12,39 @@ global with sharing class PulseWorkflowTriggerController {
     // ── Inner DTOs ────────────────────────────────────────────────────
 
     global class TriggerDto {
-        @AuraEnabled public Id     recordId;
-        @AuraEnabled public Id     workflowDefinitionId;
-        @AuraEnabled public String name;
-        @AuraEnabled public String targetObject;
-        @AuraEnabled public String eventType;
-        @AuraEnabled public String conditionJson;
-        @AuraEnabled public String initialStateKey;
-        @AuraEnabled public Boolean active;
+        @AuraEnabled global Id     recordId;
+        @AuraEnabled global Id     workflowDefinitionId;
+        @AuraEnabled global String name;
+        @AuraEnabled global String targetObject;
+        @AuraEnabled global String eventType;
+        @AuraEnabled global String conditionJson;
+        @AuraEnabled global String initialStateKey;
+        @AuraEnabled global Boolean active;
     }
 
     global class UpsertResult {
-        @AuraEnabled public Boolean success;
-        @AuraEnabled public Id      recordId;
-        @AuraEnabled public String  triggerName;              // canonical Apex trigger on target
-        @AuraEnabled public Boolean apexTriggerAlreadyExisted;
-        @AuraEnabled public Boolean apexTriggerProvisioned;   // true if callout succeeded or trigger already present
-        @AuraEnabled public String  provisioningMessage;
-        @AuraEnabled public String  warning;                  // non-fatal problem (e.g. NC missing)
-        @AuraEnabled public String  error;
+        @AuraEnabled global Boolean success;
+        @AuraEnabled global Id      recordId;
+        @AuraEnabled global String  triggerName;              // canonical Apex trigger on target
+        @AuraEnabled global Boolean apexTriggerAlreadyExisted;
+        @AuraEnabled global Boolean apexTriggerProvisioned;   // true if callout succeeded or trigger already present
+        @AuraEnabled global String  provisioningMessage;
+        @AuraEnabled global String  warning;                  // non-fatal problem (e.g. NC missing)
+        @AuraEnabled global String  error;
+
+        global UpsertResult() {
+            this.success = false;
+            this.apexTriggerAlreadyExisted = false;
+            this.apexTriggerProvisioned = false;
+        }
     }
 
     global class FieldInfo {
-        @AuraEnabled public String apiName;
-        @AuraEnabled public String label;
-        @AuraEnabled public String fieldType;   // STRING, PICKLIST, DATE, DATETIME, BOOLEAN, CURRENCY, DOUBLE, INTEGER, etc.
-        @AuraEnabled public Boolean nillable;
-        @AuraEnabled public List<String> picklistValues;
+        @AuraEnabled global String apiName;
+        @AuraEnabled global String label;
+        @AuraEnabled global String fieldType;   // STRING, PICKLIST, DATE, DATETIME, BOOLEAN, CURRENCY, DOUBLE, INTEGER, etc.
+        @AuraEnabled global Boolean nillable;
+        @AuraEnabled global List<String> picklistValues;
     }
 
     // ── List ──────────────────────────────────────────────────────────
@@ -73,11 +79,17 @@ global with sharing class PulseWorkflowTriggerController {
 
     @AuraEnabled
     global static UpsertResult upsertTrigger(TriggerDto payload) {
+        System.debug(LoggingLevel.INFO,
+            '### upsertTrigger called with: ' + JSON.serialize(payload));
         try {
-            return upsertTriggerInternal(payload);
+            UpsertResult out = upsertTriggerInternal(payload);
+            System.debug(LoggingLevel.INFO,
+                '### upsertTrigger returning: ' + JSON.serialize(out));
+            return out;
         } catch (Exception e) {
-            // Catch-all so the LWC gets a readable error string instead of
-            // Salesforce's opaque "internal server error" envelope.
+            System.debug(LoggingLevel.ERROR,
+                '### upsertTrigger caught: ' + e.getTypeName() + ': ' + e.getMessage() +
+                '\nStack: ' + e.getStackTraceString());
             UpsertResult out = new UpsertResult();
             out.success = false;
             out.error = e.getTypeName() + ': ' + e.getMessage();

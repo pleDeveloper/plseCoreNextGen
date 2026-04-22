@@ -159,6 +159,7 @@ export default class PulseWorkflowTriggers extends LightningElement {
     }
 
     async _ensureFieldsLoaded(sObjectApiName) {
+        if (!this._fieldCache) this._fieldCache = new Map();
         if (!sObjectApiName || this._fieldCache.has(sObjectApiName)) return;
         try {
             const fields = await describeObjectFields({ sObjectApiName });
@@ -172,6 +173,7 @@ export default class PulseWorkflowTriggers extends LightningElement {
     }
 
     get decoratedTriggers() {
+        if (!this._fieldCache) this._fieldCache = new Map();
         return this.triggers.map((t) => {
             const fields = this._fieldCache.get(t.targetObject) || [];
             const fieldByName = new Map(fields.map((f) => [f.apiName, f]));
