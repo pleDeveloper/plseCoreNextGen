@@ -416,4 +416,92 @@ describe('c-pulse-workflow-builder', () => {
         const dot = el.shadowRoot.querySelector('.builder-dirty-dot');
         expect(dot).not.toBeNull();
     });
+
+    // ── Agent Mode panel ─────────────────────────────────────────
+
+    it('renders the Agent Mode panel inside the phase settings drawer', async () => {
+        const el = createComponent();
+        dispatch({
+            type: 'SET_WORKFLOW_META',
+            workflowKey: 'test_wf',
+            subjectKinds: ['Account']
+        });
+        dispatch({ type: 'ADD_STATE', stateKey: 'intake', label: 'Intake' });
+        dispatch({ type: 'SELECT_STATE', stateKey: 'intake' });
+        await flushPromises();
+
+        // Expand the phase settings drawer.
+        const toggle = Array.from(
+            el.shadowRoot.querySelectorAll('c-pulse-button')
+        ).find((b) => b.label === 'Phase settings');
+        expect(toggle).toBeDefined();
+        toggle.click();
+        await flushPromises();
+
+        const panel = el.shadowRoot.querySelector('.builder-agent-panel');
+        expect(panel).not.toBeNull();
+        // Heading for the panel should render
+        const heading = panel.querySelector('.builder-phase-group-title');
+        expect(heading.textContent).toBe('Agent Mode');
+
+        // Autonomy dropdown renders the 3 expected values.
+        const select = panel.querySelector('select.builder-phase-select');
+        const optionValues = Array.from(select.querySelectorAll('option')).map(
+            (o) => o.value
+        );
+        expect(optionValues).toEqual([
+            'Propose_Only',
+            'Act_With_Approval',
+            'Autonomous_Safe'
+        ]);
+    });
+
+    it('editing the Agent panel persists patches onto state.agent', async () => {
+        const el = createComponent();
+        dispatch({
+            type: 'SET_WORKFLOW_META',
+            workflowKey: 'test_wf',
+            subjectKinds: ['Account']
+        });
+        dispatch({ type: 'ADD_STATE', stateKey: 'intake', label: 'Intake' });
+        dispatch({ type: 'SELECT_STATE', stateKey: 'intake' });
+        await flushPromises();
+
+        const toggle = Array.from(
+            el.shadowRoot.querySelectorAll('c-pulse-button')
+        ).find((b) => b.label === 'Phase settings');
+        toggle.click();
+        await flushPromises();
+
+        const panel = el.shadowRoot.querySelector('.builder-agent-panel');
+
+        // Toggle enabled
+        const toggleEnabled = panel.querySelector('c-pulse-toggle');
+        toggleEnabled.dispatchEvent(
+            new CustomEvent('change', { detail: { checked: true } })
+        );
+        await flushPromises();
+
+        // Change persona
+        const personaInput = panel.querySelector('c-pulse-input');
+        personaInput.dispatchEvent(
+            new CustomEvent('change', { detail: { value: 'Leasing Qualifier' } })
+        );
+        await flushPromises();
+
+        // Change system prompt via textarea
+        const textarea = panel.querySelector('textarea.builder-phase-textarea');
+        textarea.value = 'Be helpful.';
+        textarea.dispatchEvent(new CustomEvent('change'));
+        await flushPromises();
+
+        const intake = getState().workflow.states.find((s) => s.key === 'intake');
+        expect(intake.agent).toEqual(
+            expect.objectContaining({
+                enabled: true,
+                persona: 'Leasing Qualifier',
+                systemPrompt: 'Be helpful.'
+            })
+        );
+    });
 });

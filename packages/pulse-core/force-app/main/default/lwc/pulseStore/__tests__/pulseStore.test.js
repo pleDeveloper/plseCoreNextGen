@@ -616,6 +616,54 @@ describe('unknown action', () => {
     });
 });
 
+// ── UPDATE_AGENT_CONFIG ───────────────────────────────────────────
+
+describe('UPDATE_AGENT_CONFIG', () => {
+    it('creates the agent block on a state when missing', () => {
+        dispatch({ type: 'ADD_STATE', stateKey: 'intake' });
+        dispatch({
+            type: 'UPDATE_AGENT_CONFIG',
+            stateKey: 'intake',
+            patch: { enabled: true, persona: 'Claude' }
+        });
+        const s = getState().workflow.states.find((x) => x.key === 'intake');
+        expect(s.agent).toEqual({ enabled: true, persona: 'Claude' });
+        expect(getState().ui.dirty).toBe(true);
+    });
+
+    it('merges the patch onto an existing agent block', () => {
+        dispatch({ type: 'ADD_STATE', stateKey: 'intake' });
+        dispatch({
+            type: 'UPDATE_AGENT_CONFIG',
+            stateKey: 'intake',
+            patch: { enabled: true, autonomy: 'Propose_Only', persona: 'Claude' }
+        });
+        dispatch({
+            type: 'UPDATE_AGENT_CONFIG',
+            stateKey: 'intake',
+            patch: { systemPrompt: 'Be terse.' }
+        });
+        const s = getState().workflow.states.find((x) => x.key === 'intake');
+        expect(s.agent).toEqual({
+            enabled: true,
+            autonomy: 'Propose_Only',
+            persona: 'Claude',
+            systemPrompt: 'Be terse.'
+        });
+    });
+
+    it('ignores unknown state keys', () => {
+        dispatch({ type: 'ADD_STATE', stateKey: 'intake' });
+        dispatch({
+            type: 'UPDATE_AGENT_CONFIG',
+            stateKey: 'missing',
+            patch: { enabled: true }
+        });
+        const s = getState().workflow.states.find((x) => x.key === 'intake');
+        expect(s.agent).toBeUndefined();
+    });
+});
+
 // ── resetStore ────────────────────────────────────────────────────
 
 describe('resetStore', () => {

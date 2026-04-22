@@ -470,6 +470,80 @@ export default class PulseWorkflowBuilder extends LightningElement {
         });
     }
 
+    // ── Agent Mode panel (per-phase) ──────────────────────────────
+    //
+    // Mirrors the autonomy levels that PulseAgentOrchestrator actually
+    // reads (Propose_Only / Act_With_Approval / Autonomous_Safe). The
+    // `agent` block lives under the current state in the contract so it
+    // round-trips through save/load.
+
+    get selectedStateAgent() {
+        const s = this.states.find((st) => st.key === this.selectedStateKey);
+        return (s && s.agent) || {};
+    }
+
+    get agentEnabled() {
+        return this.selectedStateAgent.enabled === true;
+    }
+
+    get agentPersona() {
+        return this.selectedStateAgent.persona || '';
+    }
+
+    get agentSystemPrompt() {
+        return this.selectedStateAgent.systemPrompt || '';
+    }
+
+    get agentAutonomyOptions() {
+        const current = this.selectedStateAgent.autonomy || 'Act_With_Approval';
+        const opts = [
+            { label: 'Propose Only', value: 'Propose_Only' },
+            { label: 'Act With Approval', value: 'Act_With_Approval' },
+            { label: 'Autonomous (safe)', value: 'Autonomous_Safe' }
+        ];
+        return opts.map((o) => ({ ...o, selected: o.value === current }));
+    }
+
+    handleAgentEnabledToggle(event) {
+        if (!this.selectedStateKey) return;
+        const checked = event.detail?.checked ?? event.target.checked;
+        dispatch({
+            type: 'UPDATE_AGENT_CONFIG',
+            stateKey: this.selectedStateKey,
+            patch: { enabled: !!checked }
+        });
+    }
+
+    handleAgentPersonaChange(event) {
+        if (!this.selectedStateKey) return;
+        const persona = event.detail?.value ?? event.target.value ?? '';
+        dispatch({
+            type: 'UPDATE_AGENT_CONFIG',
+            stateKey: this.selectedStateKey,
+            patch: { persona }
+        });
+    }
+
+    handleAgentAutonomyChange(event) {
+        if (!this.selectedStateKey) return;
+        const autonomy = event.detail?.value ?? event.target.value ?? '';
+        dispatch({
+            type: 'UPDATE_AGENT_CONFIG',
+            stateKey: this.selectedStateKey,
+            patch: { autonomy }
+        });
+    }
+
+    handleAgentSystemPromptChange(event) {
+        if (!this.selectedStateKey) return;
+        const systemPrompt = event.detail?.value ?? event.target.value ?? '';
+        dispatch({
+            type: 'UPDATE_AGENT_CONFIG',
+            stateKey: this.selectedStateKey,
+            patch: { systemPrompt }
+        });
+    }
+
     get selectedField() {
         if (!this.selectedStateKey || !this.selectedFieldKey) return null;
         const state = this.states.find(

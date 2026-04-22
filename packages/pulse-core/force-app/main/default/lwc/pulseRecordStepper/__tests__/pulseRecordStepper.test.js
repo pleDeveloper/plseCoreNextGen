@@ -16,6 +16,9 @@ jest.mock(
 import resolveAction from '@salesforce/apex/PulseRuntimeController.resolveAction';
 import saveFieldValues from '@salesforce/apex/PulseRuntimeController.saveFieldValues';
 import advanceInstanceWithFields from '@salesforce/apex/PulseRuntimeController.advanceInstanceWithFields';
+import getFieldQuestions from '@salesforce/apex/PulseAgentController.getFieldQuestions';
+import answerQuestion from '@salesforce/apex/PulseAgentController.answerQuestion';
+import dismissFieldQuestion from '@salesforce/apex/PulseAgentController.dismissFieldQuestion';
 
 const MOCK_INSTANCE = {
     instanceId: 'a0Fxx0000000001',
@@ -596,5 +599,122 @@ describe('c-pulse-record-stepper', () => {
         expect(call).toBeDefined();
         expect(call.instanceId).toBe(INSTANCE_WITH_FIELDS.instanceId);
         expect(call.fieldValues).toEqual(expect.objectContaining({ credit_score: 720 }));
+    });
+
+    // ── Agent Mode: field-question pills ─────────────────────────
+
+    const INSTANCE_WITH_AGENT_FIELDS = {
+        ...INSTANCE_WITH_FIELDS,
+        agentEnabled: true,
+    };
+
+    // @sfdx/lwc-jest routes every Apex import through a shared jest.fn, so
+    // for tests that need distinct returns per method we drive the mock
+    // through mockImplementation and switch on the argument shape.
+    function seedAgentMocks({ instance, questions }) {
+        getInstanceForRecord.mockImplementation((arg) => {
+            if (arg && 'recordId' in arg) return Promise.resolve(instance);
+            if (arg && 'instanceId' in arg && !('values' in arg) && !('payload' in arg)) {
+                return Promise.resolve(questions);
+            }
+            return Promise.resolve({ success: true });
+        });
+    }
+
+    it('renders a field-question pill next to the matching field', async () => {
+        seedAgentMocks({
+            instance: INSTANCE_WITH_AGENT_FIELDS,
+            questions: [
+                {
+                    decisionId: 'a0Ixx0000000001',
+                    fieldKey: 'credit_score',
+                    prompt: 'What is the applicant credit score?',
+                    inputType: 'free_text',
+                    phaseKey: 'intake',
+                },
+            ],
+        });
+
+        const el = createComponent();
+        await flushPromises();
+        await flushPromises();
+
+        const items = el.shadowRoot.querySelectorAll('.stepper-field-item');
+        expect(items.length).toBe(2);
+        const creditPill = items[0].querySelector('.agent-field-pill');
+        expect(creditPill).not.toBeNull();
+        expect(creditPill.textContent).toContain('What is the applicant credit score?');
+
+        // The second field has no question — no pill.
+        expect(items[1].querySelector('.agent-field-pill')).toBeNull();
+    });
+
+    it('clicking the dismiss × calls dismissFieldQuestion', async () => {
+        seedAgentMocks({
+            instance: INSTANCE_WITH_AGENT_FIELDS,
+            questions: [
+                {
+                    decisionId: 'a0Ixx0000000001',
+                    fieldKey: 'credit_score',
+                    prompt: 'What is the credit score?',
+                    inputType: 'free_text',
+                    phaseKey: 'intake',
+                },
+            ],
+        });
+
+        const el = createComponent();
+        await flushPromises();
+        await flushPromises();
+
+        const items = el.shadowRoot.querySelectorAll('.stepper-field-item');
+        const dismissBtn = items[0].querySelector('.agent-field-pill-dismiss');
+        expect(dismissBtn).not.toBeNull();
+        dismissBtn.click();
+        await flushPromises();
+
+        const call = dismissFieldQuestion.mock.calls
+            .map((c) => c[0])
+            .find((a) => a && a.payload && a.payload.decisionId === 'a0Ixx0000000001');
+        expect(call).toBeDefined();
+    });
+
+    it('expanded pill "Use value above" sends answerQuestion with field value', async () => {
+        seedAgentMocks({
+            instance: INSTANCE_WITH_AGENT_FIELDS,
+            questions: [
+                {
+                    decisionId: 'a0Ixx0000000001',
+                    fieldKey: 'credit_score',
+                    prompt: 'Need the score',
+                    inputType: 'free_text',
+                    phaseKey: 'intake',
+                },
+            ],
+        });
+
+        const el = createComponent();
+        await flushPromises();
+        await flushPromises();
+
+        // Click the pill itself to expand inline editor.
+        const items = el.shadowRoot.querySelectorAll('.stepper-field-item');
+        items[0].querySelector('.agent-field-pill').click();
+        await flushPromises();
+
+        const useBtn = Array.from(
+            items[0].querySelectorAll('.agent-field-pill-body-actions c-pulse-button')
+        ).find((b) => b.label === 'Use value above');
+        expect(useBtn).toBeDefined();
+        useBtn.click();
+        await flushPromises();
+
+        // The seeded value for credit_score is '720' — expect that in the answer.
+        const call = answerQuestion.mock.calls
+            .map((c) => c[0])
+            .find((a) => a && a.payload && a.payload.decisionId === 'a0Ixx0000000001');
+        expect(call).toBeDefined();
+        const resp = JSON.parse(call.payload.responseJson);
+        expect(resp.value).toBe('720');
     });
 });

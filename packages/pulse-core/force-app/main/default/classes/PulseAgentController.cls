@@ -44,6 +44,20 @@ global with sharing class PulseAgentController {
         @AuraEnabled public Map<String, Object> previewData;
     }
 
+    /**
+     * Narrow view used by the record-page field-pill rendering. One entry
+     * per pending Ask_User decision with a non-blank fieldKey — these are
+     * the questions that should render as pills next to their matching form
+     * field (instead of as a generic card in the decision queue).
+     */
+    global class FieldQuestionView {
+        @AuraEnabled public Id     decisionId;
+        @AuraEnabled public String fieldKey;
+        @AuraEnabled public String prompt;
+        @AuraEnabled public String inputType;
+        @AuraEnabled public String phaseKey;
+    }
+
     global class RunResultView {
         @AuraEnabled public Boolean success;
         @AuraEnabled public Integer decisionsCreated;
@@ -222,6 +236,69 @@ global with sharing class PulseAgentController {
         t.Autonomy_Level__c = autonomy;
         update t;
         return getAgentState(instanceId);
+    }
+
+    // ─── getFieldQuestions ──────────────────────────────────────
+    //
+    // Returns only pending Ask_User decisions that carry a fieldKey in
+    // Question_JSON__c. The record-page stepper uses these to render a
+    // small pill next to the matching form field. Decisions without a
+    // fieldKey continue to surface in the generic decision queue.
+
+    @AuraEnabled(cacheable=false)
+    global static List<FieldQuestionView> getFieldQuestions(Id instanceId) {
+        List<FieldQuestionView> out = new List<FieldQuestionView>();
+        if (instanceId == null) return out;
+        List<Agent_Decision__c> rows = [
+            SELECT Id, Phase_Key__c, Question_JSON__c
+            FROM Agent_Decision__c
+            WHERE Workflow_Instance__c = :instanceId
+              AND Status__c = 'Pending_User'
+              AND Decision_Type__c = 'Ask_User'
+            ORDER BY CreatedDate ASC
+        ];
+        for (Agent_Decision__c d : rows) {
+            if (String.isBlank(d.Question_JSON__c)) continue;
+            Map<String, Object> q;
+            try {
+                q = (Map<String, Object>) JSON.deserializeUntyped(d.Question_JSON__c);
+            } catch (Exception e) {
+                continue;
+            }
+            String fieldKey = (String) q.get('fieldKey');
+            if (String.isBlank(fieldKey)) continue;
+            FieldQuestionView fv = new FieldQuestionView();
+            fv.decisionId = d.Id;
+            fv.fieldKey = fieldKey;
+            fv.prompt = (String) q.get('prompt');
+            fv.inputType = (String) q.get('inputType');
+            fv.phaseKey = d.Phase_Key__c;
+            out.add(fv);
+        }
+        return out;
+    }
+
+    // ─── dismissFieldQuestion ───────────────────────────────────
+    //
+    // Dismiss a field-level Ask_User question without answering. Wraps
+    // rejectDecision with a canned reason so the agent's rolling summary
+    // knows the user chose to skip — the next agent turn can either retry
+    // or move on. payload: { decisionId }.
+
+    @AuraEnabled
+    global static RunResultView dismissFieldQuestion(Map<String, Object> payload) {
+        RunResultView v = new RunResultView();
+        if (payload == null) {
+            v.success = false; v.error = 'payload is required'; return v;
+        }
+        Id decisionId = coerceId(payload.get('decisionId'));
+        PulseAgentOrchestrator.RunResult r =
+            PulseAgentOrchestrator.rejectDecision(decisionId, 'User dismissed the inline field question.');
+        v.success = r.success;
+        v.decisionsCreated = r.decisionsCreated;
+        v.status = r.status;
+        v.error = r.error;
+        return v;
     }
 
     // ─── kickAgent ──────────────────────────────────────────────

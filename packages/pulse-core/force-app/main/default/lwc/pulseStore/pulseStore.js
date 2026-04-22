@@ -405,6 +405,29 @@ function reduce(cur, action) {
                 ui: { ...cur.ui, dirty: true }
             };
 
+        // ── Agent Mode config (per-phase) ─────────────────────────
+        // Stores the `agent` block on the current state in the contract
+        // JSON. Accepts a partial `patch` and merges it onto whatever is
+        // currently under state.agent. When the patch sets every field
+        // back to empty/default the block is preserved (so the state's
+        // presence/absence of an `agent` key is explicit, not implicit).
+        case 'UPDATE_AGENT_CONFIG':
+            return {
+                ...cur,
+                workflow: {
+                    ...cur.workflow,
+                    states: cur.workflow.states.map((s) => {
+                        if (s.key !== action.stateKey) return s;
+                        const existing = s.agent || {};
+                        return {
+                            ...s,
+                            agent: { ...existing, ...(action.patch || {}) }
+                        };
+                    })
+                },
+                ui: { ...cur.ui, dirty: true }
+            };
+
         // ── Action status machine ─────────────────────────────────
         // action.statuses is the full list of StatusDef-shaped objects
         // for the target action; the reducer replaces the current list

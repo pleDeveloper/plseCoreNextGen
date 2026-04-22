@@ -131,7 +131,41 @@
                                                             </label>
                                                             <span class="journey-field-type-pill">{f.typeLabel}</span>
                                                             <span class="stepper-phase-required">{f.requiredBadge}</span>
+                                                            <template lwc:if={f.hasAgentQuestion}>
+                                                                <button type="button"
+                                                                        class="agent-field-pill"
+                                                                        data-field-key={f.key}
+                                                                        title={f.agentQuestion.prompt}
+                                                                        onclick={handleAgentQuestionToggle}>
+                                                                    <span class="agent-field-pill-icon" aria-hidden="true">✨</span>
+                                                                    <span class="agent-field-pill-text">{f.agentQuestion.prompt}</span>
+                                                                </button>
+                                                                <button type="button"
+                                                                        class="agent-field-pill-dismiss"
+                                                                        data-field-key={f.key}
+                                                                        aria-label="Dismiss question"
+                                                                        disabled={f.agentQuestionBusy}
+                                                                        onclick={handleAgentQuestionDismiss}>×</button>
+                                                            </template>
                                                         </div>
+
+                                                        <template lwc:if={f.agentQuestionExpanded}>
+                                                            <div class="agent-field-pill-body">
+                                                                <p class="agent-field-pill-body-prompt">{f.agentQuestion.prompt}</p>
+                                                                <div class="agent-field-pill-body-actions">
+                                                                    <c-pulse-button label="Use value above"
+                                                                                    variant="primary" size="sm"
+                                                                                    data-field-key={f.key}
+                                                                                    disabled={f.agentQuestionBusy}
+                                                                                    onclick={handleAgentQuestionUseValue}></c-pulse-button>
+                                                                    <c-pulse-button label="Ignore"
+                                                                                    variant="ghost" size="sm"
+                                                                                    data-field-key={f.key}
+                                                                                    disabled={f.agentQuestionBusy}
+                                                                                    onclick={handleAgentQuestionDismiss}></c-pulse-button>
+                                                                </div>
+                                                            </div>
+                                                        </template>
 
                                                         <template lwc:if={f.isText}>
                                                             <c-pulse-input label=""
@@ -439,7 +473,41 @@
                                         {f.label}
                                     </label>
                                     <span class="stepper-phase-required">{f.requiredBadge}</span>
+                                    <template lwc:if={f.hasAgentQuestion}>
+                                        <button type="button"
+                                                class="agent-field-pill"
+                                                data-field-key={f.key}
+                                                title={f.agentQuestion.prompt}
+                                                onclick={handleAgentQuestionToggle}>
+                                            <span class="agent-field-pill-icon" aria-hidden="true">✨</span>
+                                            <span class="agent-field-pill-text">{f.agentQuestion.prompt}</span>
+                                        </button>
+                                        <button type="button"
+                                                class="agent-field-pill-dismiss"
+                                                data-field-key={f.key}
+                                                aria-label="Dismiss question"
+                                                disabled={f.agentQuestionBusy}
+                                                onclick={handleAgentQuestionDismiss}>×</button>
+                                    </template>
                                 </div>
+
+                                <template lwc:if={f.agentQuestionExpanded}>
+                                    <div class="agent-field-pill-body">
+                                        <p class="agent-field-pill-body-prompt">{f.agentQuestion.prompt}</p>
+                                        <div class="agent-field-pill-body-actions">
+                                            <c-pulse-button label="Use value above"
+                                                            variant="primary" size="sm"
+                                                            data-field-key={f.key}
+                                                            disabled={f.agentQuestionBusy}
+                                                            onclick={handleAgentQuestionUseValue}></c-pulse-button>
+                                            <c-pulse-button label="Ignore"
+                                                            variant="ghost" size="sm"
+                                                            data-field-key={f.key}
+                                                            disabled={f.agentQuestionBusy}
+                                                            onclick={handleAgentQuestionDismiss}></c-pulse-button>
+                                        </div>
+                                    </div>
+                                </template>
 
                                 <template lwc:if={f.isText}>
                                     <c-pulse-input label=""
