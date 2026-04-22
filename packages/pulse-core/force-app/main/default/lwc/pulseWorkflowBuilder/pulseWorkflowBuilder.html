@@ -421,6 +421,44 @@
                                                             onchange={handleAutoEscalateToggle}>
                                             </c-pulse-toggle>
                                         </div>
+
+                                        <!-- Agent Mode -->
+                                        <div class="builder-phase-group builder-agent-panel">
+                                            <h5 class="builder-phase-group-title">Agent Mode</h5>
+                                            <p class="builder-phase-hint">
+                                                When enabled, Claude observes this phase and proposes or
+                                                takes actions based on the autonomy level below.
+                                            </p>
+                                            <c-pulse-toggle label="Enable agent for this phase"
+                                                            checked={agentEnabled}
+                                                            onchange={handleAgentEnabledToggle}>
+                                            </c-pulse-toggle>
+                                            <c-pulse-input label="Persona"
+                                                           value={agentPersona}
+                                                           placeholder="e.g. Leasing Qualifier"
+                                                           onchange={handleAgentPersonaChange}>
+                                            </c-pulse-input>
+                                            <label class="builder-phase-label">
+                                                <span class="builder-phase-label-text">Autonomy level</span>
+                                                <select class="builder-phase-select"
+                                                        onchange={handleAgentAutonomyChange}>
+                                                    <template for:each={agentAutonomyOptions} for:item="opt">
+                                                        <option key={opt.value}
+                                                                value={opt.value}
+                                                                selected={opt.selected}>
+                                                            {opt.label}
+                                                        </option>
+                                                    </template>
+                                                </select>
+                                            </label>
+                                            <label class="builder-phase-label">
+                                                <span class="builder-phase-label-text">System prompt</span>
+                                                <textarea class="builder-phase-textarea"
+                                                          rows="5"
+                                                          placeholder="You are a helpful assistant for this phase…"
+                                                          onchange={handleAgentSystemPromptChange}>{agentSystemPrompt}</textarea>
+                                            </label>
+                                        </div>
                                     </div>
                                 </template>
                             </div>

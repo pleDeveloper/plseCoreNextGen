@@ -739,3 +739,88 @@
 .journey-phase-body .stepper-signals {
     margin-top: 0;
 }
+
+/* ── Agent field-question pill ───────────────────
+   Renders next to the field label when the agent has raised an Ask_User
+   decision carrying a fieldKey matching this field. Clicking the pill
+   expands an inline "Use value above / Ignore" editor. */
+.agent-field-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--pulse-space-1, 4px);
+    border: 1px solid var(--pulse-magenta, #D946EF);
+    background: color-mix(in srgb, var(--pulse-magenta, #D946EF) 12%, white);
+    color: var(--pulse-magenta-dark, #A21CAF);
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-caption, 12px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    padding: 2px var(--pulse-space-2, 8px);
+    border-radius: var(--pulse-radius-pill, 9999px);
+    cursor: pointer;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: background 120ms ease;
+}
+
+.agent-field-pill:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--pulse-magenta, #D946EF) 22%, white);
+}
+
+.agent-field-pill-icon {
+    font-size: 13px;
+    line-height: 1;
+}
+
+.agent-field-pill-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.agent-field-pill-dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--pulse-slate-light, #cbd5e1);
+    background: var(--pulse-white, #fff);
+    color: var(--pulse-slate, #64748b);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+}
+
+.agent-field-pill-dismiss:hover:not(:disabled) {
+    background: var(--pulse-slate-bg, #f1f5f9);
+    color: var(--pulse-slate-dark, #374151);
+}
+
+.agent-field-pill-dismiss:disabled,
+.agent-field-pill:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.agent-field-pill-body {
+    margin-top: var(--pulse-space-2, 8px);
+    padding: var(--pulse-space-3, 12px);
+    border-radius: var(--pulse-radius-md, 8px);
+    background: color-mix(in srgb, var(--pulse-magenta, #D946EF) 6%, white);
+    border: 1px solid color-mix(in srgb, var(--pulse-magenta, #D946EF) 25%, transparent);
+}
+
+.agent-field-pill-body-prompt {
+    margin: 0 0 var(--pulse-space-2, 8px) 0;
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-small, 13px);
+    color: var(--pulse-dark, #0f172a);
+}
+
+.agent-field-pill-body-actions {
+    display: flex;
+    gap: var(--pulse-space-2, 8px);
+}

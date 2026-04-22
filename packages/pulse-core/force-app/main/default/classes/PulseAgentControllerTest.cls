@@ -296,4 +296,95 @@ private class PulseAgentControllerTest {
             (Map<String, Object>) JSON.deserializeUntyped(refreshed.Context_JSON__c);
         System.assertEquals(22, ctx.get('headcount'));
     }
+
+    // ─── getFieldQuestions + dismissFieldQuestion ──────────────
+
+    @IsTest
+    static void getFieldQuestions_returnsPendingAskWithFieldKey() {
+        Workflow_Instance__c inst = seedInstance();
+
+        // Create a pending Ask_User decision with a fieldKey
+        PulseAgentOrchestrator.setResponseForTest(askResponse('headcount'));
+        PulseAgentOrchestrator.advance(inst.Id);
+        PulseAgentOrchestrator.clearResponseForTest();
+
+        Test.startTest();
+        List<PulseAgentController.FieldQuestionView> questions =
+            PulseAgentController.getFieldQuestions(inst.Id);
+        Test.stopTest();
+
+        System.assertEquals(1, questions.size(), 'expected one field question');
+        System.assertEquals('headcount', questions[0].fieldKey);
+        System.assertEquals('What is the headcount?', questions[0].prompt);
+        System.assertNotEquals(null, questions[0].decisionId);
+    }
+
+    @IsTest
+    static void getFieldQuestions_excludesAskWithoutFieldKey() {
+        Workflow_Instance__c inst = seedInstance();
+
+        // Create a generic Ask (no fieldKey)
+        PulseAiModels.Response resp = new PulseAiModels.Response();
+        PulseAiModels.ToolCall tc = new PulseAiModels.ToolCall();
+        tc.toolKey = PulseAgentOrchestrator.TOOL_ASK;
+        tc.inputJson = JSON.serialize(new Map<String, Object>{
+            'prompt' => 'Generic question',
+            'rationale' => 'no fieldKey'
+        });
+        resp.toolCalls = new List<PulseAiModels.ToolCall>{ tc };
+        PulseAgentOrchestrator.setResponseForTest(resp);
+        PulseAgentOrchestrator.advance(inst.Id);
+        PulseAgentOrchestrator.clearResponseForTest();
+
+        List<PulseAgentController.FieldQuestionView> questions =
+            PulseAgentController.getFieldQuestions(inst.Id);
+        System.assertEquals(0, questions.size(),
+            'Ask_User without fieldKey should not surface as a field question');
+    }
+
+    @IsTest
+    static void getFieldQuestions_nullId_returnsEmpty() {
+        List<PulseAgentController.FieldQuestionView> q =
+            PulseAgentController.getFieldQuestions(null);
+        System.assertEquals(0, q.size());
+    }
+
+    @IsTest
+    static void dismissFieldQuestion_rejectsDecision() {
+        Workflow_Instance__c inst = seedInstance();
+
+        PulseAgentOrchestrator.setResponseForTest(askResponse('headcount'));
+        PulseAgentOrchestrator.advance(inst.Id);
+        PulseAgentOrchestrator.clearResponseForTest();
+
+        Agent_Decision__c d = [
+            SELECT Id FROM Agent_Decision__c
+            WHERE Workflow_Instance__c = :inst.Id AND Decision_Type__c = 'Ask_User'
+        ];
+
+        // Re-kick hermetically so the orchestrator has a canned response
+        // for the post-reject follow-up turn.
+        PulseAgentOrchestrator.setResponseForTest(observeResponse());
+
+        Test.startTest();
+        PulseAgentController.RunResultView r = PulseAgentController.dismissFieldQuestion(
+            new Map<String, Object>{ 'decisionId' => d.Id }
+        );
+        Test.stopTest();
+        PulseAgentOrchestrator.clearResponseForTest();
+
+        System.assertEquals(true, r.success, 'dismiss failed: ' + r.error);
+
+        Agent_Decision__c refreshed = [
+            SELECT Status__c FROM Agent_Decision__c WHERE Id = :d.Id
+        ];
+        System.assertEquals('Rejected', refreshed.Status__c);
+    }
+
+    @IsTest
+    static void dismissFieldQuestion_nullPayload_returnsError() {
+        PulseAgentController.RunResultView r =
+            PulseAgentController.dismissFieldQuestion(null);
+        System.assertEquals(false, r.success);
+    }
 }

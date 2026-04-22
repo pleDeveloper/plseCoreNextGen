@@ -601,3 +601,26 @@
     grid-template-columns: 1fr 1fr;
     gap: var(--pulse-space-3, 12px);
 }
+
+.builder-phase-textarea {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-body, 14px);
+    padding: var(--pulse-space-2, 8px) var(--pulse-space-3, 12px);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-md, 8px);
+    background: var(--pulse-white, #ffffff);
+    color: var(--pulse-dark, #111827);
+    resize: vertical;
+    min-height: 96px;
+}
+
+.builder-phase-textarea:focus {
+    outline: none;
+    border-color: var(--pulse-purple-500, #7B2FF2);
+    box-shadow: 0 0 0 3px rgba(123, 47, 242, 0.12);
+}
+
+.builder-agent-panel {
+    border-top: 1px dashed var(--pulse-border, #e5e7eb);
+    padding-top: var(--pulse-space-3, 12px);
+}

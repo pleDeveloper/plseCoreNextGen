@@ -5,6 +5,9 @@ import advanceInstance from '@salesforce/apex/PulseRuntimeController.advanceInst
 import advanceInstanceWithFields from '@salesforce/apex/PulseRuntimeController.advanceInstanceWithFields';
 import resolveAction from '@salesforce/apex/PulseRuntimeController.resolveAction';
 import saveFieldValues from '@salesforce/apex/PulseRuntimeController.saveFieldValues';
+import getFieldQuestions from '@salesforce/apex/PulseAgentController.getFieldQuestions';
+import answerQuestion from '@salesforce/apex/PulseAgentController.answerQuestion';
+import dismissFieldQuestion from '@salesforce/apex/PulseAgentController.dismissFieldQuestion';
 
 const MAX_COLLAPSED_STEPS = 5;
 const TERMINAL_STATUSES = ['Executed', 'Rejected', 'Failed', 'Cancelled'];
@@ -41,6 +44,12 @@ export default class PulseRecordStepper extends LightningElement {
     @track expandedPhaseKeys = new Set();
     @track collapsedPhaseKeys = new Set();
 
+    // Agent Mode: pending Ask_User decisions keyed by fieldKey. Renders as
+    // a pill next to the matching form field instead of pushing the user
+    // into the generic decision queue.
+    @track fieldQuestions = {};        // fieldKey -> { decisionId, prompt, inputType, expanded }
+    @track fieldQuestionBusyId = null; // decisionId currently answering/dismissing
+
     connectedCallback() {
         loadPulseBrandTokens(this);
         this._loadInstance();
@@ -57,11 +66,41 @@ export default class PulseRecordStepper extends LightningElement {
             this.instance = data || null;
             this.error = null;
             this._seedFieldValuesFromInstance();
+            await this._loadFieldQuestions();
         } catch (err) {
             this.instance = null;
             this.error = err.body?.message || 'Failed to load workflow instance';
         } finally {
             this.isLoading = false;
+        }
+    }
+
+    /**
+     * Pull pending Ask_User decisions keyed by fieldKey so each form field
+     * can render its own pill. Silent on error — the form still works
+     * without agent questions.
+     */
+    async _loadFieldQuestions() {
+        if (!this.instance?.agentEnabled || !this.instance?.instanceId) {
+            this.fieldQuestions = {};
+            return;
+        }
+        try {
+            const list = await getFieldQuestions({ instanceId: this.instance.instanceId });
+            const map = {};
+            (list || []).forEach((q) => {
+                if (q && q.fieldKey) {
+                    map[q.fieldKey] = {
+                        decisionId: q.decisionId,
+                        prompt: q.prompt || '',
+                        inputType: q.inputType || 'free_text',
+                        expanded: this.fieldQuestions[q.fieldKey]?.expanded === true,
+                    };
+                }
+            });
+            this.fieldQuestions = map;
+        } catch (e) {
+            // Non-fatal — leave any existing pills in place.
         }
     }
 
@@ -317,6 +356,10 @@ export default class PulseRecordStepper extends LightningElement {
             const val = this.fieldValues[f.key];
             const type = (f.fieldType || 'Text');
             const normType = type.toLowerCase();
+            const q = this.fieldQuestions[f.key] || null;
+            const hasAgentQuestion = !!q;
+            const agentQuestionBusy = hasAgentQuestion
+                && this.fieldQuestionBusyId === q.decisionId;
             return {
                 ...f,
                 isText: normType === 'text',
@@ -332,6 +375,10 @@ export default class PulseRecordStepper extends LightningElement {
                 picklistOptions: (f.picklistValues || []).map((v) => ({ value: v, label: v, selected: String(val) === v })),
                 requiredBadge: f.required ? 'Required' : 'Optional',
                 typeLabel: this._fieldTypeLabel(f.fieldType),
+                hasAgentQuestion,
+                agentQuestion: q,
+                agentQuestionExpanded: hasAgentQuestion && q.expanded === true,
+                agentQuestionBusy,
             };
         });
     }
@@ -633,6 +680,68 @@ export default class PulseRecordStepper extends LightningElement {
             this.fieldError = err.body?.message || err?.message || 'Failed to save fields';
         } finally {
             this.isSavingFields = false;
+        }
+    }
+
+    // ─── Agent field-question pill handlers ─────────────────────
+
+    handleAgentQuestionToggle(event) {
+        const key = event.currentTarget?.dataset?.fieldKey;
+        if (!key) return;
+        const q = this.fieldQuestions[key];
+        if (!q) return;
+        this.fieldQuestions = {
+            ...this.fieldQuestions,
+            [key]: { ...q, expanded: !q.expanded },
+        };
+    }
+
+    async handleAgentQuestionDismiss(event) {
+        const key = event.currentTarget?.dataset?.fieldKey;
+        if (!key) return;
+        const q = this.fieldQuestions[key];
+        if (!q || !q.decisionId) return;
+        this.fieldQuestionBusyId = q.decisionId;
+        try {
+            await dismissFieldQuestion({ payload: { decisionId: q.decisionId } });
+            // Optimistically drop the pill; refresh will confirm.
+            const next = { ...this.fieldQuestions };
+            delete next[key];
+            this.fieldQuestions = next;
+            await this._loadInstance();
+        } catch (e) {
+            this.actionError = e.body?.message || e.message || 'Dismiss failed';
+        } finally {
+            this.fieldQuestionBusyId = null;
+        }
+    }
+
+    async handleAgentQuestionUseValue(event) {
+        const key = event.currentTarget?.dataset?.fieldKey;
+        if (!key) return;
+        const q = this.fieldQuestions[key];
+        if (!q || !q.decisionId) return;
+        const rawVal = this.fieldValues[key];
+        if (rawVal === '' || rawVal == null) {
+            this.actionError = 'Enter a value before confirming.';
+            return;
+        }
+        this.fieldQuestionBusyId = q.decisionId;
+        try {
+            await answerQuestion({
+                payload: {
+                    decisionId: q.decisionId,
+                    responseJson: JSON.stringify({ value: rawVal }),
+                },
+            });
+            const next = { ...this.fieldQuestions };
+            delete next[key];
+            this.fieldQuestions = next;
+            await this._loadInstance();
+        } catch (e) {
+            this.actionError = e.body?.message || e.message || 'Answer failed';
+        } finally {
+            this.fieldQuestionBusyId = null;
         }
     }
 
