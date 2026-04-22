@@ -112,21 +112,11 @@ Map<String,Object> qualification = new Map<String,Object>{
             'emails (Approval_Required policy will gate on human approval).'
     },
     'actions' => new List<Object>{
-        new Map<String,Object>{
-            'key'=>'ask_missing_info', 'label'=>'Ask for missing information',
-            'type'=>'ai_tool', 'required'=>false, 'sequence'=>0,
-            'dependsOn' => new List<Object>{},
-            'statuses' => STATUS_FIELD_CAPTURE, 'initialStatusKey' => 'Empty',
-            'config' => new Map<String,Object>{
-                'toolKey' => 'ask_user', 'hitlPolicy' => 'Autonomous',
-                'parameters' => new Map<String,Object>{
-                    'systemPrompt' =>
-                        'Check the inquiry context. If desired_move_in or contact ' +
-                        'phone is missing, ask the applicant for it via a field ' +
-                        'question pill on the form.'
-                }
-            }
-        },
+        // NOTE: we do NOT declare an "ask_user" ai_tool action here. The
+        // agent's top-level ask_user decision type handles open questions
+        // and renders as a field-question pill automatically — there is
+        // no registered tool named "ask_user", so instantiating one as
+        // an action would produce a junk approval card.
         new Map<String,Object>{
             'key'=>'send_tour_invite_email', 'label'=>'Send tour invitation email',
             'type'=>'ai_tool', 'required'=>true, 'sequence'=>1,
@@ -481,41 +471,10 @@ try {
 // ============================================================
 
 // ============================================================
-// 7. SEED A VISIBLE FIELD-QUESTION PILL
+// 7. PREPARE THE AGENT THREAD (no seeded decisions — the agent runs
+//    itself when the admin clicks "Kick agent")
 // ============================================================
-// Creates the Agent_Thread__c up front (via the orchestrator helper so
-// the persona/autonomy/system-prompt fields snapshot from the contract)
-// and plants a pending Ask_User decision so the field-question pill on
-// the form renders deterministically, even before the admin clicks
-// "Kick agent".
-plse__Agent_Thread__c threadRow =
-    plse.PulseAgentOrchestrator.getOrCreateThread(inst.Id);
-if (threadRow != null) {
-    Id threadId = threadRow.Id;
-    List<plse__Agent_Decision__c> existingAsk = [
-        SELECT Id FROM plse__Agent_Decision__c
-        WHERE plse__Workflow_Instance__c = :inst.Id
-          AND plse__Decision_Type__c = 'Ask_User'
-          AND plse__Status__c = 'Pending_User'
-        LIMIT 1
-    ];
-    if (existingAsk.isEmpty()) {
-        insert new plse__Agent_Decision__c(
-            plse__Agent_Thread__c       = threadId,
-            plse__Workflow_Instance__c  = inst.Id,
-            plse__Decision_Type__c      = 'Ask_User',
-            plse__Status__c             = 'Pending_User',
-            plse__Phase_Key__c          = inst.plse__Current_State__c,
-            plse__Rationale__c          = 'Need a move-in target to prioritize tour slots.',
-            plse__Question_JSON__c      = JSON.serialize(new Map<String,Object>{
-                'fieldKey'  => 'desired_move_in',
-                'prompt'    => 'When does Hawthorne & Sterling need to be moved in by?',
-                'inputType' => 'Date'
-            })
-        );
-        System.debug('### Seeded Ask_User decision for desired_move_in pill.');
-    }
-}
+plse.PulseAgentOrchestrator.getOrCreateThread(inst.Id);
 
 // ============================================================
 // 8. SUMMARY
@@ -531,5 +490,5 @@ System.debug('### ==============================================');
 System.debug('### NEXT: open the Opportunity record page in Lightning. You should see:');
 System.debug('###   1. Stage_Status__c badge (if the engine has set it)');
 System.debug('###   2. Agent status rail + decision queue at top (agent enabled)');
-System.debug('###   3. A field-question pill next to "Desired Move-in Date" (inquiry form)');
-System.debug('###   4. Journey card showing qualification phase actions with status machines');
+System.debug('###   3. Journey card showing qualification-phase placeholder actions');
+System.debug('###   4. After clicking Kick agent: a drafted tour-invite email appears in the Decision Queue for approval');

@@ -462,6 +462,12 @@ public with sharing class PulseAgentOrchestrator {
             + 'and the next phase is reachable, propose `advance_phase` with the appropriate signal.'
             + '\n- If a field value is already in `context` (even from a just-answered pill), DO NOT '
             + 'ask for it again — move on to the next action or advance the phase.'
+            + '\n- When `context.pendingActions[]` contains an ai_tool action WITHOUT arguments yet, '
+            + 'that is YOUR placeholder to fill. Call `propose_action` with its `toolKey` and a fully '
+            + 'populated `arguments` object (for send_email: `to`, `subject`, `body`; for update_record: '
+            + '`recordId`, `objectType`, `fields`). Do NOT create a parallel decision — populate the '
+            + 'pending placeholder. Cite `context.parentRecordId` and the conversation participants '
+            + 'when drafting recipient/content.'
             + '\n- Never call the same tool twice with identical args without new input.'
             + '\n- All side-effecting tool calls are gated by human approval unless autonomy allows.'
             + '\n\nWorkflow system prompt:\n' + (String.isBlank(userPrompt) ? '(none provided)' : userPrompt);

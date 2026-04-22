@@ -362,6 +362,12 @@ global with sharing class PulseRuntimeController {
             return views;
         }
 
+        // Phase-initial ai_tool actions are instantiated with a null
+        // Request_JSON__c — they're placeholders waiting for the agent to
+        // propose a concrete payload. Hide them from the approval queue
+        // until the agent has drafted actual arguments. Filter in-memory
+        // because Request_JSON__c is a LongTextArea and can't be a SOQL
+        // WHERE predicate.
         for (Workflow_Action__c a : [
             SELECT Id, Tool_Key__c, HITL_Policy__c, Request_JSON__c,
                    CreatedDate, CreatedBy.Name
@@ -370,6 +376,7 @@ global with sharing class PulseRuntimeController {
               AND Status__c = 'Pending'
             ORDER BY CreatedDate ASC
         ]) {
+            if (String.isBlank(a.Request_JSON__c)) continue;
             ActionView av = new ActionView();
             av.actionId = a.Id;
             av.toolKey = a.Tool_Key__c;
