@@ -36,6 +36,9 @@
             <div class="stepper-header">
                 <div class="stepper-header-top">
                     <h2 class="stepper-workflow-name">{instance.workflowName}</h2>
+                    <template lwc:if={hasStageStatus}>
+                        <c-pulse-badge label={stageStatusLabel} variant={stageStatusVariant}></c-pulse-badge>
+                    </template>
                     <template lwc:if={hasPendingActions}>
                         <c-pulse-badge label={pendingActionLabel} variant="magenta"></c-pulse-badge>
                     </template>

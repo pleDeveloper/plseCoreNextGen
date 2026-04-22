@@ -196,6 +196,70 @@ describe('c-pulse-record-stepper', () => {
         });
     });
 
+    // ── Stage Status header badge ───────────────────────────────
+
+    it('renders a Stage Status badge in the header for non-Active stageStatus', async () => {
+        getInstanceForRecord.mockResolvedValue({
+            ...MOCK_INSTANCE,
+            stageStatus: 'On_Hold',
+        });
+        const el = createComponent();
+        await flushPromises();
+
+        const headerBadges = Array.from(
+            el.shadowRoot.querySelectorAll('.stepper-header-top c-pulse-badge')
+        );
+        const stageBadge = headerBadges.find((b) => b.label === 'On Hold');
+        expect(stageBadge).toBeDefined();
+        expect(stageBadge.variant).toBe('warning');
+    });
+
+    it('maps Escalated stageStatus to the error variant', async () => {
+        getInstanceForRecord.mockResolvedValue({
+            ...MOCK_INSTANCE,
+            stageStatus: 'Escalated',
+        });
+        const el = createComponent();
+        await flushPromises();
+
+        const headerBadges = Array.from(
+            el.shadowRoot.querySelectorAll('.stepper-header-top c-pulse-badge')
+        );
+        const stageBadge = headerBadges.find((b) => b.label === 'Escalated');
+        expect(stageBadge).toBeDefined();
+        expect(stageBadge.variant).toBe('error');
+    });
+
+    it('does not render a Stage Status badge when stageStatus is Active or null', async () => {
+        getInstanceForRecord.mockResolvedValue({
+            ...MOCK_INSTANCE,
+            stageStatus: 'Active',
+        });
+        const el = createComponent();
+        await flushPromises();
+
+        const headerBadges = Array.from(
+            el.shadowRoot.querySelectorAll('.stepper-header-top c-pulse-badge')
+        );
+        // Only the pending-action badge should appear; no Active badge.
+        const activeBadge = headerBadges.find((b) => b.label === 'Active');
+        expect(activeBadge).toBeUndefined();
+
+        // Re-render with null — still no stage badge
+        document.body.removeChild(el);
+        getInstanceForRecord.mockResolvedValue({
+            ...MOCK_INSTANCE,
+            stageStatus: null,
+        });
+        const el2 = createComponent();
+        await flushPromises();
+        const headerBadges2 = Array.from(
+            el2.shadowRoot.querySelectorAll('.stepper-header-top c-pulse-badge')
+        );
+        // Pending badge stays; no stage badge rendered.
+        expect(headerBadges2.every((b) => b.label !== 'Active')).toBe(true);
+    });
+
     it('renders error state from advance as dismissible badge', async () => {
         getInstanceForRecord.mockResolvedValue(MOCK_INSTANCE);
         const el = createComponent();
