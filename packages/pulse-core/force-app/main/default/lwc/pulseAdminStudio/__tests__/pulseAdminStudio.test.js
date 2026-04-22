@@ -33,6 +33,12 @@ jest.mock(
     { virtual: true }
 );
 
+jest.mock(
+    '@salesforce/apex/StageDwellPredictor.aggregateDwellStats',
+    () => ({ default: jest.fn() }),
+    { virtual: true }
+);
+
 
 function createComponent() {
     const el = createElement('c-pulse-admin-studio', { is: PulseAdminStudio });
@@ -76,10 +82,10 @@ describe('c-pulse-admin-studio', () => {
         expect(badge.textContent).toBe('Dev');
     });
 
-    it('renders all seven navigation items', () => {
+    it('renders all eight navigation items', () => {
         const el = createComponent();
         const items = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        expect(items.length).toBe(7);
+        expect(items.length).toBe(8);
     });
 
     it('defaults to Workflow builder as active nav', () => {
@@ -124,7 +130,7 @@ describe('c-pulse-admin-studio', () => {
     it('shows placeholder for non-builder tabs with coming badge', () => {
         const el = createComponent();
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        navItems[5].click(); // Library
+        navItems[6].click(); // Library
         return Promise.resolve().then(() => {
             const badge = el.shadowRoot.querySelector('.pulse-badge');
             expect(badge).not.toBeNull();
@@ -140,6 +146,23 @@ describe('c-pulse-admin-studio', () => {
         return Promise.resolve().then(() => {
             const hub = el.shadowRoot.querySelector('c-pulse-conversation-hub');
             expect(hub).not.toBeNull();
+            // Builder should not be rendered
+            const builder = el.shadowRoot.querySelector('c-pulse-workflow-builder');
+            expect(builder).toBeNull();
+            // Placeholder should not be rendered
+            const placeholder = el.shadowRoot.querySelector('.studio-placeholder-heading');
+            expect(placeholder).toBeNull();
+        });
+    });
+
+    it('renders SLA heatmap when SLA nav clicked', () => {
+        const el = createComponent();
+        const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
+        // SLA is at index 5
+        navItems[5].click();
+        return Promise.resolve().then(() => {
+            const heatmap = el.shadowRoot.querySelector('c-pulse-sla-heatmap');
+            expect(heatmap).not.toBeNull();
             // Builder should not be rendered
             const builder = el.shadowRoot.querySelector('c-pulse-workflow-builder');
             expect(builder).toBeNull();

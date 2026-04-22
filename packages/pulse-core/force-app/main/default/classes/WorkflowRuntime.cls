@@ -28,6 +28,9 @@ public with sharing class WorkflowRuntime {
     @TestVisible
     private static List<TransitionHook> hooks = new List<TransitionHook>();
 
+    // Auto-register StageDwellHook once per transaction so callers don't have to
+    private static Boolean stageDwellRegistered = false;
+
     public static void registerHook(TransitionHook hook) {
         if (hook != null) {
             hooks.add(hook);
@@ -60,6 +63,12 @@ public with sharing class WorkflowRuntime {
     public static List<AdvanceResult> advance(List<WorkflowAdvanceRequest> requests) {
         if (requests == null || requests.isEmpty()) {
             return new List<AdvanceResult>();
+        }
+
+        // Auto-register dwell-time hook once per transaction
+        if (!stageDwellRegistered) {
+            StageDwellHook.register();
+            stageDwellRegistered = true;
         }
 
         // 1. Collect instance IDs
