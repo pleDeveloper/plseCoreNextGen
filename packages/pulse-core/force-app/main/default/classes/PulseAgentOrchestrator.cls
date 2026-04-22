@@ -222,7 +222,11 @@ public with sharing class PulseAgentOrchestrator {
             return r;
         }
 
-        Agent_Thread__c thread = getOrCreateThreadInternal(instanceId, inst);
+        // Load the thread WITHOUT DML. Salesforce forbids HTTP callouts after
+        // uncommitted DML, so we build/mutate the thread in memory, make the
+        // callout, and upsert afterwards. See markError + thread.Id == null
+        // branch below for the error-path upsert.
+        Agent_Thread__c thread = loadThreadInMemory(instanceId);
         // Snapshot the system prompt the first time we use the thread.
         if (String.isBlank(thread.System_Prompt__c)) {
             thread.System_Prompt__c = (String) agentCfg.get('systemPrompt');
@@ -239,12 +243,11 @@ public with sharing class PulseAgentOrchestrator {
         }
         thread.Status__c = 'Working';
         thread.Last_Run_Date__c = Datetime.now();
-        update thread;
 
         // Build AI request
         PulseAiModels.Request req = buildAgentRequest(inst, thread, wf, agentCfg);
 
-        // Invoke AI (or consume test response)
+        // Invoke AI (or consume test response) — callout-before-DML discipline.
         PulseAiModels.Response resp;
         try {
             resp = (responseForTest != null) ? responseForTest : PulseAiFacade.invoke(req);
@@ -257,6 +260,10 @@ public with sharing class PulseAgentOrchestrator {
         if (resp.isError) {
             return markError(thread, r, 'AI error: ' + resp.errorMessage);
         }
+
+        // Callout succeeded — safe to do DML now. Persist the thread so the
+        // Id is available for Agent_Decision__c FKs below.
+        upsert thread;
 
         // Parse the first recognized tool call into a decision.
         Agent_Decision__c decision = parseResponseIntoDecision(resp, thread, inst);
@@ -636,6 +643,19 @@ public with sharing class PulseAgentOrchestrator {
     private static Agent_Thread__c getOrCreateThreadInternal(
         Id instanceId, Workflow_Instance__c inst
     ) {
+        Agent_Thread__c t = loadThreadInMemory(instanceId);
+        if (t.Id == null) insert t;
+        return t;
+    }
+
+    /**
+     * Returns an Agent_Thread__c for the given instance WITHOUT doing any
+     * DML. If none exists yet, the returned row has no Id — callers must
+     * `upsert` it before persisting children that FK to it. This split is
+     * required so the runTurn loop can make its HTTP callout before any
+     * DML (Salesforce rule: callouts cannot run after uncommitted DML).
+     */
+    private static Agent_Thread__c loadThreadInMemory(Id instanceId) {
         List<Agent_Thread__c> existing = [
             SELECT Id, Workflow_Instance__c, Persona_Name__c, System_Prompt__c,
                    Autonomy_Level__c, Rolling_Summary__c, Last_Run_Date__c,
@@ -645,14 +665,12 @@ public with sharing class PulseAgentOrchestrator {
             LIMIT 1
         ];
         if (!existing.isEmpty()) return existing[0];
-        Agent_Thread__c t = new Agent_Thread__c(
+        return new Agent_Thread__c(
             Workflow_Instance__c = instanceId,
             Persona_Name__c = 'Claude',
             Autonomy_Level__c = AUT_ACT_WITH_APPROVAL,
             Status__c = 'Idle'
         );
-        insert t;
-        return t;
     }
 
     private static Agent_Decision__c loadDecision(Id decisionId) {
@@ -726,7 +744,9 @@ public with sharing class PulseAgentOrchestrator {
     private static RunResult markError(Agent_Thread__c thread, RunResult r, String msg) {
         thread.Status__c = 'Error';
         thread.Last_Error__c = msg;
-        update thread;
+        // Thread may have no Id yet when the very first turn's callout fails
+        // — upsert covers both insert and update paths.
+        upsert thread;
         Agent_Decision__c d = new Agent_Decision__c(
             Agent_Thread__c = thread.Id,
             Workflow_Instance__c = thread.Workflow_Instance__c,
