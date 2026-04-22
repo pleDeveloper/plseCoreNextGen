@@ -297,6 +297,7 @@ for (Integer i = 0; i < names.size(); i++) {
         a.plse__Tool_Key__c           = 'send_email';
         a.plse__HITL_Policy__c        = 'Approval_Required';
         a.plse__Required_For_Phase__c = true;
+        a.plse__Assigned_User__c      = UserInfo.getUserId();
         if (a.plse__Status__c != 'Executed' && a.plse__Status__c != 'Rejected') {
             a.plse__Status__c = 'Pending';
         }
@@ -313,7 +314,8 @@ for (Integer i = 0; i < names.size(); i++) {
             plse__Status__c            = 'Pending',
             plse__Required_For_Phase__c = true,
             plse__Sequence__c          = 0,
-            plse__Request_JSON__c      = requests[i]
+            plse__Request_JSON__c      = requests[i],
+            plse__Assigned_User__c     = UserInfo.getUserId()
         );
         System.debug('### Created pending HITL action for: ' + oppName);
     }

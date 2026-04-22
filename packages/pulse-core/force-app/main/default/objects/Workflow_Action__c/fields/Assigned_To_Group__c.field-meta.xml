@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Assigned_To_Group__c</fullName>
+    <label>Assigned To Group</label>
+    <type>Lookup</type>
+    <referenceTo>Group</referenceTo>
+    <relationshipLabel>Assigned Actions (Group)</relationshipLabel>
+    <relationshipName>Assigned_Actions_Group</relationshipName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>Queue / public group the action is assigned to. One of Assigned_User__c or Assigned_To_Group__c is typically populated at instantiation based on the phase's assignmentRule.</description>
+</CustomField>

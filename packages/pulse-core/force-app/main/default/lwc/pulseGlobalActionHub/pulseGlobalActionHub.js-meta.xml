@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>66.0</apiVersion>
+    <isExposed>true</isExposed>
+    <masterLabel>Pulse Global Action Hub</masterLabel>
+    <description>Cross-workflow approval inbox showing pending actions assigned to the current user or their queues.</description>
+    <targets>
+        <target>lightning__HomePage</target>
+        <target>lightning__AppPage</target>
+        <target>lightning__RecordPage</target>
+    </targets>
+    <targetConfigs>
+        <targetConfig targets="lightning__HomePage,lightning__AppPage,lightning__RecordPage">
+            <property name="hideAssignedFilter" type="Boolean" default="false"
+                      label="Hide assignment filter"
+                      description="If true, hides the 'Assigned to me / My queues / Unassigned' chip row."/>
+            <property name="defaultAssignedFilter" type="String" default="both"
+                      label="Default assignment filter"
+                      description="Initial filter value: me, myQueues, both, or includeUnassigned."/>
+        </targetConfig>
+    </targetConfigs>
+</LightningComponentBundle>

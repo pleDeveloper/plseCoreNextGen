@@ -106,10 +106,10 @@ describe('c-pulse-admin-studio', () => {
         expect(badge.textContent).toBe('Dev');
     });
 
-    it('renders all eight navigation items', () => {
+    it('renders all navigation items', () => {
         const el = createComponent();
         const items = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        expect(items.length).toBe(8);
+        expect(items.length).toBe(9);
     });
 
     it('defaults to Workflow builder as active nav', () => {

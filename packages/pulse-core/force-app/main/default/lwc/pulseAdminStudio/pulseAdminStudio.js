@@ -27,6 +27,12 @@ const NAV_ITEMS = [
         icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
     },
     {
+        key: 'action-hub-config',
+        label: 'Action Hub config',
+        description: 'Configure per-object column layouts shown in the Global Action Hub.',
+        icon: 'M4 6h16M4 10h16M4 14h10M4 18h6',
+    },
+    {
         key: 'conversations',
         label: 'Conversations',
         description: 'Review AI-extracted facts from conversations and accept or reject them.',
@@ -87,6 +93,10 @@ export default class PulseAdminStudio extends LightningElement {
 
     get isActionHub() {
         return this.activeNav === 'action-hub';
+    }
+
+    get isActionHubConfig() {
+        return this.activeNav === 'action-hub-config';
     }
 
     get isConversations() {

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <label>Opportunity Columns</label>
+    <protected>false</protected>
+    <values>
+        <field>Config_Key__c</field>
+        <value xsi:type="xsd:string">Opportunity_Columns</value>
+    </values>
+    <values>
+        <field>Target_Object__c</field>
+        <value xsi:type="xsd:string">Opportunity</value>
+    </values>
+    <values>
+        <field>Columns_JSON__c</field>
+        <value xsi:type="xsd:string">[{"field":"Name","label":"Name"},{"field":"Amount","label":"Amount"},{"field":"StageName","label":"Stage"},{"field":"CloseDate","label":"Close Date"}]</value>
+    </values>
+    <values>
+        <field>Active__c</field>
+        <value xsi:type="xsd:boolean">true</value>
+    </values>
+</CustomMetadata>

@@ -122,7 +122,8 @@ public with sharing class PulseActionInstantiationService {
 
     private static Workflow_Instance__c loadInstance(Id id) {
         List<Workflow_Instance__c> rows = [
-            SELECT Id, Current_State__c, Workflow_Definition__c, Pinned_Version__c
+            SELECT Id, Current_State__c, Workflow_Definition__c, Pinned_Version__c,
+                   Parent_Object_Type__c, Parent_Record_Id__c, CreatedById
             FROM Workflow_Instance__c WHERE Id = :id LIMIT 1
         ];
         return rows.isEmpty() ? null : rows[0];
@@ -207,7 +208,109 @@ public with sharing class PulseActionInstantiationService {
                                         : JSON.serialize(def.dependsOn),
             Request_JSON__c        = requestJson
         );
+
+        // ── Resolve the assignmentRule ─────────────────────────────
+        // Default: 'workflow_owner' — route to the user who created the
+        // instance (fallback to the running user). Other types opt in via
+        // the contract's action.assignmentRule block.
+        applyAssignment(rec, inst, def);
+
         return rec;
+    }
+
+    /**
+     * Populate Assigned_User__c or Assigned_To_Group__c based on the
+     * action's declarative assignmentRule. Safe against missing config.
+     */
+    @TestVisible
+    private static void applyAssignment(
+        Workflow_Action__c rec,
+        Workflow_Instance__c inst,
+        WorkflowContract.ActionDef def
+    ) {
+        Map<String, Object> rule = def.assignmentRule;
+        String ruleType = 'workflow_owner';
+        if (rule != null && rule.get('type') instanceof String) {
+            ruleType = (String) rule.get('type');
+        }
+
+        if (ruleType == 'workflow_owner') {
+            rec.Assigned_User__c = inst.CreatedById != null
+                ? inst.CreatedById
+                : UserInfo.getUserId();
+            return;
+        }
+        if (ruleType == 'user') {
+            if (rule != null && rule.get('userId') instanceof String) {
+                String uid = (String) rule.get('userId');
+                if (String.isNotBlank(uid)) {
+                    try { rec.Assigned_User__c = (Id) uid; } catch (Exception e) {}
+                }
+            }
+            return;
+        }
+        if (ruleType == 'parent_owner') {
+            Id ownerId = resolveParentOwnerId(inst);
+            if (ownerId != null) {
+                // Parent OwnerId may be a User or a Group (queue); route
+                // to the matching lookup field.
+                String prefix = String.valueOf(ownerId).substring(0, 3);
+                if (prefix == '005') {
+                    rec.Assigned_User__c = ownerId;
+                } else if (prefix == '00G') {
+                    rec.Assigned_To_Group__c = ownerId;
+                }
+            }
+            return;
+        }
+        if (ruleType == 'group') {
+            if (rule == null) return;
+            Id gid = null;
+            if (rule.get('groupId') instanceof String) {
+                try { gid = (Id) (String) rule.get('groupId'); } catch (Exception e) {}
+            }
+            if (gid == null && rule.get('groupName') instanceof String) {
+                String gname = (String) rule.get('groupName');
+                if (String.isNotBlank(gname)) {
+                    List<Group> gs = [
+                        SELECT Id FROM Group
+                        WHERE DeveloperName = :gname OR Name = :gname
+                        LIMIT 1
+                    ];
+                    if (!gs.isEmpty()) gid = gs[0].Id;
+                }
+            }
+            if (gid != null) rec.Assigned_To_Group__c = gid;
+            return;
+        }
+    }
+
+    /**
+     * Look up OwnerId on the parent record when the parent SObject
+     * supports OwnerId. Returns null if the object lacks OwnerId, the
+     * record id is blank, or the record isn't accessible.
+     */
+    private static Id resolveParentOwnerId(Workflow_Instance__c inst) {
+        if (inst == null) return null;
+        String parentType = inst.Parent_Object_Type__c;
+        String parentRecId = inst.Parent_Record_Id__c;
+        if (String.isBlank(parentType) || String.isBlank(parentRecId)) return null;
+
+        Schema.SObjectType sot = Schema.getGlobalDescribe().get(parentType);
+        if (sot == null) return null;
+
+        Schema.DescribeSObjectResult dsr = sot.getDescribe();
+        if (!dsr.fields.getMap().containsKey('OwnerId')) return null;
+
+        String soql = 'SELECT Id, OwnerId FROM ' + String.escapeSingleQuotes(parentType) +
+                      ' WHERE Id = :parentRecId LIMIT 1';
+        try {
+            List<SObject> rows = Database.query(soql);
+            if (rows.isEmpty()) return null;
+            return (Id) rows[0].get('OwnerId');
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static String actionTypeForStorage(String contractActionType) {

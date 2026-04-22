@@ -374,6 +374,11 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
+        <field>Workflow_Action__c.Assigned_To_Group__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
         <field>Workflow_Action__c.Assigned_User__c</field>
         <readable>true</readable>
     </fieldPermissions>

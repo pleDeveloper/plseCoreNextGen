@@ -1,0 +1,195 @@
+<template>
+    <template lwc:if={isLoading}>
+        <c-pulse-card>
+            <p class="hub-loading">Loading approvals…</p>
+        </c-pulse-card>
+    </template>
+
+    <template lwc:elseif={hasError}>
+        <c-pulse-card>
+            <c-pulse-badge label={error} variant="error"></c-pulse-badge>
+        </c-pulse-card>
+    </template>
+
+    <template lwc:else>
+        <div class="hub-root">
+            <div class="hub-header">
+                <div class="hub-header-left">
+                    <h2 class="hub-title">My pending approvals</h2>
+                    <c-pulse-badge label={countLabel} variant="magenta"></c-pulse-badge>
+                </div>
+                <c-pulse-button label="Refresh" variant="ghost" size="sm"
+                                onclick={handleRefresh}></c-pulse-button>
+            </div>
+
+            <template lwc:if={hideAssignedFilter}></template>
+            <template lwc:else>
+                <div class="hub-chip-row" role="tablist">
+                    <template for:each={filterChips} for:item="chip">
+                        <button key={chip.key}
+                                class={chip.itemClass}
+                                data-key={chip.key}
+                                role="tab"
+                                aria-selected={chip.isActive}
+                                onclick={handleFilterChipClick}>
+                            {chip.label}
+                        </button>
+                    </template>
+                </div>
+            </template>
+
+            <template lwc:if={hasResolveError}>
+                <div class="hub-resolve-error">
+                    <c-pulse-badge label={resolveError} variant="error"></c-pulse-badge>
+                    <c-pulse-button label="Dismiss" variant="ghost" size="sm"
+                                    onclick={handleDismissResolveError}></c-pulse-button>
+                </div>
+            </template>
+
+            <template lwc:if={noRows}>
+                <c-pulse-card>
+                    <div class="hub-empty-state">
+                        <svg class="hub-empty-icon" width="48" height="48" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="1.5"
+                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <p class="hub-empty-title">You're caught up</p>
+                        <p class="hub-empty-sub">No pending approvals.</p>
+                    </div>
+                </c-pulse-card>
+            </template>
+
+            <template lwc:if={hasRows}>
+                <ul class="hub-rows" role="list">
+                    <template for:each={displayRows} for:item="row">
+                        <li key={row.actionId} class="hub-row-item" role="listitem">
+                            <div class={row.toggleClass}>
+                                <button class="hub-row-header"
+                                        data-action-id={row.actionId}
+                                        onclick={handleRowToggle}
+                                        aria-expanded={row.isExpanded}>
+                                    <div class="hub-row-columns">
+                                        <template for:each={row.columns} for:item="col">
+                                            <div key={col.field} class="hub-col">
+                                                <span class="hub-col-label">{col.label}</span>
+                                                <span class="hub-col-value">{col.value}</span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <div class="hub-row-meta">
+                                        <span class="hub-action-label">{row.actionLabel}</span>
+                                        <span class="hub-age">{row.ageLabel}</span>
+                                        <c-pulse-badge label={row.assignmentBadge}
+                                                       variant="purple"></c-pulse-badge>
+                                    </div>
+                                </button>
+
+                                <template lwc:if={row.isExpanded}>
+                                    <div class="hub-row-body">
+                                        <div class="hub-row-chips">
+                                            <c-pulse-badge label={row.toolLabel}
+                                                           variant="purple"></c-pulse-badge>
+                                            <template lwc:if={row.phaseLabel}>
+                                                <c-pulse-badge label={row.phaseLabel}
+                                                               variant="slate"></c-pulse-badge>
+                                            </template>
+                                            <template lwc:if={row.workflowName}>
+                                                <span class="hub-workflow">{row.workflowName}</span>
+                                            </template>
+                                        </div>
+
+                                        <template lwc:if={row.preview.isEmail}>
+                                            <div class="hub-preview hub-preview-email">
+                                                <div class="hub-pv-row">
+                                                    <span class="hub-pv-label">To</span>
+                                                    <span class="hub-pv-value">{row.preview.to}</span>
+                                                </div>
+                                                <div class="hub-pv-row">
+                                                    <span class="hub-pv-label">Subject</span>
+                                                    <span class="hub-pv-value">{row.preview.subject}</span>
+                                                </div>
+                                                <div class="hub-pv-body">{row.preview.body}</div>
+                                            </div>
+                                        </template>
+                                        <template lwc:elseif={row.preview.isRecord}>
+                                            <div class="hub-preview">
+                                                <div class="hub-pv-row">
+                                                    <span class="hub-pv-label">Object</span>
+                                                    <span class="hub-pv-value">{row.preview.objectType}</span>
+                                                </div>
+                                                <div class="hub-pv-row">
+                                                    <span class="hub-pv-label">Record</span>
+                                                    <span class="hub-pv-value">{row.preview.recordId}</span>
+                                                </div>
+                                                <template lwc:if={row.preview.hasRows}>
+                                                    <ul class="hub-pv-fields" role="list">
+                                                        <template for:each={row.preview.rows} for:item="f">
+                                                            <li key={f.key} class="hub-pv-field-row" role="listitem">
+                                                                <span class="hub-pv-field-name">{f.field}</span>
+                                                                <span class="hub-pv-field-value">{f.value}</span>
+                                                            </li>
+                                                        </template>
+                                                    </ul>
+                                                </template>
+                                            </div>
+                                        </template>
+                                        <template lwc:else>
+                                            <template lwc:if={row.preview.hasRows}>
+                                                <ul class="hub-pv-fields" role="list">
+                                                    <template for:each={row.preview.rows} for:item="f">
+                                                        <li key={f.key} class="hub-pv-field-row" role="listitem">
+                                                            <span class="hub-pv-field-name">{f.field}</span>
+                                                            <span class="hub-pv-field-value">{f.value}</span>
+                                                        </li>
+                                                    </template>
+                                                </ul>
+                                            </template>
+                                        </template>
+
+                                        <template lwc:if={row.canRefine}>
+                                            <div class="hub-refine">
+                                                <c-pulse-button label="Refine"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                data-action-id={row.actionId}
+                                                                onclick={handleToggleRefine}></c-pulse-button>
+                                                <template lwc:if={row.isRefining}>
+                                                    <textarea class="hub-refine-editor"
+                                                              rows="8"
+                                                              data-action-id={row.actionId}
+                                                              onchange={handleRefinedChange}>{row.refinedDraft}</textarea>
+                                                </template>
+                                            </div>
+                                        </template>
+
+                                        <div class="hub-notes-row">
+                                            <c-pulse-input label="Notes (optional)"
+                                                           placeholder="Add notes…"
+                                                           value={row.notes}
+                                                           data-action-id={row.actionId}
+                                                           onchange={handleNotesChange}></c-pulse-input>
+                                        </div>
+
+                                        <div class="hub-action-buttons">
+                                            <c-pulse-button label="Approve"
+                                                            variant="primary"
+                                                            data-action-id={row.actionId}
+                                                            disabled={row.isResolving}
+                                                            onclick={handleApprove}></c-pulse-button>
+                                            <c-pulse-button label="Reject"
+                                                            variant="ghost"
+                                                            data-action-id={row.actionId}
+                                                            disabled={row.isResolving}
+                                                            onclick={handleReject}></c-pulse-button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </li>
+                    </template>
+                </ul>
+            </template>
+        </div>
+    </template>
+</template>
