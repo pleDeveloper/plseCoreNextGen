@@ -1,0 +1,183 @@
+<template>
+    <!-- No context -->
+    <template lwc:if={noContext}>
+        <c-pulse-card>
+            <p class="hub-empty">No workflow instance selected.</p>
+        </c-pulse-card>
+    </template>
+
+    <template lwc:else>
+        <!-- Loading -->
+        <template lwc:if={isLoading}>
+            <c-pulse-card>
+                <p class="hub-loading">Loading conversations…</p>
+            </c-pulse-card>
+        </template>
+
+        <!-- Error -->
+        <template lwc:elseif={hasError}>
+            <c-pulse-card>
+                <c-pulse-badge label={error} variant="error"></c-pulse-badge>
+            </c-pulse-card>
+        </template>
+
+        <!-- Content -->
+        <template lwc:else>
+            <div class="hub-container">
+                <div class="hub-heading-row">
+                    <h2 class="hub-heading">Conversations</h2>
+                    <c-pulse-button label="Refresh" variant="ghost" size="sm"
+                                    onclick={handleRefresh}></c-pulse-button>
+                </div>
+
+                <!-- Empty state -->
+                <template lwc:if={noConversations}>
+                    <c-pulse-card>
+                        <div class="hub-empty-state">
+                            <p class="hub-empty">No conversations yet.</p>
+                            <p class="hub-empty-hint">
+                                Conversations will appear here once ingested via email, meeting transcripts, or other channels.
+                            </p>
+                        </div>
+                    </c-pulse-card>
+                </template>
+
+                <!-- Conversation list -->
+                <template lwc:if={hasConversations}>
+                    <ul class="conv-list" role="list">
+                        <template for:each={conversationCards} for:item="conv">
+                            <li key={conv.conversationId} class={conv.cardClass} role="listitem">
+                                <c-pulse-card elevated>
+                                    <!-- Header (always visible) -->
+                                    <button class="conv-header" data-conv-id={conv.conversationId}
+                                            onclick={handleToggleConversation}
+                                            aria-expanded={conv.isExpanded}>
+                                        <div class="conv-header-left">
+                                            <c-pulse-badge label={conv.medium}
+                                                           variant={conv.mediumVariant}></c-pulse-badge>
+                                            <h4 class="conv-subject">{conv.subject}</h4>
+                                        </div>
+                                        <div class="conv-header-right">
+                                            <template lwc:if={conv.hasPendingExtracts}>
+                                                <c-pulse-badge label={conv.pendingLabel}
+                                                               variant="warning"></c-pulse-badge>
+                                            </template>
+                                            <span class="conv-date">{conv.formattedDate}</span>
+                                        </div>
+                                    </button>
+
+                                    <!-- Expanded body -->
+                                    <template lwc:if={conv.isExpanded}>
+                                        <div class="conv-body">
+                                            <!-- Summary -->
+                                            <template lwc:if={conv.summary}>
+                                                <p class="conv-summary">{conv.summary}</p>
+                                            </template>
+
+                                            <!-- Turns transcript -->
+                                            <div class="conv-turns-section">
+                                                <h5 class="section-label">Transcript</h5>
+                                                <div class="conv-turns-scroll">
+                                                    <template for:each={conv.turns} for:item="turn">
+                                                        <div key={turn.turnId} class="turn-row">
+                                                            <div class="turn-meta">
+                                                                <c-pulse-badge label={turn.role}
+                                                                               variant={turn.roleVariant}></c-pulse-badge>
+                                                                <span class="turn-speaker">{turn.displaySpeaker}</span>
+                                                                <span class="turn-time">{turn.formattedTimestamp}</span>
+                                                            </div>
+                                                            <pre class="turn-content">{turn.content}</pre>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+
+                                            <!-- Extracts -->
+                                            <div class="conv-extracts-section">
+                                                <h5 class="section-label">Extracts</h5>
+                                                <template for:each={conv.extracts} for:item="ext">
+                                                    <div key={ext.extractId} class={ext.extractPanelClass}>
+                                                        <button class="extract-header"
+                                                                data-extract-id={ext.extractId}
+                                                                onclick={handleToggleExtract}
+                                                                aria-expanded={ext.isExtractExpanded}>
+                                                            <span class="extract-profile">{ext.profileKey}</span>
+                                                            <c-pulse-badge label={ext.status}
+                                                                           variant={ext.statusVariant}></c-pulse-badge>
+                                                        </button>
+
+                                                        <template lwc:if={ext.isExtractExpanded}>
+                                                            <div class="extract-body">
+                                                                <h6 class="extract-facts-heading">Facts proposed by AI</h6>
+                                                                <ul class="fact-list" role="list">
+                                                                    <template for:each={ext.factRows} for:item="fact">
+                                                                        <li key={fact.key} class="fact-row" role="listitem">
+                                                                            <template lwc:if={ext.isPending}>
+                                                                                <button class={fact.checkboxClass}
+                                                                                        data-extract-id={ext.extractId}
+                                                                                        data-field-key={fact.key}
+                                                                                        onclick={handleFieldToggle}
+                                                                                        role="checkbox"
+                                                                                        aria-checked={fact.isChecked}
+                                                                                        aria-label={fact.key}>
+                                                                                    <template lwc:if={fact.isChecked}>
+                                                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                                            <path d="M20 6L9 17l-5-5"></path>
+                                                                                        </svg>
+                                                                                    </template>
+                                                                                </button>
+                                                                            </template>
+                                                                            <div class="fact-detail">
+                                                                                <span class="fact-key">{fact.key}</span>
+                                                                                <span class="fact-value">{fact.value}</span>
+                                                                            </div>
+                                                                            <div class="fact-confidence">
+                                                                                <div class="fact-bar-track">
+                                                                                    <div class={fact.barClass} style={fact.barWidth}></div>
+                                                                                </div>
+                                                                                <span class="fact-conf-label">{fact.confidenceLabel}</span>
+                                                                            </div>
+                                                                        </li>
+                                                                    </template>
+                                                                </ul>
+
+                                                                <template lwc:if={ext.isPending}>
+                                                                    <div class="extract-actions">
+                                                                        <c-pulse-button label="Accept selected"
+                                                                                        variant="primary"
+                                                                                        disabled={ext.acceptDisabled}
+                                                                                        data-extract-id={ext.extractId}
+                                                                                        data-conv-id={conv.conversationId}
+                                                                                        onclick={handleAccept}></c-pulse-button>
+                                                                        <c-pulse-button label="Reject"
+                                                                                        variant="ghost"
+                                                                                        data-extract-id={ext.extractId}
+                                                                                        onclick={handleReject}></c-pulse-button>
+                                                                    </div>
+                                                                </template>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                            </div>
+
+                                            <!-- Footer actions -->
+                                            <template lwc:if={conv.showReextract}>
+                                                <div class="conv-footer">
+                                                    <c-pulse-button label="Request re-extraction"
+                                                                    variant="secondary"
+                                                                    data-conv-id={conv.conversationId}
+                                                                    onclick={handleReextract}></c-pulse-button>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </c-pulse-card>
+                            </li>
+                        </template>
+                    </ul>
+                </template>
+            </div>
+        </template>
+    </template>
+</template>

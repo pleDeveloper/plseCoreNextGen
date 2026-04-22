@@ -24,6 +24,16 @@
                 <label>Rejected</label>
             </value>
             <value>
+                <fullName>Accepted</fullName>
+                <default>false</default>
+                <label>Accepted</label>
+            </value>
+            <value>
+                <fullName>Partial</fullName>
+                <default>false</default>
+                <label>Partial</label>
+            </value>
+            <value>
                 <fullName>Applied</fullName>
                 <default>false</default>
                 <label>Applied</label>
