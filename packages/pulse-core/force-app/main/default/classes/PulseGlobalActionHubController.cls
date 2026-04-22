@@ -409,6 +409,7 @@ public with sharing class PulseGlobalActionHubController {
     @TestVisible
     private static ColumnConfigInput coerceToColumnConfigInput(Map<String, Object> raw) {
         ColumnConfigInput out = new ColumnConfigInput();
+        out.active = true; // default; overridden by explicit value below
         if (raw == null) return out;
         Object k = raw.get('configKey');
         if (k instanceof String) out.configKey = (String) k;
