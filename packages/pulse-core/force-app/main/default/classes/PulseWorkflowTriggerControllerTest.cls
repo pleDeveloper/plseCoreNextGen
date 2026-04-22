@@ -20,17 +20,17 @@ private class PulseWorkflowTriggerControllerTest {
     @IsTest
     static void upsertCreatesTriggerRecord() {
         Workflow_Definition__c wd = makeDef();
-        PulseWorkflowTriggerController.TriggerDto dto =
-            new PulseWorkflowTriggerController.TriggerDto();
-        dto.workflowDefinitionId = wd.Id;
-        dto.targetObject         = 'Opportunity';
-        dto.eventType            = 'Created';
-        dto.conditionJson        = '{"field":"StageName","op":"EQUALS","value":"Qualification"}';
-        dto.active               = true;
+        Map<String, Object> payload = new Map<String, Object>{
+            'workflowDefinitionId' => wd.Id,
+            'targetObject'         => 'Opportunity',
+            'eventType'            => 'Created',
+            'conditionJson'        => '{"field":"StageName","op":"EQUALS","value":"Qualification"}',
+            'active'               => true
+        };
 
         Test.startTest();
         PulseWorkflowTriggerController.UpsertResult result =
-            PulseWorkflowTriggerController.upsertTrigger(dto);
+            PulseWorkflowTriggerController.upsertTrigger(payload);
         Test.stopTest();
 
         System.assert(result.success, 'Upsert should succeed: ' + result.error);
@@ -58,17 +58,17 @@ private class PulseWorkflowTriggerControllerTest {
         );
         insert existing;
 
-        PulseWorkflowTriggerController.TriggerDto dto =
-            new PulseWorkflowTriggerController.TriggerDto();
-        dto.recordId             = existing.Id;
-        dto.workflowDefinitionId = wd.Id;
-        dto.targetObject         = 'Opportunity';
-        dto.eventType            = 'Updated';
-        dto.active               = false;
+        Map<String, Object> payload = new Map<String, Object>{
+            'recordId'             => existing.Id,
+            'workflowDefinitionId' => wd.Id,
+            'targetObject'         => 'Opportunity',
+            'eventType'            => 'Updated',
+            'active'               => false
+        };
 
         Test.startTest();
         PulseWorkflowTriggerController.UpsertResult result =
-            PulseWorkflowTriggerController.upsertTrigger(dto);
+            PulseWorkflowTriggerController.upsertTrigger(payload);
         Test.stopTest();
 
         System.assert(result.success);
@@ -139,12 +139,33 @@ private class PulseWorkflowTriggerControllerTest {
 
     @IsTest
     static void upsertFailsWithMissingFields() {
-        PulseWorkflowTriggerController.TriggerDto dto =
-            new PulseWorkflowTriggerController.TriggerDto();
+        Map<String, Object> payload = new Map<String, Object>();
         PulseWorkflowTriggerController.UpsertResult r =
-            PulseWorkflowTriggerController.upsertTrigger(dto);
+            PulseWorkflowTriggerController.upsertTrigger(payload);
         System.assertEquals(false, r.success);
         System.assertNotEquals(null, r.error);
+    }
+
+    @IsTest
+    static void coerceToTriggerDtoHandlesEdgeCases() {
+        // null input → empty DTO
+        PulseWorkflowTriggerController.TriggerDto d1 =
+            PulseWorkflowTriggerController.coerceToTriggerDto(null);
+        System.assertEquals(null, d1.recordId);
+        System.assertEquals(null, d1.workflowDefinitionId);
+
+        // empty strings for ids should become null (not throw on Id cast)
+        PulseWorkflowTriggerController.TriggerDto d2 =
+            PulseWorkflowTriggerController.coerceToTriggerDto(
+                new Map<String, Object>{'recordId' => '', 'workflowDefinitionId' => ''});
+        System.assertEquals(null, d2.recordId);
+        System.assertEquals(null, d2.workflowDefinitionId);
+
+        // active as String "true" should coerce to Boolean true
+        PulseWorkflowTriggerController.TriggerDto d3 =
+            PulseWorkflowTriggerController.coerceToTriggerDto(
+                new Map<String, Object>{'active' => 'true'});
+        System.assertEquals(true, d3.active);
     }
 
     @IsTest

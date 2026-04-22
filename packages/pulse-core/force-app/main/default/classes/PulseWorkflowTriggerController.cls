@@ -7,11 +7,17 @@
  * - deleteTrigger(triggerId)
  * - describeObjectFields(sObjectApiName) — for the field picker in the UI
  */
-global with sharing class PulseWorkflowTriggerController {
+public with sharing class PulseWorkflowTriggerController {
 
     // ── Inner DTOs ────────────────────────────────────────────────────
+    //
+    // These DTOs are used only for OUTPUT (return values) — see the
+    // upsertTrigger block below for why the input parameter accepts
+    // Map<String, Object> and not the typed TriggerDto. listTriggers
+    // returns List<TriggerDto> successfully because Aura's output
+    // serialization of inner DTOs is not affected by this bug.
 
-    global class TriggerDto {
+    public class TriggerDto {
         @AuraEnabled public Id     recordId;
         @AuraEnabled public Id     workflowDefinitionId;
         @AuraEnabled public String name;
@@ -22,7 +28,7 @@ global with sharing class PulseWorkflowTriggerController {
         @AuraEnabled public Boolean active;
     }
 
-    global class UpsertResult {
+    public class UpsertResult {
         @AuraEnabled public Boolean success;
         @AuraEnabled public Id      recordId;
         @AuraEnabled public String  triggerName;              // canonical Apex trigger on target
@@ -39,7 +45,7 @@ global with sharing class PulseWorkflowTriggerController {
         }
     }
 
-    global class FieldInfo {
+    public class FieldInfo {
         @AuraEnabled public String apiName;
         @AuraEnabled public String label;
         @AuraEnabled public String fieldType;   // STRING, PICKLIST, DATE, DATETIME, BOOLEAN, CURRENCY, DOUBLE, INTEGER, etc.
@@ -76,25 +82,59 @@ global with sharing class PulseWorkflowTriggerController {
     }
 
     // ── Upsert ────────────────────────────────────────────────────────
-
+    //
+    // IMPORTANT — public input signature is `Map<String, Object>`, NOT the
+    // typed `TriggerDto`. In this namespaced scratch + any managed-package
+    // installation, Aura's framework fails to deserialize an inbound JSON
+    // object into a user-defined inner Apex class — it returns the opaque
+    // "internal server error" / ID suffix `(-583189392)` envelope even
+    // though the Apex method never runs. Demonstrated empirically by
+    // driving /aura directly:
+    //     V2 (typed DTO input, String output) → FAIL
+    //     V3 (primitive inputs, String output) → SUCCESS
+    //     V6 (typed DTO with String ids, String output) → FAIL
+    //     V7 (Map<String,Object> input, String output) → SUCCESS
+    //     minimal TestInputDto with 2 String fields → FAIL (not
+    //                                                 specific to our class)
+    // Accepting a Map and coercing to TriggerDto in Apex dodges the Aura
+    // type-reflection path entirely. The RETURN type can stay as a typed
+    // inner class — output serialization of inner DTOs works fine (proved
+    // by listTriggers, which returns List<TriggerDto> successfully).
     @AuraEnabled
-    public static UpsertResult upsertTrigger(TriggerDto payload) {
-        System.debug(LoggingLevel.INFO,
-            '### upsertTrigger called with: ' + JSON.serialize(payload));
+    public static UpsertResult upsertTrigger(Map<String, Object> payload) {
         try {
-            UpsertResult out = upsertTriggerInternal(payload);
-            System.debug(LoggingLevel.INFO,
-                '### upsertTrigger returning: ' + JSON.serialize(out));
-            return out;
+            TriggerDto dto = coerceToTriggerDto(payload);
+            return upsertTriggerInternal(dto);
         } catch (Exception e) {
-            System.debug(LoggingLevel.ERROR,
-                '### upsertTrigger caught: ' + e.getTypeName() + ': ' + e.getMessage() +
-                '\nStack: ' + e.getStackTraceString());
             UpsertResult out = new UpsertResult();
             out.success = false;
             out.error = e.getTypeName() + ': ' + e.getMessage();
             return out;
         }
+    }
+
+    @TestVisible
+    private static TriggerDto coerceToTriggerDto(Map<String, Object> src) {
+        TriggerDto d = new TriggerDto();
+        if (src == null) return d;
+        Object rid = src.get('recordId');
+        if (rid != null && String.valueOf(rid) != '') d.recordId = (Id) String.valueOf(rid);
+        Object wfid = src.get('workflowDefinitionId');
+        if (wfid != null && String.valueOf(wfid) != '') d.workflowDefinitionId = (Id) String.valueOf(wfid);
+        Object nm = src.get('name');
+        if (nm != null) d.name = String.valueOf(nm);
+        Object to = src.get('targetObject');
+        if (to != null) d.targetObject = String.valueOf(to);
+        Object et = src.get('eventType');
+        if (et != null) d.eventType = String.valueOf(et);
+        Object cj = src.get('conditionJson');
+        if (cj != null) d.conditionJson = String.valueOf(cj);
+        Object isk = src.get('initialStateKey');
+        if (isk != null) d.initialStateKey = String.valueOf(isk);
+        Object act = src.get('active');
+        if (act instanceof Boolean) d.active = (Boolean) act;
+        else if (act != null) d.active = Boolean.valueOf(String.valueOf(act));
+        return d;
     }
 
     private static UpsertResult upsertTriggerInternal(TriggerDto payload) {
