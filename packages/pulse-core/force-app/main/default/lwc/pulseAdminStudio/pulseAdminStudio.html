@@ -42,18 +42,23 @@
 
             <!-- Main panel -->
             <main class="studio-main">
-                <div class="pulse-card studio-placeholder-card">
-                    <div class="pulse-card-icon studio-placeholder-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2"
-                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d={activePanel.icon}></path>
-                        </svg>
+                <template lwc:if={isWorkflowBuilder}>
+                    <c-pulse-workflow-builder></c-pulse-workflow-builder>
+                </template>
+                <template lwc:else>
+                    <div class="pulse-card studio-placeholder-card">
+                        <div class="pulse-card-icon studio-placeholder-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d={activePanel.icon}></path>
+                            </svg>
+                        </div>
+                        <h2 class="studio-placeholder-heading">{panelHeading}</h2>
+                        <p class="studio-placeholder-desc">{panelDescription}</p>
+                        <span class="pulse-badge pulse-badge-purple">Coming in wave 3c+</span>
                     </div>
-                    <h2 class="studio-placeholder-heading">{panelHeading}</h2>
-                    <p class="studio-placeholder-desc">{panelDescription}</p>
-                    <span class="pulse-badge pulse-badge-purple">Coming in wave 3b</span>
-                </div>
+                </template>
             </main>
         </div>
     </div>

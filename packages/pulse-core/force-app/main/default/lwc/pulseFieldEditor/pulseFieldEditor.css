@@ -1,0 +1,90 @@
+.field-editor {
+    padding: var(--pulse-space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-4);
+}
+
+.field-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.field-editor-title {
+    font-size: var(--pulse-text-body);
+    font-weight: var(--pulse-weight-semibold);
+    color: var(--pulse-dark);
+    margin: 0;
+}
+
+.field-editor-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: var(--pulse-radius-md);
+    background: transparent;
+    color: var(--pulse-slate);
+    cursor: pointer;
+    transition: all var(--pulse-transition-fast);
+}
+
+.field-editor-close:hover {
+    background: var(--pulse-light-gray);
+}
+
+.field-editor-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-4);
+}
+
+.field-editor-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--pulse-space-4);
+}
+
+.field-editor-select-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-1);
+}
+
+.field-editor-select {
+    width: 100%;
+    height: 40px;
+    padding: 0 var(--pulse-space-3);
+    border: 1px solid var(--pulse-border);
+    border-radius: var(--pulse-radius-md);
+    background: var(--pulse-white);
+    font-family: var(--pulse-font-primary);
+    font-size: var(--pulse-text-small);
+    color: var(--pulse-dark);
+    cursor: pointer;
+    transition: border-color var(--pulse-transition-fast);
+}
+
+.field-editor-select:focus {
+    outline: none;
+    border-color: var(--pulse-purple);
+    box-shadow: var(--pulse-shadow-focus-ring);
+}
+
+.field-editor-projection {
+    padding: var(--pulse-space-3);
+    border: 1px solid var(--pulse-border);
+    border-radius: var(--pulse-radius-md);
+    background: var(--pulse-light-gray);
+}
+
+.field-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: var(--pulse-space-2);
+    border-top: 1px solid var(--pulse-border);
+}

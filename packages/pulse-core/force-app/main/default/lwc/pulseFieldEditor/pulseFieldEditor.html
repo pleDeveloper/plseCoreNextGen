@@ -1,0 +1,75 @@
+<template>
+    <div class="pulse-surface field-editor">
+        <div class="field-editor-header">
+            <h3 class="field-editor-title">Edit field</h3>
+            <button class="field-editor-close" aria-label="Close" onclick={handleClose}>
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="field-editor-form">
+            <c-pulse-input
+                label="Field key"
+                value={fieldKey}
+                placeholder="e.g. referring_physician"
+                required
+                onchange={handleKeyChange}>
+            </c-pulse-input>
+
+            <c-pulse-input
+                label="Label"
+                value={label}
+                placeholder="e.g. Referring physician"
+                onchange={handleLabelChange}>
+            </c-pulse-input>
+
+            <div class="field-editor-row">
+                <div class="field-editor-select-wrap">
+                    <label class="pulse-input-label" for="field-type-select">Type</label>
+                    <select id="field-type-select"
+                            class="field-editor-select"
+                            onchange={handleTypeChange}>
+                        <template for:each={typeOptions} for:item="opt">
+                            <option key={opt.value} value={opt.value} selected={opt.selected}>
+                                {opt.label}
+                            </option>
+                        </template>
+                    </select>
+                </div>
+                <c-pulse-toggle
+                    label="Required"
+                    checked={required}
+                    onchange={handleRequiredChange}>
+                </c-pulse-toggle>
+            </div>
+
+            <div class="field-editor-projection">
+                <c-pulse-toggle
+                    label="Show on record page and include in reports"
+                    help-text="Promotes this field to the parent record via Workflow_Projection__mdt"
+                    checked={projectionEnabled}
+                    onchange={handleProjectionToggle}>
+                </c-pulse-toggle>
+            </div>
+
+            <c-pulse-input
+                label="Extraction hints"
+                value={hintsValue}
+                placeholder="Comma-separated: referring doctor, clinic contact"
+                help-text="AI extraction uses these as search cues"
+                onchange={handleHintsChange}>
+            </c-pulse-input>
+
+            <div class="field-editor-actions">
+                <c-pulse-button
+                    label="Delete field"
+                    variant="ghost"
+                    size="sm"
+                    onclick={handleDelete}>
+                </c-pulse-button>
+            </div>
+        </div>
+    </div>
+</template>

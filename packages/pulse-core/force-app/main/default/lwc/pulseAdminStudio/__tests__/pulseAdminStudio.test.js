@@ -7,6 +7,32 @@ jest.mock(
     { virtual: true }
 );
 
+jest.mock(
+    'c/pulseStore',
+    () => ({
+        getState: jest.fn(() => ({
+            workflow: { schema: 'pulse.workflow.v1', workflowKey: '', version: 1, subjectKinds: [], states: [] },
+            ui: { selectedStateKey: null, selectedFieldKey: null, dirty: false, publishing: false }
+        })),
+        subscribe: jest.fn(() => () => {}),
+        dispatch: jest.fn(),
+        resetStore: jest.fn()
+    }),
+    { virtual: true }
+);
+
+jest.mock(
+    '@salesforce/apex/PulseWorkflowBuilderController.saveWorkflow',
+    () => ({ default: jest.fn(() => Promise.resolve({ success: true, recordId: '001xx001', errors: [] })) }),
+    { virtual: true }
+);
+
+jest.mock(
+    '@salesforce/apex/PulseWorkflowBuilderController.publishWorkflow',
+    () => ({ default: jest.fn(() => Promise.resolve({ status: 'Queued', message: 'ok' })) }),
+    { virtual: true }
+);
+
 
 function createComponent() {
     const el = createElement('c-pulse-admin-studio', { is: PulseAdminStudio });
@@ -63,16 +89,29 @@ describe('c-pulse-admin-studio', () => {
         expect(active.querySelector('.studio-nav-label').textContent).toBe('Workflow builder');
     });
 
-    it('renders main panel with active heading', () => {
+    it('renders the workflow builder component when workflow-builder is active', () => {
         const el = createComponent();
-        const heading = el.shadowRoot.querySelector('.studio-placeholder-heading');
-        expect(heading.textContent).toBe('Workflow builder');
+        const builder = el.shadowRoot.querySelector('c-pulse-workflow-builder');
+        expect(builder).not.toBeNull();
+    });
+
+    it('shows placeholder card when a non-builder tab is active', () => {
+        const el = createComponent();
+        const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
+        // Click "AI config" (index 2)
+        navItems[2].click();
+        return Promise.resolve().then(() => {
+            const heading = el.shadowRoot.querySelector('.studio-placeholder-heading');
+            expect(heading.textContent).toBe('AI config');
+            // Builder should not be rendered
+            const builder = el.shadowRoot.querySelector('c-pulse-workflow-builder');
+            expect(builder).toBeNull();
+        });
     });
 
     it('switches active panel when nav item clicked', () => {
         const el = createComponent();
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        // Click "AI config" (index 2)
         navItems[2].click();
         return Promise.resolve().then(() => {
             const heading = el.shadowRoot.querySelector('.studio-placeholder-heading');
@@ -82,40 +121,20 @@ describe('c-pulse-admin-studio', () => {
         });
     });
 
-    it('switches to each nav item correctly', () => {
+    it('shows placeholder for non-builder tabs with coming badge', () => {
         const el = createComponent();
-        const expected = [
-            'Workflow builder',
-            'Integrations hub',
-            'AI config',
-            'Library',
-            'Settings',
-        ];
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
-
-        let chain = Promise.resolve();
-        expected.forEach((label, idx) => {
-            chain = chain.then(() => {
-                navItems[idx].click();
-                return Promise.resolve().then(() => {
-                    const heading = el.shadowRoot.querySelector('.studio-placeholder-heading');
-                    expect(heading.textContent).toBe(label);
-                });
-            });
+        navItems[3].click(); // Library
+        return Promise.resolve().then(() => {
+            const badge = el.shadowRoot.querySelector('.pulse-badge');
+            expect(badge).not.toBeNull();
+            expect(badge.textContent).toContain('Coming in wave 3c+');
         });
-        return chain;
     });
 
     it('has accessible navigation landmark', () => {
         const el = createComponent();
         const nav = el.shadowRoot.querySelector('nav');
         expect(nav.getAttribute('aria-label')).toBe('Admin Studio navigation');
-    });
-
-    it('renders the coming soon badge', () => {
-        const el = createComponent();
-        const badge = el.shadowRoot.querySelector('.pulse-badge');
-        expect(badge).not.toBeNull();
-        expect(badge.textContent).toContain('Coming in wave 3b');
     });
 });

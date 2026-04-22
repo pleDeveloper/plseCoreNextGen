@@ -1,0 +1,28 @@
+<template>
+    <div class="pulse-surface graph-container">
+        <template lwc:if={hasStates}>
+            <svg class="graph-svg" lwc:dom="manual"></svg>
+            <div class="graph-nodes">
+                <template for:each={stateNodes} for:item="node">
+                    <div key={node.key} class="graph-node-wrapper" data-key={node.key}>
+                        <c-pulse-state-card
+                            state-key={node.key}
+                            label={node.label}
+                            state-type={node.type}
+                            field-count={node.fieldCount}
+                            transition-count={node.transitionCount}
+                            selected={node.selected}
+                            onselectstate={handleSelectState}
+                            ondeletestate={handleDeleteState}>
+                        </c-pulse-state-card>
+                    </div>
+                </template>
+            </div>
+        </template>
+        <template lwc:if={isEmpty}>
+            <div class="graph-empty">
+                <p class="graph-empty-text">Add states to see them here</p>
+            </div>
+        </template>
+    </div>
+</template>

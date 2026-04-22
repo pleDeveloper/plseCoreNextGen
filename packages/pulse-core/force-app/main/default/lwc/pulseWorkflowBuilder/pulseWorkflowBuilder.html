@@ -1,0 +1,235 @@
+<template>
+    <div class="pulse-surface builder-shell">
+        <!-- Top bar -->
+        <div class="builder-topbar">
+            <div class="builder-topbar-left">
+                <h1 class="builder-title">Workflow builder</h1>
+                <template lwc:if={workflowName}>
+                    <span class="builder-wf-name">{workflowName}</span>
+                </template>
+                <template lwc:if={isDirty}>
+                    <span class="builder-dirty-dot" title="Unsaved changes"></span>
+                </template>
+            </div>
+            <div class="builder-topbar-right">
+                <c-pulse-button label="Save" variant="secondary" size="sm"
+                                disabled={saveDisabled}
+                                onclick={handleSave}>
+                </c-pulse-button>
+                <c-pulse-button label="Publish workflow" variant="primary" size="sm"
+                                disabled={publishDisabled}
+                                onclick={handleOpenPublish}>
+                </c-pulse-button>
+            </div>
+        </div>
+
+        <template lwc:if={isCreating}>
+            <!-- Create workflow form -->
+            <div class="builder-create-panel">
+                <div class="builder-create-card">
+                    <h2 class="builder-create-heading">Create a new workflow</h2>
+                    <p class="builder-create-desc">Define the workflow key, name, and which objects it targets.</p>
+                    <div class="builder-create-form">
+                        <c-pulse-input label="Workflow key"
+                                       value={newWorkflowKey}
+                                       placeholder="e.g. healthcare_intake"
+                                       required
+                                       onchange={handleNewKeyChange}>
+                        </c-pulse-input>
+                        <c-pulse-input label="Workflow name"
+                                       value={newWorkflowName}
+                                       placeholder="e.g. Healthcare intake"
+                                       onchange={handleNewNameChange}>
+                        </c-pulse-input>
+                        <c-pulse-input label="Subject kinds"
+                                       value={newSubjectKinds}
+                                       placeholder="Comma-separated: Referral__c, Opportunity"
+                                       help-text="API names of objects this workflow can run on"
+                                       onchange={handleNewKindsChange}>
+                        </c-pulse-input>
+                        <c-pulse-button label="Create workflow" variant="primary"
+                                        disabled={createDisabled}
+                                        onclick={handleCreateWorkflow}>
+                        </c-pulse-button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <template lwc:if={isEditing}>
+            <!-- Three-panel builder -->
+            <div class="builder-body">
+                <!-- Left panel -->
+                <div class="builder-left">
+                    <div class="builder-left-header">
+                        <h2 class="builder-panel-title">States</h2>
+                        <c-pulse-button label="Add state" variant="ghost" size="sm"
+                                        onclick={handleAddState}>
+                        </c-pulse-button>
+                    </div>
+
+                    <!-- Add-state form (inline) -->
+                    <template lwc:if={showAddStateForm}>
+                        <div class="builder-inline-form">
+                            <c-pulse-input label="State key"
+                                           value={newStateKey}
+                                           placeholder="e.g. clinical_intake"
+                                           onchange={handleNewStateKeyChange}>
+                            </c-pulse-input>
+                            <c-pulse-input label="Label"
+                                           value={newStateLabel}
+                                           placeholder="e.g. Clinical intake"
+                                           onchange={handleNewStateLabelChange}>
+                            </c-pulse-input>
+                            <div class="builder-inline-actions">
+                                <c-pulse-button label="Cancel" variant="ghost" size="sm"
+                                                onclick={handleCancelAddState}>
+                                </c-pulse-button>
+                                <c-pulse-button label="Add" variant="primary" size="sm"
+                                                disabled={addStateDisabled}
+                                                onclick={handleConfirmAddState}>
+                                </c-pulse-button>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- States list -->
+                    <div class="builder-states-list">
+                        <template for:each={statesList} for:item="s">
+                            <c-pulse-state-card
+                                key={s.key}
+                                state-key={s.key}
+                                label={s.label}
+                                state-type={s.type}
+                                field-count={s.fieldCount}
+                                transition-count={s.transitionCount}
+                                selected={s.selected}
+                                onselectstate={handleSelectState}
+                                ondeletestate={handleDeleteState}
+                                onreorderstate={handleReorderState}>
+                            </c-pulse-state-card>
+                        </template>
+                    </div>
+
+                    <!-- Metadata section -->
+                    <div class="builder-meta-section">
+                        <h3 class="builder-meta-heading">Workflow metadata</h3>
+                        <c-pulse-input label="Workflow key" value={workflowKey}
+                                       onchange={handleMetaKeyChange}>
+                        </c-pulse-input>
+                        <c-pulse-input label="Subject kinds" value={subjectKindsDisplay}
+                                       onchange={handleMetaKindsChange}>
+                        </c-pulse-input>
+                    </div>
+                </div>
+
+                <!-- Center canvas -->
+                <div class="builder-center">
+                    <c-pulse-state-graph
+                        states={states}
+                        selected-state-key={selectedStateKey}
+                        onselectstate={handleSelectState}
+                        ondeletestate={handleDeleteState}>
+                    </c-pulse-state-graph>
+                </div>
+
+                <!-- Right panel (inspector) -->
+                <div class="builder-right">
+                    <template lwc:if={hasFieldSelected}>
+                        <c-pulse-field-editor
+                            state-key={selectedStateKey}
+                            field-key={selectedField.key}
+                            label={selectedField.label}
+                            field-type={selectedField.type}
+                            required={selectedField.required}
+                            projection-enabled={selectedField.projectionEnabled}
+                            extraction-hints={selectedField.extractionHints}
+                            onupdatefield={handleUpdateField}
+                            ontoggleprojection={handleToggleProjection}
+                            ondeletefield={handleDeleteField}
+                            oncloseinspector={handleCloseInspector}>
+                        </c-pulse-field-editor>
+                    </template>
+                    <template lwc:if={hasStateSelectedNoField}>
+                        <div class="builder-state-inspector">
+                            <h3 class="builder-panel-title">State: {selectedState.label}</h3>
+                            <c-pulse-input label="State key" value={selectedState.key}
+                                           onchange={handleStateKeyEdit}>
+                            </c-pulse-input>
+                            <c-pulse-input label="Label" value={selectedState.label}
+                                           onchange={handleStateLabelEdit}>
+                            </c-pulse-input>
+
+                            <!-- Fields list -->
+                            <div class="builder-section">
+                                <div class="builder-section-header">
+                                    <h4 class="builder-section-title">Fields</h4>
+                                    <c-pulse-button label="Add field" variant="ghost" size="sm"
+                                                    onclick={handleAddField}>
+                                    </c-pulse-button>
+                                </div>
+                                <template lwc:if={selectedState.hasFields}>
+                                    <ul class="builder-field-list">
+                                        <template for:each={selectedState.fields} for:item="f">
+                                            <li key={f.key} class="builder-field-item"
+                                                data-field-key={f.key}
+                                                onclick={handleSelectField}>
+                                                <span class="builder-field-label">{f.label}</span>
+                                                <span class="builder-field-type">{f.type}</span>
+                                                <template lwc:if={f.projected}>
+                                                    <c-pulse-badge label="Projected" variant="purple"></c-pulse-badge>
+                                                </template>
+                                            </li>
+                                        </template>
+                                    </ul>
+                                </template>
+                            </div>
+
+                            <!-- Transitions list -->
+                            <div class="builder-section">
+                                <div class="builder-section-header">
+                                    <h4 class="builder-section-title">Transitions</h4>
+                                    <c-pulse-button label="Add transition" variant="ghost" size="sm"
+                                                    onclick={handleAddTransition}>
+                                    </c-pulse-button>
+                                </div>
+                                <template lwc:if={selectedState.hasTransitions}>
+                                    <ul class="builder-transition-list">
+                                        <template for:each={selectedState.transitions} for:item="t">
+                                            <li key={t.compositeKey} class="builder-transition-item">
+                                                <span class="builder-transition-signal">{t.signal}</span>
+                                                <span class="builder-transition-arrow">&rarr;</span>
+                                                <span class="builder-transition-target">{t.to}</span>
+                                                <button class="builder-transition-delete"
+                                                        title="Remove transition"
+                                                        data-index={t.idx}
+                                                        onclick={handleDeleteTransition}>
+                                                    <svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                                    </svg>
+                                                </button>
+                                            </li>
+                                        </template>
+                                    </ul>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <template lwc:if={noSelection}>
+                        <c-pulse-live-preview states={states}></c-pulse-live-preview>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        <!-- Deploy dialog -->
+        <c-pulse-deploy-dialog
+            open={showDeployDialog}
+            target-object={publishTargetObject}
+            fields-to-create={deployFieldSpecs}
+            projections={deployProjections}
+            onclose={handleClosePublish}
+            onpublish={handleConfirmPublish}>
+        </c-pulse-deploy-dialog>
+    </div>
+</template>

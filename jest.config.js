@@ -13,6 +13,9 @@ module.exports = {
         /* Org info mocks */
         '^@salesforce/org/(.+)$':
             '<rootDir>/jest-mocks/orgInfo.js',
+        /* Apex controller mocks */
+        '^@salesforce/apex/(.+)$':
+            '<rootDir>/jest-mocks/apex.js',
     },
     testMatch: ['**/__tests__/**/*.test.js'],
 };
