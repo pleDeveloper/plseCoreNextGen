@@ -121,11 +121,15 @@ public with sharing class HitlService {
         // Phase/actions lifecycle: on successful execution, promote any
         // dependents whose deps just became satisfied, and auto-advance
         // the instance out of the phase if all required actions are done
-        // and the phase's advancement mode is 'auto'.
+        // and the phase's advancement mode is 'auto'. Also give the
+        // StageProgressionService a chance to fire for non-default
+        // progression modes (custom_logic, field_change caught up via
+        // a tool run, etc.).
         if (result.success && String.isNotBlank(action.Action_Key__c)) {
             try {
                 PulseActionInstantiationService.promoteDependents(action.Id);
                 autoAdvanceIfComplete(action.Workflow_Instance__c);
+                StageProgressionService.checkAndAutoAdvance(action.Workflow_Instance__c);
             } catch (Exception e) {
                 System.debug(LoggingLevel.ERROR,
                     'HitlService: post-execute action lifecycle failed: ' + e.getMessage());

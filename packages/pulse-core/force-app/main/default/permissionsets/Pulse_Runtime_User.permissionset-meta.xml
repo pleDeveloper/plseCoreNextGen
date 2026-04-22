@@ -186,6 +186,11 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
+        <field>Workflow_Instance__c.Stage_Status__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
         <field>Workflow_Instance__c.Started_Date__c</field>
         <readable>true</readable>
     </fieldPermissions>

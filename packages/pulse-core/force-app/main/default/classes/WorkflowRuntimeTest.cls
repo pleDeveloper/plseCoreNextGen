@@ -219,6 +219,83 @@ private class WorkflowRuntimeTest {
         WorkflowRuntime.clearHooks();
     }
 
+    // ─── Entry / exit condition tests ────────────────────────────
+
+    @IsTest
+    static void entryConditionPassAllowsTransition() {
+        Account acct = new Account(Name = 'Good Co', Industry = 'Biotechnology');
+        insert acct;
+        Workflow_Definition__c def = insertDefinitionWithConditions(
+            // exit of intake must be "review_ready", entry of review requires Industry == Biotechnology
+            '{"logic":"AND","rules":[{"field":"Industry","op":"EQUALS","value":"Biotechnology"}]}',
+            null
+        );
+        Workflow_Instance__c inst = insertInstanceForParent(def.Id, 'intake', acct.Id);
+
+        WorkflowAdvanceRequest req = new WorkflowAdvanceRequest(inst.Id, 'submit');
+
+        Test.startTest();
+        List<WorkflowRuntime.AdvanceResult> results = WorkflowRuntime.advance(
+            new List<WorkflowAdvanceRequest>{ req }
+        );
+        Test.stopTest();
+
+        System.assertEquals(true, results[0].success, 'entryPass: error=' + results[0].error);
+        System.assertEquals('review', results[0].toState);
+    }
+
+    @IsTest
+    static void entryConditionFailRejectsTransition() {
+        Account acct = new Account(Name = 'Bad Co', Industry = 'Agriculture');
+        insert acct;
+        Workflow_Definition__c def = insertDefinitionWithConditions(
+            '{"logic":"AND","rules":[{"field":"Industry","op":"EQUALS","value":"Biotechnology"}]}',
+            null
+        );
+        Workflow_Instance__c inst = insertInstanceForParent(def.Id, 'intake', acct.Id);
+
+        WorkflowAdvanceRequest req = new WorkflowAdvanceRequest(inst.Id, 'submit');
+
+        Test.startTest();
+        List<WorkflowRuntime.AdvanceResult> results = WorkflowRuntime.advance(
+            new List<WorkflowAdvanceRequest>{ req }
+        );
+        Test.stopTest();
+
+        System.assertEquals(false, results[0].success);
+        System.assert(results[0].error.contains('Entry condition not met'),
+            'expected entry failure, got: ' + results[0].error);
+        // Instance stayed put
+        Workflow_Instance__c after = [
+            SELECT Current_State__c FROM Workflow_Instance__c WHERE Id = :inst.Id
+        ];
+        System.assertEquals('intake', after.Current_State__c);
+    }
+
+    @IsTest
+    static void exitConditionFailBlocksTransition() {
+        Account acct = new Account(Name = 'Exit Co', Industry = 'Agriculture');
+        insert acct;
+        // Attach exit condition to intake that requires Industry = 'Biotechnology'
+        Workflow_Definition__c def = insertDefinitionWithConditions(
+            null,
+            '{"logic":"AND","rules":[{"field":"Industry","op":"EQUALS","value":"Biotechnology"}]}'
+        );
+        Workflow_Instance__c inst = insertInstanceForParent(def.Id, 'intake', acct.Id);
+
+        WorkflowAdvanceRequest req = new WorkflowAdvanceRequest(inst.Id, 'submit');
+
+        Test.startTest();
+        List<WorkflowRuntime.AdvanceResult> results = WorkflowRuntime.advance(
+            new List<WorkflowAdvanceRequest>{ req }
+        );
+        Test.stopTest();
+
+        System.assertEquals(false, results[0].success);
+        System.assert(results[0].error.contains('Exit condition not met'),
+            'expected exit failure, got: ' + results[0].error);
+    }
+
     // ─── Test data helpers ───────────────────────────────────────
 
     private static Workflow_Definition__c insertDefinition() {
@@ -243,6 +320,54 @@ private class WorkflowRuntimeTest {
         );
         insert inst;
         return inst;
+    }
+
+    private static Workflow_Definition__c insertDefinitionWithConditions(
+        String reviewEntryJson, String intakeExitJson
+    ) {
+        String json = buildContractWithConditions(reviewEntryJson, intakeExitJson);
+        Workflow_Definition__c def = new Workflow_Definition__c(
+            Name = 'Test WF with Conditions',
+            Workflow_Key__c = 'test_wf_cond',
+            Version__c = 1,
+            Status__c = 'Published',
+            Definition_JSON__c = json
+        );
+        insert def;
+        return def;
+    }
+
+    private static Workflow_Instance__c insertInstanceForParent(
+        Id defId, String currentState, Id parentId
+    ) {
+        Workflow_Instance__c inst = new Workflow_Instance__c(
+            Workflow_Definition__c = defId,
+            Current_State__c = currentState,
+            Status__c = 'Active',
+            Pinned_Version__c = 1,
+            Parent_Object_Type__c = 'Account',
+            Parent_Record_Id__c = parentId,
+            Started_Date__c = Datetime.now()
+        );
+        insert inst;
+        return inst;
+    }
+
+    private static String buildContractWithConditions(
+        String reviewEntryJson, String intakeExitJson
+    ) {
+        String intakeExit = String.isNotBlank(intakeExitJson)
+            ? (',"exitConditions":' + intakeExitJson) : '';
+        String reviewEntry = String.isNotBlank(reviewEntryJson)
+            ? (',"entryConditions":' + reviewEntryJson) : '';
+        return '{"schema":"pulse.workflow.v1","workflowKey":"test_wf_cond","version":1,' +
+            '"subjectKinds":["Account"],"states":[' +
+            '{"key":"intake","label":"Intake","type":"form","fields":[],"transitions":[' +
+                '{"signal":"submit","to":"review"}]' + intakeExit + '},' +
+            '{"key":"review","label":"Review","type":"approval","fields":[],"transitions":[' +
+                '{"signal":"approve","to":"complete"}]' + reviewEntry + '},' +
+            '{"key":"complete","label":"Complete","type":"terminal","fields":[],"transitions":[]}' +
+            ']}';
     }
 
     private static String buildContractJson() {

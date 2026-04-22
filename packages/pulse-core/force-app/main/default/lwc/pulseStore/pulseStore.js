@@ -348,6 +348,62 @@ function reduce(cur, action) {
                 ui: { ...cur.ui, dirty: true }
             };
 
+        case 'UPDATE_STATE_ENTRY_CONDITIONS':
+            return {
+                ...cur,
+                workflow: {
+                    ...cur.workflow,
+                    states: cur.workflow.states.map((s) =>
+                        s.key === action.stateKey
+                            ? { ...s, entryConditions: action.tree || {} }
+                            : s
+                    )
+                },
+                ui: { ...cur.ui, dirty: true }
+            };
+
+        case 'UPDATE_STATE_EXIT_CONDITIONS':
+            return {
+                ...cur,
+                workflow: {
+                    ...cur.workflow,
+                    states: cur.workflow.states.map((s) =>
+                        s.key === action.stateKey
+                            ? { ...s, exitConditions: action.tree || {} }
+                            : s
+                    )
+                },
+                ui: { ...cur.ui, dirty: true }
+            };
+
+        case 'UPDATE_STATE_PROGRESSION':
+            return {
+                ...cur,
+                workflow: {
+                    ...cur.workflow,
+                    states: cur.workflow.states.map((s) =>
+                        s.key === action.stateKey
+                            ? { ...s, progression: action.progression || {} }
+                            : s
+                    )
+                },
+                ui: { ...cur.ui, dirty: true }
+            };
+
+        case 'UPDATE_STATE_STATUS_RULES':
+            return {
+                ...cur,
+                workflow: {
+                    ...cur.workflow,
+                    states: cur.workflow.states.map((s) =>
+                        s.key === action.stateKey
+                            ? { ...s, statusRules: action.statusRules || {} }
+                            : s
+                    )
+                },
+                ui: { ...cur.ui, dirty: true }
+            };
+
         case 'LOAD_WORKFLOW':
             return {
                 ...cur,

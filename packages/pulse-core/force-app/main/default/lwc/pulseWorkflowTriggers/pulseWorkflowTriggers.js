@@ -3,37 +3,17 @@ import { loadPulseBrandTokens } from 'c/pulseBrandTokens';
 import listTriggers from '@salesforce/apex/PulseWorkflowTriggerController.listTriggers';
 import upsertTrigger from '@salesforce/apex/PulseWorkflowTriggerController.upsertTrigger';
 import deleteTrigger from '@salesforce/apex/PulseWorkflowTriggerController.deleteTrigger';
-import describeObjectFields from '@salesforce/apex/PulseWorkflowTriggerController.describeObjectFields';
 
 const EVENT_TYPES = [
     { label: 'Created', value: 'Created' },
     { label: 'Updated', value: 'Updated' },
-    { label: 'Created or updated', value: 'Created_or_Updated' },
-];
-
-const DEFAULT_OPS = [
-    { label: 'equals', value: 'EQUALS' },
-    { label: 'not equals', value: 'NOT_EQUALS' },
-    { label: 'contains', value: 'CONTAINS' },
-    { label: 'starts with', value: 'STARTS_WITH' },
-    { label: 'ends with', value: 'ENDS_WITH' },
-    { label: 'greater than', value: 'GREATER_THAN' },
-    { label: 'less than', value: 'LESS_THAN' },
-    { label: 'is empty', value: 'IS_NULL' },
-    { label: 'is not empty', value: 'IS_NOT_NULL' },
-    { label: 'changed', value: 'IS_CHANGED' },
-    { label: 'changed to', value: 'CHANGED_TO' },
-    { label: 'changed from', value: 'CHANGED_FROM' },
+    { label: 'Created or updated', value: 'Created_or_Updated' }
 ];
 
 let uiRowSeq = 0;
 function nextRowId() {
     uiRowSeq += 1;
     return `r_${uiRowSeq}`;
-}
-
-function freshRule() {
-    return { rowId: nextRowId(), field: '', op: 'EQUALS', value: '' };
 }
 
 function freshTrigger(workflowDefinitionId) {
@@ -44,14 +24,13 @@ function freshTrigger(workflowDefinitionId) {
         name: '',
         targetObject: '',
         eventType: 'Created_or_Updated',
-        logic: 'AND',
-        rules: [freshRule()],
+        conditionTree: { logic: 'AND', rules: [] },
         initialStateKey: '',
         active: true,
         dirty: true,
         saving: false,
         error: null,
-        apexTriggerStatus: null,
+        apexTriggerStatus: null
     };
 }
 
@@ -62,8 +41,6 @@ export default class PulseWorkflowTriggers extends LightningElement {
     @track triggers = [];
     @track loading = true;
     @track listError = null;
-
-    _fieldCache = new Map();      // sObjectApiName -> [{apiName, label, fieldType, picklistValues}]
 
     connectedCallback() {
         loadPulseBrandTokens(this);
@@ -82,7 +59,7 @@ export default class PulseWorkflowTriggers extends LightningElement {
             opts.push({
                 label: s.label || s.key,
                 value: s.key,
-                selected: s.key === selectedKey,
+                selected: s.key === selectedKey
             });
         });
         return opts;
@@ -107,37 +84,27 @@ export default class PulseWorkflowTriggers extends LightningElement {
     }
 
     _rowToState(row) {
-        let logic = 'AND';
-        let rules = [];
+        let tree = { logic: 'AND', rules: [] };
         try {
             const parsed = row.conditionJson ? JSON.parse(row.conditionJson) : null;
             if (parsed) {
                 if (parsed.field && parsed.op) {
-                    // single-rule shorthand
-                    rules = [{
-                        rowId: nextRowId(),
-                        field: parsed.field,
-                        op: parsed.op,
-                        value: parsed.value != null ? String(parsed.value) : '',
-                    }];
+                    tree = {
+                        logic: 'AND',
+                        rules: [
+                            {
+                                field: parsed.field,
+                                op: parsed.op,
+                                value: parsed.value
+                            }
+                        ]
+                    };
                 } else {
-                    logic = (parsed.logic || 'AND').toUpperCase();
-                    rules = (parsed.rules || []).map((r) => ({
-                        rowId: nextRowId(),
-                        field: r.field || '',
-                        op: r.op || 'EQUALS',
-                        value: r.value != null ? String(r.value) : '',
-                    }));
+                    tree = parsed;
                 }
             }
         } catch (e) {
-            // leave rules empty; user can reset
-        }
-        if (rules.length === 0) rules = [freshRule()];
-
-        // Load field options for target object if we don't have them cached.
-        if (row.targetObject) {
-            this._ensureFieldsLoaded(row.targetObject);
+            // leave empty tree
         }
 
         return {
@@ -147,82 +114,30 @@ export default class PulseWorkflowTriggers extends LightningElement {
             name: row.name || '',
             targetObject: row.targetObject || '',
             eventType: row.eventType || 'Created_or_Updated',
-            logic,
-            rules,
+            conditionTree: tree,
             initialStateKey: row.initialStateKey || '',
             active: row.active !== false,
             dirty: false,
             saving: false,
             error: null,
-            apexTriggerStatus: null,
+            apexTriggerStatus: null
         };
     }
 
-    async _ensureFieldsLoaded(sObjectApiName) {
-        if (!this._fieldCache) this._fieldCache = new Map();
-        if (!sObjectApiName || this._fieldCache.has(sObjectApiName)) return;
-        try {
-            const fields = await describeObjectFields({ sObjectApiName });
-            this._fieldCache.set(sObjectApiName, fields || []);
-            // Force re-render so rule rows pick up options.
-            this.triggers = this.triggers.map((t) => ({ ...t }));
-        } catch (e) {
-            // non-fatal; leave field picker empty
-            this._fieldCache.set(sObjectApiName, []);
-        }
-    }
-
     get decoratedTriggers() {
-        if (!this._fieldCache) this._fieldCache = new Map();
         return this.triggers.map((t) => {
-            const fields = this._fieldCache.get(t.targetObject) || [];
-            const fieldByName = new Map(fields.map((f) => [f.apiName, f]));
-
             const eventTypeOptions = EVENT_TYPES.map((opt) => ({
                 ...opt,
-                selected: opt.value === t.eventType,
+                selected: opt.value === t.eventType
             }));
             const stateOptions = this._buildStateOptions(t.initialStateKey);
 
-            const decoratedRules = t.rules.map((r) => {
-                const meta = fieldByName.get(r.field);
-                const isPicklist = meta && meta.fieldType === 'PICKLIST';
-                const hideValue = r.op === 'IS_NULL' || r.op === 'IS_NOT_NULL' || r.op === 'IS_CHANGED';
-                return {
-                    ...r,
-                    isPicklist,
-                    hideValue,
-                    fieldEmpty: !r.field,
-                    valueEmpty: !r.value,
-                    fieldOptions: fields.map((f) => ({
-                        label: `${f.label} (${f.apiName})`,
-                        value: f.apiName,
-                        selected: f.apiName === r.field,
-                    })),
-                    opOptions: DEFAULT_OPS.map((opt) => ({
-                        ...opt,
-                        selected: opt.value === r.op,
-                    })),
-                    picklistOptions: isPicklist
-                        ? (meta.picklistValues || []).map((v) => ({
-                            label: v,
-                            value: v,
-                            selected: v === r.value,
-                        }))
-                        : [],
-                };
-            });
-
             return {
                 ...t,
-                isAnd: t.logic === 'AND',
-                logicLabel: t.logic === 'AND' ? 'ALL of' : 'ANY of',
                 eventTypeOptions,
                 stateOptions,
                 saveDisabled: !t.dirty || t.saving || !t.targetObject,
-                saveLabel: t.saving ? 'Saving…' : (t.recordId ? 'Save changes' : 'Save trigger'),
-                rules: decoratedRules,
-                showLogicSelector: t.rules.length > 1,
+                saveLabel: t.saving ? 'Saving…' : (t.recordId ? 'Save changes' : 'Save trigger')
             };
         });
     }
@@ -240,7 +155,6 @@ export default class PulseWorkflowTriggers extends LightningElement {
         this.triggers = this.triggers.map((t) =>
             t.rowId === triggerRowId ? { ...t, targetObject: value, dirty: true } : t
         );
-        this._ensureFieldsLoaded(value);
     }
 
     handleEventTypeChange(event) {
@@ -248,15 +162,6 @@ export default class PulseWorkflowTriggers extends LightningElement {
         const value = event.detail?.value ?? event.target.value;
         this.triggers = this.triggers.map((t) =>
             t.rowId === triggerRowId ? { ...t, eventType: value, dirty: true } : t
-        );
-    }
-
-    handleLogicToggle(event) {
-        const triggerRowId = event.currentTarget.dataset.rowId;
-        this.triggers = this.triggers.map((t) =>
-            t.rowId === triggerRowId
-                ? { ...t, logic: t.logic === 'AND' ? 'OR' : 'AND', dirty: true }
-                : t
         );
     }
 
@@ -276,61 +181,15 @@ export default class PulseWorkflowTriggers extends LightningElement {
         );
     }
 
-    handleAddRule(event) {
+    handleConditionChange(event) {
         const triggerRowId = event.currentTarget.dataset.rowId;
+        const tree = event.detail?.tree;
+        if (!tree) return;
         this.triggers = this.triggers.map((t) =>
             t.rowId === triggerRowId
-                ? { ...t, rules: [...t.rules, freshRule()], dirty: true }
+                ? { ...t, conditionTree: tree, dirty: true }
                 : t
         );
-    }
-
-    handleRemoveRule(event) {
-        const triggerRowId = event.currentTarget.dataset.rowId;
-        const ruleRowId   = event.currentTarget.dataset.ruleRowId;
-        this.triggers = this.triggers.map((t) => {
-            if (t.rowId !== triggerRowId) return t;
-            const rules = t.rules.filter((r) => r.rowId !== ruleRowId);
-            return {
-                ...t,
-                rules: rules.length > 0 ? rules : [freshRule()],
-                dirty: true,
-            };
-        });
-    }
-
-    handleRuleFieldChange(event) {
-        const triggerRowId = event.currentTarget.dataset.rowId;
-        const ruleRowId   = event.currentTarget.dataset.ruleRowId;
-        const value = event.detail?.value ?? event.target.value;
-        this._patchRule(triggerRowId, ruleRowId, { field: value });
-    }
-
-    handleRuleOpChange(event) {
-        const triggerRowId = event.currentTarget.dataset.rowId;
-        const ruleRowId   = event.currentTarget.dataset.ruleRowId;
-        const value = event.detail?.value ?? event.target.value;
-        this._patchRule(triggerRowId, ruleRowId, { op: value });
-    }
-
-    handleRuleValueChange(event) {
-        const triggerRowId = event.currentTarget.dataset.rowId;
-        const ruleRowId   = event.currentTarget.dataset.ruleRowId;
-        const value = event.detail?.value ?? event.target.value;
-        this._patchRule(triggerRowId, ruleRowId, { value });
-    }
-
-    _patchRule(triggerRowId, ruleRowId, patch) {
-        this.triggers = this.triggers.map((t) => {
-            if (t.rowId !== triggerRowId) return t;
-            return {
-                ...t,
-                rules: t.rules.map((r) =>
-                    r.rowId === ruleRowId ? { ...r, ...patch } : r
-                ),
-                dirty: true,
-            };
-        });
     }
 
     async handleSave(event) {
@@ -340,17 +199,6 @@ export default class PulseWorkflowTriggers extends LightningElement {
 
         this._setTriggerState(triggerRowId, { saving: true, error: null });
 
-        const conditionTree = {
-            logic: t.logic,
-            rules: t.rules
-                .filter((r) => r.field || r.op === 'IS_NULL' || r.op === 'IS_NOT_NULL' || r.op === 'IS_CHANGED')
-                .map((r) => {
-                    const rule = { field: r.field, op: r.op };
-                    if (!this._isValueless(r.op)) rule.value = this._coerceValue(r.value);
-                    return rule;
-                }),
-        };
-
         try {
             const result = await upsertTrigger({
                 payload: {
@@ -359,10 +207,10 @@ export default class PulseWorkflowTriggers extends LightningElement {
                     name: t.name || null,
                     targetObject: t.targetObject,
                     eventType: t.eventType,
-                    conditionJson: JSON.stringify(conditionTree),
+                    conditionJson: JSON.stringify(t.conditionTree || {}),
                     initialStateKey: t.initialStateKey || null,
-                    active: t.active,
-                },
+                    active: t.active
+                }
             });
             if (result.success) {
                 let status;
@@ -371,7 +219,6 @@ export default class PulseWorkflowTriggers extends LightningElement {
                         ? `Using existing Apex trigger ${result.triggerName}`
                         : `Provisioned ${result.triggerName}`;
                 } else {
-                    // Row saved but Apex trigger couldn't be auto-provisioned.
                     status = null;
                 }
                 this._setTriggerState(triggerRowId, {
@@ -380,18 +227,18 @@ export default class PulseWorkflowTriggers extends LightningElement {
                     recordId: result.recordId,
                     apexTriggerStatus: status,
                     warning: result.warning || null,
-                    error: null,
+                    error: null
                 });
             } else {
                 this._setTriggerState(triggerRowId, {
                     saving: false,
-                    error: result.error || 'Save failed',
+                    error: result.error || 'Save failed'
                 });
             }
         } catch (err) {
             this._setTriggerState(triggerRowId, {
                 saving: false,
-                error: err?.body?.message || err?.message || 'Save failed',
+                error: err?.body?.message || err?.message || 'Save failed'
             });
         }
     }
@@ -402,7 +249,6 @@ export default class PulseWorkflowTriggers extends LightningElement {
         if (!t) return;
 
         if (!t.recordId) {
-            // Unsaved — just drop from list
             this.triggers = this.triggers.filter((x) => x.rowId !== triggerRowId);
             return;
         }
@@ -412,7 +258,7 @@ export default class PulseWorkflowTriggers extends LightningElement {
             this.triggers = this.triggers.filter((x) => x.rowId !== triggerRowId);
         } catch (err) {
             this._setTriggerState(triggerRowId, {
-                error: err?.body?.message || err?.message || 'Delete failed',
+                error: err?.body?.message || err?.message || 'Delete failed'
             });
         }
     }
@@ -421,19 +267,5 @@ export default class PulseWorkflowTriggers extends LightningElement {
         this.triggers = this.triggers.map((t) =>
             t.rowId === triggerRowId ? { ...t, ...patch } : t
         );
-    }
-
-    _isValueless(op) {
-        return op === 'IS_NULL' || op === 'IS_NOT_NULL' || op === 'IS_CHANGED';
-    }
-
-    _coerceValue(raw) {
-        if (raw == null || raw === '') return '';
-        // Coerce numeric strings to numbers for numeric operators
-        const num = Number(raw);
-        if (!Number.isNaN(num) && raw.trim && raw.trim() !== '' && String(num) === raw.trim()) {
-            return num;
-        }
-        return raw;
     }
 }

@@ -32,6 +32,9 @@ export default class PulseWorkflowBuilder extends LightningElement {
     newStateKey = '';
     newStateLabel = '';
 
+    // ── Phase settings drawer state ───────────────────────────────
+    showPhaseSettings = false;
+
     // ── Publish state ─────────────────────────────────────────────
     showDeployDialog = false;
     publishTargetObject = '';
@@ -223,6 +226,198 @@ export default class PulseWorkflowBuilder extends LightningElement {
                 compositeKey: `${t.signal}_${t.to}_${i}`
             }))
         };
+    }
+
+    // ── Phase settings (entry/exit/progression/status rules) ──────
+
+    get phaseSettingsTargetObject() {
+        return (this.workflow.subjectKinds || [])[0] || '';
+    }
+
+    get progressionModeOptions() {
+        const mode = this.selectedStateProgressionMode;
+        const opts = [
+            { label: 'Auto on actions', value: 'auto_on_actions' },
+            { label: 'Manual decision', value: 'manual_decision' },
+            { label: 'Field change', value: 'field_change' },
+            { label: 'Custom logic', value: 'custom_logic' }
+        ];
+        return opts.map((o) => ({ ...o, selected: o.value === mode }));
+    }
+
+    get selectedStateProgression() {
+        const s = this.states.find((st) => st.key === this.selectedStateKey);
+        return (s && s.progression) || {};
+    }
+
+    get selectedStateProgressionMode() {
+        return this.selectedStateProgression.mode || 'auto_on_actions';
+    }
+
+    get isProgressionFieldChange() {
+        return this.selectedStateProgressionMode === 'field_change';
+    }
+
+    get isProgressionCustomLogic() {
+        return this.selectedStateProgressionMode === 'custom_logic';
+    }
+
+    get progressionFieldName() {
+        const rule = this.selectedStateProgression.rule || {};
+        return rule.field || '';
+    }
+
+    get progressionFieldEquals() {
+        const rule = this.selectedStateProgression.rule || {};
+        return rule.equals != null ? String(rule.equals) : '';
+    }
+
+    get progressionCustomRule() {
+        return this.selectedStateProgression.rule || {};
+    }
+
+    get selectedStateEntryConditions() {
+        const s = this.states.find((st) => st.key === this.selectedStateKey);
+        return (s && s.entryConditions) || {};
+    }
+
+    get selectedStateExitConditions() {
+        const s = this.states.find((st) => st.key === this.selectedStateKey);
+        return (s && s.exitConditions) || {};
+    }
+
+    get selectedStateStatusRules() {
+        const s = this.states.find((st) => st.key === this.selectedStateKey);
+        return (s && s.statusRules) || {};
+    }
+
+    get statusRulesAutoHoldDays() {
+        const v = this.selectedStateStatusRules.autoOnHoldAfterDays;
+        return v == null ? '' : String(v);
+    }
+
+    get statusRulesAutoEscalate() {
+        return this.selectedStateStatusRules.autoEscalateIfBlocked === true;
+    }
+
+    get phaseSettingsToggleLabel() {
+        return this.showPhaseSettings ? 'Hide phase settings' : 'Phase settings';
+    }
+
+    handleTogglePhaseSettings() {
+        this.showPhaseSettings = !this.showPhaseSettings;
+    }
+
+    handleEntryConditionsChange(event) {
+        if (!this.selectedStateKey) return;
+        dispatch({
+            type: 'UPDATE_STATE_ENTRY_CONDITIONS',
+            stateKey: this.selectedStateKey,
+            tree: event.detail.tree
+        });
+    }
+
+    handleExitConditionsChange(event) {
+        if (!this.selectedStateKey) return;
+        dispatch({
+            type: 'UPDATE_STATE_EXIT_CONDITIONS',
+            stateKey: this.selectedStateKey,
+            tree: event.detail.tree
+        });
+    }
+
+    handleProgressionModeChange(event) {
+        if (!this.selectedStateKey) return;
+        const mode = event.detail?.value ?? event.target.value;
+        const cur = { ...this.selectedStateProgression, mode };
+        // Drop a stale rule when switching to a mode that doesn't use it.
+        if (mode !== 'field_change' && mode !== 'custom_logic') {
+            delete cur.rule;
+        }
+        dispatch({
+            type: 'UPDATE_STATE_PROGRESSION',
+            stateKey: this.selectedStateKey,
+            progression: cur
+        });
+    }
+
+    handleProgressionFieldChange(event) {
+        if (!this.selectedStateKey) return;
+        const field = event.detail?.value ?? event.target.value;
+        const cur = this.selectedStateProgression;
+        dispatch({
+            type: 'UPDATE_STATE_PROGRESSION',
+            stateKey: this.selectedStateKey,
+            progression: {
+                ...cur,
+                mode: 'field_change',
+                rule: { ...(cur.rule || {}), field }
+            }
+        });
+    }
+
+    handleProgressionEqualsChange(event) {
+        if (!this.selectedStateKey) return;
+        const equals = event.detail?.value ?? event.target.value;
+        const cur = this.selectedStateProgression;
+        dispatch({
+            type: 'UPDATE_STATE_PROGRESSION',
+            stateKey: this.selectedStateKey,
+            progression: {
+                ...cur,
+                mode: 'field_change',
+                rule: { ...(cur.rule || {}), equals }
+            }
+        });
+    }
+
+    handleProgressionCustomLogicChange(event) {
+        if (!this.selectedStateKey) return;
+        const tree = event.detail?.tree;
+        if (!tree) return;
+        const cur = this.selectedStateProgression;
+        dispatch({
+            type: 'UPDATE_STATE_PROGRESSION',
+            stateKey: this.selectedStateKey,
+            progression: {
+                ...cur,
+                mode: 'custom_logic',
+                rule: tree
+            }
+        });
+    }
+
+    handleAutoHoldDaysChange(event) {
+        if (!this.selectedStateKey) return;
+        const raw = event.detail?.value ?? event.target.value;
+        const trimmed = raw == null ? '' : String(raw).trim();
+        const next = { ...this.selectedStateStatusRules };
+        if (trimmed === '') {
+            delete next.autoOnHoldAfterDays;
+        } else {
+            const num = Number(trimmed);
+            if (!Number.isNaN(num) && num > 0) {
+                next.autoOnHoldAfterDays = num;
+            }
+        }
+        dispatch({
+            type: 'UPDATE_STATE_STATUS_RULES',
+            stateKey: this.selectedStateKey,
+            statusRules: next
+        });
+    }
+
+    handleAutoEscalateToggle(event) {
+        if (!this.selectedStateKey) return;
+        const checked = event.detail?.checked ?? event.target.checked;
+        const next = { ...this.selectedStateStatusRules };
+        if (checked) next.autoEscalateIfBlocked = true;
+        else delete next.autoEscalateIfBlocked;
+        dispatch({
+            type: 'UPDATE_STATE_STATUS_RULES',
+            stateKey: this.selectedStateKey,
+            statusRules: next
+        });
     }
 
     get selectedField() {

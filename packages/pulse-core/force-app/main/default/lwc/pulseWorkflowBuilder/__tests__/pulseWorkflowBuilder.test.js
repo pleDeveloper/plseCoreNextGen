@@ -41,6 +41,12 @@ jest.mock(
 );
 
 jest.mock(
+    '@salesforce/apex/PulseWorkflowTriggerController.describeObjectFields',
+    () => ({ default: jest.fn(() => Promise.resolve([])) }),
+    { virtual: true }
+);
+
+jest.mock(
     '@salesforce/apex/PulseWorkflowBuilderController.loadWorkflow',
     () => ({
         default: jest.fn(() =>
@@ -231,6 +237,109 @@ describe('c-pulse-workflow-builder', () => {
         );
         expect(dialog).not.toBeNull();
         expect(dialog.open).toBe(false);
+    });
+
+    it('shows Phase settings toggle in state inspector', async () => {
+        const el = createComponent();
+        dispatch({
+            type: 'SET_WORKFLOW_META',
+            workflowKey: 'test_wf',
+            subjectKinds: ['Account']
+        });
+        dispatch({
+            type: 'ADD_STATE',
+            stateKey: 'intake',
+            label: 'Intake'
+        });
+        await flushPromises();
+
+        const settingsHeader = Array.from(
+            el.shadowRoot.querySelectorAll('.builder-phase-settings .builder-section-title')
+        ).find((h) => h.textContent === 'Phase settings');
+        expect(settingsHeader).not.toBeUndefined();
+    });
+
+    it('expands phase settings drawer to show condition builders and progression dropdown', async () => {
+        const el = createComponent();
+        dispatch({
+            type: 'SET_WORKFLOW_META',
+            workflowKey: 'test_wf',
+            subjectKinds: ['Account']
+        });
+        dispatch({
+            type: 'ADD_STATE',
+            stateKey: 'intake',
+            label: 'Intake'
+        });
+        await flushPromises();
+
+        const toggleBtn = Array.from(
+            el.shadowRoot.querySelectorAll('c-pulse-button')
+        ).find((b) => b.label === 'Phase settings');
+        expect(toggleBtn).not.toBeUndefined();
+        toggleBtn.click();
+        await flushPromises();
+
+        const builders = el.shadowRoot.querySelectorAll('c-pulse-condition-builder');
+        expect(builders.length).toBeGreaterThanOrEqual(2);
+
+        const progressionSelect = el.shadowRoot.querySelector('.builder-phase-select');
+        expect(progressionSelect).not.toBeNull();
+    });
+
+    it('persists entry conditions into the workflow state', async () => {
+        const el = createComponent();
+        dispatch({
+            type: 'SET_WORKFLOW_META',
+            workflowKey: 'test_wf',
+            subjectKinds: ['Account']
+        });
+        dispatch({
+            type: 'ADD_STATE',
+            stateKey: 'intake',
+            label: 'Intake'
+        });
+        dispatch({
+            type: 'UPDATE_STATE_ENTRY_CONDITIONS',
+            stateKey: 'intake',
+            tree: {
+                logic: 'AND',
+                rules: [{ field: 'Industry', op: 'EQUALS', value: 'Biotechnology' }]
+            }
+        });
+        await flushPromises();
+
+        const state = getState();
+        const intake = state.workflow.states.find((s) => s.key === 'intake');
+        expect(intake.entryConditions).toEqual({
+            logic: 'AND',
+            rules: [{ field: 'Industry', op: 'EQUALS', value: 'Biotechnology' }]
+        });
+    });
+
+    it('dirty indicator reflects progression mode change', async () => {
+        const el = createComponent();
+        dispatch({
+            type: 'SET_WORKFLOW_META',
+            workflowKey: 'test_wf',
+            subjectKinds: ['Account']
+        });
+        dispatch({
+            type: 'ADD_STATE',
+            stateKey: 'intake',
+            label: 'Intake'
+        });
+        dispatch({
+            type: 'UPDATE_STATE_PROGRESSION',
+            stateKey: 'intake',
+            progression: { mode: 'field_change', rule: { field: 'StageName', equals: 'Won' } }
+        });
+        await flushPromises();
+
+        const state = getState();
+        const intake = state.workflow.states.find((s) => s.key === 'intake');
+        expect(intake.progression.mode).toBe('field_change');
+        expect(state.ui.dirty).toBe(true);
     });
 
     it('shows dirty indicator when store is dirty', async () => {

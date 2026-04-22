@@ -83,6 +83,7 @@ public with sharing class WorkflowRuntime {
         // 2. Bulk load instances with pinned definitions
         Map<Id, Workflow_Instance__c> instanceMap = new Map<Id, Workflow_Instance__c>([
             SELECT Id, Current_State__c, Status__c, Pinned_Version__c, Context_JSON__c,
+                   Parent_Object_Type__c, Parent_Record_Id__c,
                    Workflow_Definition__c,
                    Workflow_Definition__r.Definition_JSON__c,
                    Workflow_Definition__r.Status__c,
@@ -117,7 +118,13 @@ public with sharing class WorkflowRuntime {
             }
         }
 
-        // 5. Process each request — collect DML records
+        // 5. Bulk-load parent records referenced by any instance so that
+        //    entry/exit conditions can evaluate against the real record.
+        Map<Id, SObject> parentRecordMap = loadParentRecords(
+            instanceMap.values(), parsedDefs
+        );
+
+        // 6. Process each request — collect DML records
         List<AdvanceResult> results = new List<AdvanceResult>();
         List<Workflow_Step_Result__c> stepResultsToInsert = new List<Workflow_Step_Result__c>();
         List<Workflow_Event__c> eventsToInsert = new List<Workflow_Event__c>();
@@ -127,12 +134,13 @@ public with sharing class WorkflowRuntime {
         for (WorkflowAdvanceRequest req : requests) {
             AdvanceResult result = processRequest(
                 req, instanceMap, parsedDefs, parseErrors, priorTransitions,
+                parentRecordMap,
                 stepResultsToInsert, eventsToInsert, instancesToUpdate, hookContexts
             );
             results.add(result);
         }
 
-        // 6. Bulk DML
+        // 7. Bulk DML
         if (!stepResultsToInsert.isEmpty()) {
             insert stepResultsToInsert;
         }
@@ -143,7 +151,7 @@ public with sharing class WorkflowRuntime {
             update instancesToUpdate.values();
         }
 
-        // 7. Fire extension hooks (projection writes, AI dispatch, etc.)
+        // 8. Fire extension hooks (projection writes, AI dispatch, etc.)
         if (!hooks.isEmpty() && !hookContexts.isEmpty()) {
             for (TransitionHook hook : hooks) {
                 hook.afterTransitions(hookContexts);
@@ -161,6 +169,7 @@ public with sharing class WorkflowRuntime {
         Map<Id, WorkflowContract.Workflow> parsedDefs,
         Map<Id, String> parseErrors,
         Map<String, String> priorTransitions,
+        Map<Id, SObject> parentRecordMap,
         List<Workflow_Step_Result__c> stepResultsToInsert,
         List<Workflow_Event__c> eventsToInsert,
         Map<Id, Workflow_Instance__c> instancesToUpdate,
@@ -217,6 +226,17 @@ public with sharing class WorkflowRuntime {
         WorkflowContract.State targetState = wf.getState(targetStateKey);
         if (targetState == null) {
             result.error = 'Target state "' + targetStateKey + '" not found in contract';
+            return result;
+        }
+
+        // Evaluate exit (current phase) + entry (target phase) conditions
+        // against the parent record. Blocks the transition if either fails.
+        SObject parentRec = (parentRecordMap == null || inst.Parent_Record_Id__c == null)
+            ? null
+            : parentRecordMap.get(inst.Parent_Record_Id__c);
+        String condErr = evaluatePhaseConditions(currentState, targetState, parentRec);
+        if (condErr != null) {
+            result.error = condErr;
             return result;
         }
 
@@ -327,5 +347,157 @@ public with sharing class WorkflowRuntime {
             detail.put('idempotencyKey', req.idempotencyKey);
         }
         return JSON.serialize(detail);
+    }
+
+    // ─── Entry / exit condition evaluation ───────────────────────
+
+    /**
+     * Evaluate the current phase's exitConditions and the target phase's
+     * entryConditions against the parent record. Returns null when both
+     * pass (or are unset); otherwise returns the error string to surface
+     * in AdvanceResult.error.
+     */
+    @TestVisible
+    private static String evaluatePhaseConditions(
+        WorkflowContract.State currentState,
+        WorkflowContract.State targetState,
+        SObject parentRec
+    ) {
+        if (currentState != null && currentState.exitConditions != null
+            && !currentState.exitConditions.isEmpty()) {
+            if (parentRec == null) {
+                return 'Exit condition not met: parent record unavailable for phase "'
+                    + currentState.key + '"';
+            }
+            Boolean pass;
+            try {
+                pass = PulseWorkflowTriggerEvaluator.matches(
+                    parentRec, null, JSON.serialize(currentState.exitConditions)
+                );
+            } catch (Exception e) {
+                return 'Exit condition error: ' + e.getMessage();
+            }
+            if (!pass) {
+                return 'Exit condition not met for phase "' + currentState.key + '"';
+            }
+        }
+        if (targetState != null && targetState.entryConditions != null
+            && !targetState.entryConditions.isEmpty()) {
+            if (parentRec == null) {
+                return 'Entry condition not met: parent record unavailable for phase "'
+                    + targetState.key + '"';
+            }
+            Boolean pass;
+            try {
+                pass = PulseWorkflowTriggerEvaluator.matches(
+                    parentRec, null, JSON.serialize(targetState.entryConditions)
+                );
+            } catch (Exception e) {
+                return 'Entry condition error: ' + e.getMessage();
+            }
+            if (!pass) {
+                return 'Entry condition not met for phase "' + targetState.key + '"';
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Bulk-load parent records referenced by the instance list. For each
+     * distinct Parent_Object_Type__c we pull every field declared in any
+     * contract rule so the evaluator has what it needs. Failures are
+     * swallowed — condition evaluation treats missing records as failure.
+     */
+    @TestVisible
+    private static Map<Id, SObject> loadParentRecords(
+        List<Workflow_Instance__c> instances,
+        Map<Id, WorkflowContract.Workflow> parsedDefs
+    ) {
+        Map<Id, SObject> out = new Map<Id, SObject>();
+        if (instances == null || instances.isEmpty()) return out;
+
+        // Determine which instances need loading (have any conditions at
+        // all on current/target states) and group IDs by sObject type.
+        Map<String, Set<Id>> idsByType = new Map<String, Set<Id>>();
+        Map<String, Set<String>> fieldsByType = new Map<String, Set<String>>();
+
+        for (Workflow_Instance__c inst : instances) {
+            if (inst.Parent_Record_Id__c == null || String.isBlank(inst.Parent_Object_Type__c)) {
+                continue;
+            }
+            WorkflowContract.Workflow wf = parsedDefs.get(inst.Workflow_Definition__c);
+            if (wf == null) continue;
+
+            Boolean anyCondition = false;
+            Set<String> fields = new Set<String>{ 'Id' };
+            if (wf.states != null) {
+                for (WorkflowContract.State s : wf.states) {
+                    if (s.entryConditions != null && !s.entryConditions.isEmpty()) {
+                        anyCondition = true;
+                        collectConditionFields(s.entryConditions, fields);
+                    }
+                    if (s.exitConditions != null && !s.exitConditions.isEmpty()) {
+                        anyCondition = true;
+                        collectConditionFields(s.exitConditions, fields);
+                    }
+                }
+            }
+            if (!anyCondition) continue;
+
+            String t = inst.Parent_Object_Type__c;
+            if (!idsByType.containsKey(t)) {
+                idsByType.put(t, new Set<Id>());
+                fieldsByType.put(t, new Set<String>());
+            }
+            idsByType.get(t).add(inst.Parent_Record_Id__c);
+            fieldsByType.get(t).addAll(fields);
+        }
+
+        if (idsByType.isEmpty()) return out;
+
+        // Describe + query per type, defensively filtering invalid fields.
+        Map<String, Schema.SObjectType> globalDescribe = Schema.getGlobalDescribe();
+        for (String type : idsByType.keySet()) {
+            Schema.SObjectType sot = globalDescribe.get(type);
+            if (sot == null) continue;
+            Map<String, Schema.SObjectField> fieldMap = sot.getDescribe().fields.getMap();
+            List<String> valid = new List<String>();
+            for (String f : fieldsByType.get(type)) {
+                if (fieldMap.containsKey(f.toLowerCase())) valid.add(f);
+            }
+            if (valid.isEmpty()) valid.add('Id');
+
+            String soql = 'SELECT ' + String.join(valid, ', ') +
+                ' FROM ' + type + ' WHERE Id IN :ids';
+            Set<Id> ids = idsByType.get(type);
+            try {
+                for (SObject rec : Database.query(soql)) {
+                    out.put((Id) rec.get('Id'), rec);
+                }
+            } catch (Exception e) {
+                System.debug(LoggingLevel.WARN,
+                    'WorkflowRuntime: parent record query failed for ' + type +
+                    ': ' + e.getMessage());
+            }
+        }
+        return out;
+    }
+
+    private static void collectConditionFields(
+        Map<String, Object> node, Set<String> out
+    ) {
+        if (node == null || node.isEmpty()) return;
+        if (node.containsKey('field')) {
+            Object f = node.get('field');
+            if (f != null) out.add(String.valueOf(f));
+        }
+        Object rulesObj = node.get('rules');
+        if (rulesObj instanceof List<Object>) {
+            for (Object r : (List<Object>) rulesObj) {
+                if (r instanceof Map<String, Object>) {
+                    collectConditionFields((Map<String, Object>) r, out);
+                }
+            }
+        }
     }
 }

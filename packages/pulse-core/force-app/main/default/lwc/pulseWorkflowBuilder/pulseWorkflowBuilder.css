@@ -473,3 +473,76 @@
     background: var(--pulse-error-bg, rgba(239, 68, 68, 0.1));
     color: var(--pulse-error);
 }
+
+/* ── Phase settings drawer ──────────────────── */
+.builder-phase-settings {
+    margin-top: var(--pulse-space-4, 16px);
+}
+
+.builder-phase-settings-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-5, 20px);
+    background: var(--pulse-off-white, #f9fafb);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-lg, 10px);
+    padding: var(--pulse-space-4, 16px);
+    margin-top: var(--pulse-space-3, 12px);
+}
+
+.builder-phase-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-3, 12px);
+}
+
+.builder-phase-group-title {
+    margin: 0;
+    font-size: var(--pulse-text-body, 14px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-dark, #0f172a);
+}
+
+.builder-phase-hint {
+    margin: 0;
+    font-size: var(--pulse-text-caption, 12px);
+    color: var(--pulse-slate, #64748b);
+    line-height: var(--pulse-lh-body, 1.6);
+}
+
+.builder-phase-label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-1, 4px);
+}
+
+.builder-phase-label-text {
+    font-size: var(--pulse-text-caption, 12px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--pulse-slate, #64748b);
+}
+
+.builder-phase-select {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-body, 14px);
+    padding: var(--pulse-space-2, 8px) var(--pulse-space-3, 12px);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-md, 8px);
+    background: var(--pulse-white, #ffffff);
+    color: var(--pulse-dark, #111827);
+    height: 38px;
+}
+
+.builder-phase-select:focus {
+    outline: none;
+    border-color: var(--pulse-purple-500, #7B2FF2);
+    box-shadow: 0 0 0 3px rgba(123, 47, 242, 0.12);
+}
+
+.builder-phase-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--pulse-space-3, 12px);
+}

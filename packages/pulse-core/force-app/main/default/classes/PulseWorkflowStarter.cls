@@ -139,6 +139,27 @@ global with sharing class PulseWorkflowStarter {
         if (!toInsert.isEmpty()) {
             insert toInsert;
         }
+
+        // Stage progression: on updates, let the progression service see if
+        // any active instance on these records should auto-advance (e.g.
+        // field_change / custom_logic mode). Inserts can't trigger it
+        // because the instance doesn't exist yet.
+        if (isInsert != true) {
+            Set<Id> changedIds = new Set<Id>();
+            for (SObject rec : newList) {
+                Id rid = (Id) rec.get('Id');
+                if (rid != null) changedIds.add(rid);
+            }
+            if (!changedIds.isEmpty()) {
+                try {
+                    StageProgressionService.checkOnRecordChange(sObjectType, changedIds);
+                } catch (Exception e) {
+                    System.debug(LoggingLevel.ERROR,
+                        'PulseWorkflowStarter: stage progression check failed: ' +
+                        e.getMessage());
+                }
+            }
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────

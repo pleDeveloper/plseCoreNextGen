@@ -51,6 +51,21 @@ public with sharing class WorkflowContract {
         public List<ActionDef> actions;
         public String advancement;   // 'auto' | 'manual_decision'
 
+        // ── Phase settings (entry/exit/progression/statusRules) ────
+        // AND/OR condition tree evaluated against the parent record on
+        // phase entry. If false, the transition is blocked.
+        public Map<String, Object> entryConditions;
+        // Same shape; evaluated against the parent record on the
+        // current phase before advancing. If false, blocks transition.
+        public Map<String, Object> exitConditions;
+        // { "mode": "auto_on_actions" | "manual_decision" |
+        //           "field_change" | "custom_logic",
+        //   "rule": { ... mode-specific ... } }
+        public Map<String, Object> progression;
+        // { "autoOnHoldAfterDays": Integer,
+        //   "autoEscalateIfBlocked": Boolean }
+        public Map<String, Object> statusRules;
+
         public Transition getTransition(String signal) {
             if (transitions != null) {
                 for (Transition t : transitions) {
@@ -72,13 +87,34 @@ public with sharing class WorkflowContract {
         }
 
         /**
-         * Effective advancement mode: explicit 'advancement' wins; else
+         * Effective advancement mode: progression.mode (when set to an
+         * auto-compatible mode) or explicit 'advancement' wins; else
          * 'auto' if 0-1 transitions, 'manual_decision' if multiple.
+         *
+         * progression.mode mapping:
+         *   auto_on_actions -> 'auto'
+         *   manual_decision -> 'manual_decision'
+         *   field_change    -> 'manual_decision' here (auto-advance is
+         *                      handled externally via StageProgressionService;
+         *                      the post-action HITL path should not auto-fire)
+         *   custom_logic    -> 'auto' (StageProgressionService decides)
          */
         public String effectiveAdvancement() {
+            String mode = progressionMode();
+            if (String.isNotBlank(mode)) {
+                if (mode == 'auto_on_actions' || mode == 'custom_logic') return 'auto';
+                if (mode == 'manual_decision' || mode == 'field_change') return 'manual_decision';
+            }
             if (String.isNotBlank(advancement)) return advancement;
             Integer transCount = transitions == null ? 0 : transitions.size();
             return transCount > 1 ? 'manual_decision' : 'auto';
+        }
+
+        /** Returns progression.mode or null when unset. */
+        public String progressionMode() {
+            if (progression == null) return null;
+            Object m = progression.get('mode');
+            return m == null ? null : String.valueOf(m);
         }
     }
 
@@ -304,6 +340,22 @@ public with sharing class WorkflowContract {
         }
         // Phase/actions additions
         s.advancement = (String) raw.get('advancement');
+        Object entryObj = raw.get('entryConditions');
+        if (entryObj instanceof Map<String, Object>) {
+            s.entryConditions = (Map<String, Object>) entryObj;
+        }
+        Object exitObj = raw.get('exitConditions');
+        if (exitObj instanceof Map<String, Object>) {
+            s.exitConditions = (Map<String, Object>) exitObj;
+        }
+        Object progObj = raw.get('progression');
+        if (progObj instanceof Map<String, Object>) {
+            s.progression = (Map<String, Object>) progObj;
+        }
+        Object statusRulesObj = raw.get('statusRules');
+        if (statusRulesObj instanceof Map<String, Object>) {
+            s.statusRules = (Map<String, Object>) statusRulesObj;
+        }
         Object actionsObj = raw.get('actions');
         if (actionsObj instanceof List<Object>) {
             s.actions = new List<ActionDef>();

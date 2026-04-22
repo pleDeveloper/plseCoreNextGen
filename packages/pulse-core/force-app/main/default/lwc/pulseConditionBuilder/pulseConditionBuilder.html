@@ -1,0 +1,83 @@
+<template>
+    <div class="cb-shell">
+        <div class="cb-header">
+            <span class="cb-label">{logicLabel}</span>
+            <template lwc:if={showLogicSelector}>
+                <button class="cb-logic-toggle" onclick={handleLogicToggle}>{toggleLabel}</button>
+            </template>
+            <template lwc:else>
+                <span class="cb-logic-static">{toggleLabel}</span>
+            </template>
+            <span class="cb-label">match</span>
+        </div>
+
+        <ul class="cb-rules">
+            <template for:each={decoratedRules} for:item="r">
+                <li key={r.rowId} class="cb-rule-row">
+                    <select class="cb-select cb-rule-field"
+                            data-rule-row-id={r.rowId}
+                            onchange={handleRuleFieldChange}>
+                        <option value="" selected={r.fieldEmpty}>— field —</option>
+                        <template for:each={r.fieldOptions} for:item="opt">
+                            <option key={opt.value}
+                                    value={opt.value}
+                                    selected={opt.selected}>
+                                {opt.label}
+                            </option>
+                        </template>
+                    </select>
+
+                    <select class="cb-select cb-rule-op"
+                            data-rule-row-id={r.rowId}
+                            onchange={handleRuleOpChange}>
+                        <template for:each={r.opOptions} for:item="opt">
+                            <option key={opt.value}
+                                    value={opt.value}
+                                    selected={opt.selected}>
+                                {opt.label}
+                            </option>
+                        </template>
+                    </select>
+
+                    <template lwc:if={r.hideValue}>
+                        <div class="cb-rule-value-placeholder">—</div>
+                    </template>
+                    <template lwc:elseif={r.isPicklist}>
+                        <select class="cb-select"
+                                data-rule-row-id={r.rowId}
+                                onchange={handleRuleValueChange}>
+                            <option value="" selected={r.valueEmpty}>— value —</option>
+                            <template for:each={r.picklistOptions} for:item="opt">
+                                <option key={opt.value}
+                                        value={opt.value}
+                                        selected={opt.selected}>
+                                    {opt.label}
+                                </option>
+                            </template>
+                        </select>
+                    </template>
+                    <template lwc:else>
+                        <c-pulse-input value={r.value}
+                                       placeholder="Value"
+                                       data-rule-row-id={r.rowId}
+                                       onchange={handleRuleValueChange}>
+                        </c-pulse-input>
+                    </template>
+
+                    <button class="cb-rule-delete"
+                            title="Remove rule"
+                            data-rule-row-id={r.rowId}
+                            onclick={handleRemoveRule}>
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                            <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </li>
+            </template>
+        </ul>
+
+        <c-pulse-button label="+ Add rule" variant="ghost" size="sm"
+                        onclick={handleAddRule}>
+        </c-pulse-button>
+    </div>
+</template>

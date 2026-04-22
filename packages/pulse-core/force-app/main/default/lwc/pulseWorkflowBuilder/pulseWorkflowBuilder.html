@@ -287,6 +287,103 @@
                                     </ul>
                                 </template>
                             </div>
+
+                            <!-- Phase settings drawer -->
+                            <div class="builder-section builder-phase-settings">
+                                <div class="builder-section-header">
+                                    <h4 class="builder-section-title">Phase settings</h4>
+                                    <c-pulse-button label={phaseSettingsToggleLabel} variant="ghost" size="sm"
+                                                    onclick={handleTogglePhaseSettings}>
+                                    </c-pulse-button>
+                                </div>
+
+                                <template lwc:if={showPhaseSettings}>
+                                    <div class="builder-phase-settings-body">
+                                        <!-- Entry conditions -->
+                                        <div class="builder-phase-group">
+                                            <h5 class="builder-phase-group-title">Entry conditions</h5>
+                                            <p class="builder-phase-hint">Must pass for the instance to enter this phase.</p>
+                                            <c-pulse-condition-builder
+                                                condition-tree={selectedStateEntryConditions}
+                                                target-object={phaseSettingsTargetObject}
+                                                logic-label="Enter when"
+                                                hide-change-ops
+                                                onchange={handleEntryConditionsChange}>
+                                            </c-pulse-condition-builder>
+                                        </div>
+
+                                        <!-- Exit conditions -->
+                                        <div class="builder-phase-group">
+                                            <h5 class="builder-phase-group-title">Exit conditions</h5>
+                                            <p class="builder-phase-hint">Must pass on every outgoing transition; blocks the move if false.</p>
+                                            <c-pulse-condition-builder
+                                                condition-tree={selectedStateExitConditions}
+                                                target-object={phaseSettingsTargetObject}
+                                                logic-label="Exit when"
+                                                hide-change-ops
+                                                onchange={handleExitConditionsChange}>
+                                            </c-pulse-condition-builder>
+                                        </div>
+
+                                        <!-- Progression -->
+                                        <div class="builder-phase-group">
+                                            <h5 class="builder-phase-group-title">Progression mode</h5>
+                                            <label class="builder-phase-label">
+                                                <span class="builder-phase-label-text">How this phase advances</span>
+                                                <select class="builder-phase-select"
+                                                        onchange={handleProgressionModeChange}>
+                                                    <template for:each={progressionModeOptions} for:item="opt">
+                                                        <option key={opt.value}
+                                                                value={opt.value}
+                                                                selected={opt.selected}>
+                                                            {opt.label}
+                                                        </option>
+                                                    </template>
+                                                </select>
+                                            </label>
+
+                                            <template lwc:if={isProgressionFieldChange}>
+                                                <div class="builder-phase-grid">
+                                                    <c-pulse-input label="Parent field"
+                                                                   value={progressionFieldName}
+                                                                   placeholder="e.g. StageName"
+                                                                   onchange={handleProgressionFieldChange}>
+                                                    </c-pulse-input>
+                                                    <c-pulse-input label="Equals value"
+                                                                   value={progressionFieldEquals}
+                                                                   placeholder="e.g. Closed Won"
+                                                                   onchange={handleProgressionEqualsChange}>
+                                                    </c-pulse-input>
+                                                </div>
+                                            </template>
+
+                                            <template lwc:if={isProgressionCustomLogic}>
+                                                <c-pulse-condition-builder
+                                                    condition-tree={progressionCustomRule}
+                                                    target-object={phaseSettingsTargetObject}
+                                                    logic-label="Advance when"
+                                                    hide-change-ops
+                                                    onchange={handleProgressionCustomLogicChange}>
+                                                </c-pulse-condition-builder>
+                                            </template>
+                                        </div>
+
+                                        <!-- Status rules -->
+                                        <div class="builder-phase-group">
+                                            <h5 class="builder-phase-group-title">Status rules</h5>
+                                            <c-pulse-input label="Auto-move to On Hold after (days of inactivity)"
+                                                           value={statusRulesAutoHoldDays}
+                                                           placeholder="e.g. 14"
+                                                           onchange={handleAutoHoldDaysChange}>
+                                            </c-pulse-input>
+                                            <c-pulse-toggle label="Auto-escalate when blocked"
+                                                            checked={statusRulesAutoEscalate}
+                                                            onchange={handleAutoEscalateToggle}>
+                                            </c-pulse-toggle>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
                         </div>
                     </template>
                     <template lwc:if={noSelection}>

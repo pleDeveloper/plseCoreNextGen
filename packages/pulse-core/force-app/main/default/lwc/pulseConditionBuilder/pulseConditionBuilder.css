@@ -1,0 +1,103 @@
+:host {
+    display: block;
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+}
+
+.cb-shell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-3, 12px);
+}
+
+.cb-header {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.cb-label {
+    font-size: var(--pulse-text-small, 13px);
+    color: var(--pulse-slate, #64748b);
+}
+
+.cb-logic-toggle,
+.cb-logic-static {
+    background: linear-gradient(135deg, #D946EF 0%, #7B2FF2 100%);
+    color: var(--pulse-white, #ffffff);
+    padding: 2px var(--pulse-space-2, 8px);
+    border: none;
+    border-radius: var(--pulse-radius-sm, 6px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    font-size: var(--pulse-text-caption, 12px);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+}
+
+.cb-logic-toggle {
+    cursor: pointer;
+}
+
+.cb-logic-toggle:hover {
+    transform: translateY(-1px);
+}
+
+.cb-rules {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.cb-rule-row {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1.5fr auto;
+    gap: var(--pulse-space-3, 12px);
+    align-items: center;
+}
+
+.cb-select {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-body, 14px);
+    padding: var(--pulse-space-2, 8px) var(--pulse-space-3, 12px);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-md, 8px);
+    background: var(--pulse-white, #ffffff);
+    color: var(--pulse-dark, #111827);
+    min-width: 0;
+    height: 38px;
+}
+
+.cb-select:focus {
+    outline: none;
+    border-color: var(--pulse-purple-500, #7B2FF2);
+    box-shadow: 0 0 0 3px rgba(123, 47, 242, 0.12);
+}
+
+.cb-rule-value-placeholder {
+    padding: var(--pulse-space-2, 8px) var(--pulse-space-3, 12px);
+    color: var(--pulse-slate, #64748b);
+    font-style: italic;
+    font-size: var(--pulse-text-small, 13px);
+}
+
+.cb-rule-delete {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--pulse-radius-sm, 6px);
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--pulse-slate, #64748b);
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.cb-rule-delete:hover {
+    background: var(--pulse-red-50, #fef2f2);
+    color: var(--pulse-red-700, #b91c1c);
+}

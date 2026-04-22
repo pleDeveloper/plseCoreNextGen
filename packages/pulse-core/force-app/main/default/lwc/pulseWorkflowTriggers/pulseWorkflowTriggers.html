@@ -75,95 +75,13 @@
                         </div>
 
                         <div class="trigger-conditions">
-                            <div class="trigger-conditions-header">
-                                <span class="trigger-conditions-label">Start when</span>
-                                <template lwc:if={t.showLogicSelector}>
-                                    <button class="trigger-logic-toggle"
-                                            data-row-id={t.rowId}
-                                            onclick={handleLogicToggle}>
-                                        {t.logicLabel}
-                                    </button>
-                                </template>
-                                <template lwc:else>
-                                    <span class="trigger-logic-static">{t.logicLabel}</span>
-                                </template>
-                                <span class="trigger-conditions-label">match</span>
-                            </div>
-
-                            <ul class="trigger-rules">
-                                <template for:each={t.rules} for:item="r">
-                                    <li key={r.rowId} class="trigger-rule-row">
-                                        <select class="trigger-select trigger-rule-field"
-                                                data-row-id={t.rowId}
-                                                data-rule-row-id={r.rowId}
-                                                onchange={handleRuleFieldChange}>
-                                            <option value="" selected={r.fieldEmpty}>— field —</option>
-                                            <template for:each={r.fieldOptions} for:item="opt">
-                                                <option key={opt.value}
-                                                        value={opt.value}
-                                                        selected={opt.selected}>
-                                                    {opt.label}
-                                                </option>
-                                            </template>
-                                        </select>
-
-                                        <select class="trigger-select trigger-rule-op"
-                                                data-row-id={t.rowId}
-                                                data-rule-row-id={r.rowId}
-                                                onchange={handleRuleOpChange}>
-                                            <template for:each={r.opOptions} for:item="opt">
-                                                <option key={opt.value}
-                                                        value={opt.value}
-                                                        selected={opt.selected}>
-                                                    {opt.label}
-                                                </option>
-                                            </template>
-                                        </select>
-
-                                        <template lwc:if={r.hideValue}>
-                                            <div class="trigger-rule-value-placeholder">—</div>
-                                        </template>
-                                        <template lwc:elseif={r.isPicklist}>
-                                            <select class="trigger-select"
-                                                    data-row-id={t.rowId}
-                                                    data-rule-row-id={r.rowId}
-                                                    onchange={handleRuleValueChange}>
-                                                <option value="" selected={r.valueEmpty}>— value —</option>
-                                                <template for:each={r.picklistOptions} for:item="opt">
-                                                    <option key={opt.value}
-                                                            value={opt.value}
-                                                            selected={opt.selected}>
-                                                        {opt.label}
-                                                    </option>
-                                                </template>
-                                            </select>
-                                        </template>
-                                        <template lwc:else>
-                                            <c-pulse-input value={r.value}
-                                                           placeholder="Value"
-                                                           data-row-id={t.rowId}
-                                                           data-rule-row-id={r.rowId}
-                                                           onchange={handleRuleValueChange}>
-                                            </c-pulse-input>
-                                        </template>
-
-                                        <button class="trigger-rule-delete"
-                                                title="Remove rule"
-                                                data-row-id={t.rowId}
-                                                data-rule-row-id={r.rowId}
-                                                onclick={handleRemoveRule}>
-                                            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                                                <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                            </svg>
-                                        </button>
-                                    </li>
-                                </template>
-                            </ul>
-
-                            <c-pulse-button label="+ Add rule" variant="ghost" size="sm"
-                                            data-row-id={t.rowId}
-                                            onclick={handleAddRule}>
-                            </c-pulse-button>
+                            <c-pulse-condition-builder
+                                condition-tree={t.conditionTree}
+                                target-object={t.targetObject}
+                                logic-label="Start when"
+                                data-row-id={t.rowId}
+                                onchange={handleConditionChange}>
+                            </c-pulse-condition-builder>
                         </div>
 
                         <template lwc:if={t.apexTriggerStatus}>
