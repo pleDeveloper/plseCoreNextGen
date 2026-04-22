@@ -8,9 +8,13 @@ import {
 } from 'c/pulseStore';
 import saveWorkflow from '@salesforce/apex/PulseWorkflowBuilderController.saveWorkflow';
 import publishWorkflow from '@salesforce/apex/PulseWorkflowBuilderController.publishWorkflow';
+import listWorkflows from '@salesforce/apex/PulseWorkflowBuilderController.listWorkflows';
+import loadWorkflow from '@salesforce/apex/PulseWorkflowBuilderController.loadWorkflow';
 
 export default class PulseWorkflowBuilder extends LightningElement {
     @track _storeState;
+    @track _existingWorkflows = [];
+    @track _listError = null;
     _unsubscribe;
     _recordId; // Workflow_Definition__c Id once saved
 
@@ -18,6 +22,7 @@ export default class PulseWorkflowBuilder extends LightningElement {
     newWorkflowKey = '';
     newWorkflowName = '';
     newSubjectKinds = '';
+    showCreateForm = false;
 
     // ── Add-state form state ──────────────────────────────────────
     showAddStateForm = false;
@@ -35,6 +40,25 @@ export default class PulseWorkflowBuilder extends LightningElement {
         this._unsubscribe = subscribe((state) => {
             this._storeState = state;
         });
+        this._refreshWorkflowList();
+    }
+
+    async _refreshWorkflowList() {
+        try {
+            const rows = await listWorkflows();
+            this._existingWorkflows = (rows || []).map((r) => ({
+                ...r,
+                statusVariant: r.status === 'Published' ? 'green'
+                    : r.status === 'Draft' ? 'slate'
+                    : 'slate',
+                subjectKindsDisplay: r.subjectKinds
+                    ? r.subjectKinds.replace(/;/g, ', ')
+                    : '—'
+            }));
+            this._listError = null;
+        } catch (e) {
+            this._listError = e?.body?.message || e?.message || 'Failed to load workflows';
+        }
     }
 
     disconnectedCallback() {
@@ -83,6 +107,26 @@ export default class PulseWorkflowBuilder extends LightningElement {
 
     get isEditing() {
         return !!this.workflowKey;
+    }
+
+    get existingWorkflows() {
+        return this._existingWorkflows;
+    }
+
+    get hasExistingWorkflows() {
+        return this._existingWorkflows && this._existingWorkflows.length > 0;
+    }
+
+    get listError() {
+        return this._listError;
+    }
+
+    get showLanding() {
+        return this.isCreating && !this.showCreateForm;
+    }
+
+    get showCreatePanel() {
+        return this.isCreating && this.showCreateForm;
     }
 
     get createDisabled() {
@@ -227,6 +271,33 @@ export default class PulseWorkflowBuilder extends LightningElement {
             name: this.newWorkflowName.trim() || this.newWorkflowKey.trim(),
             subjectKinds: kinds
         });
+    }
+
+    handleShowCreateForm() {
+        this.showCreateForm = true;
+    }
+
+    handleBackToLanding() {
+        this.showCreateForm = false;
+    }
+
+    async handleOpenExisting(event) {
+        const recordId = event.currentTarget.dataset.recordId;
+        if (!recordId) return;
+        try {
+            const payload = await loadWorkflow({ workflowDefinitionId: recordId });
+            if (!payload || !payload.definitionJson) {
+                this._listError = 'Workflow has no definition JSON';
+                return;
+            }
+            const wf = JSON.parse(payload.definitionJson);
+            // Ensure workflow object has name for the UI header
+            if (!wf.name && payload.name) wf.name = payload.name;
+            this._recordId = payload.recordId;
+            dispatch({ type: 'LOAD_WORKFLOW', workflow: wf });
+        } catch (e) {
+            this._listError = e?.body?.message || e?.message || 'Failed to load workflow';
+        }
     }
 
     // ── Metadata handlers ─────────────────────────────────────────

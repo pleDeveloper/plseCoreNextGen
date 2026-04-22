@@ -253,5 +253,41 @@ private class PulseWorkflowBuilderControllerTest {
         System.assertNotEquals(null, sr);
         System.assertNotEquals(null, pr);
         System.assertNotEquals(null, fs);
+
+        PulseWorkflowBuilderController.WorkflowSummary ws =
+            new PulseWorkflowBuilderController.WorkflowSummary();
+        ws.recordId         = null;
+        ws.name             = 'n';
+        ws.workflowKey      = 'k';
+        ws.version          = 1;
+        ws.status           = 'Published';
+        ws.subjectKinds     = 'Opportunity';
+        ws.lastModifiedDate = Datetime.now();
+        System.assertNotEquals(null, ws);
+    }
+
+    @IsTest
+    static void testListWorkflowsReturnsSavedDefinitions() {
+        PulseWorkflowBuilderController.SaveResult r1 =
+            PulseWorkflowBuilderController.saveWorkflow(null, VALID_JSON);
+        System.assert(r1.success, 'Setup save failed: ' + r1.errors);
+
+        Test.startTest();
+        List<PulseWorkflowBuilderController.WorkflowSummary> rows =
+            PulseWorkflowBuilderController.listWorkflows();
+        Test.stopTest();
+
+        System.assert(rows.size() >= 1, 'Expected at least the one saved workflow');
+        Boolean found = false;
+        for (PulseWorkflowBuilderController.WorkflowSummary s : rows) {
+            if (s.recordId == r1.recordId) {
+                found = true;
+                System.assertEquals('test_wf', s.workflowKey);
+                System.assertEquals(1, s.version);
+                System.assertNotEquals(null, s.lastModifiedDate);
+                break;
+            }
+        }
+        System.assert(found, 'Saved workflow not returned by listWorkflows');
     }
 }

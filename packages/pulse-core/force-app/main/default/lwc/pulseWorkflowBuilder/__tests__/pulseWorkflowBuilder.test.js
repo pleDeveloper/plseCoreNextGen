@@ -32,6 +32,41 @@ jest.mock(
     { virtual: true }
 );
 
+jest.mock(
+    '@salesforce/apex/PulseWorkflowBuilderController.listWorkflows',
+    () => ({
+        default: jest.fn(() => Promise.resolve([]))
+    }),
+    { virtual: true }
+);
+
+jest.mock(
+    '@salesforce/apex/PulseWorkflowBuilderController.loadWorkflow',
+    () => ({
+        default: jest.fn(() =>
+            Promise.resolve({
+                recordId: 'a05xx0000000001',
+                name: 'Test Workflow',
+                workflowKey: 'test_wf',
+                version: 1,
+                status: 'Draft',
+                definitionJson: JSON.stringify({
+                    schema: 'pulse.workflow.v1',
+                    workflowKey: 'test_wf',
+                    name: 'Test Workflow',
+                    version: 1,
+                    subjectKinds: ['Account'],
+                    states: [
+                        { key: 'intake', label: 'Intake', type: 'form', fields: [], transitions: [] }
+                    ]
+                }),
+                subjectKinds: 'Account'
+            })
+        )
+    }),
+    { virtual: true }
+);
+
 function createComponent() {
     const el = createElement('c-pulse-workflow-builder', {
         is: PulseWorkflowBuilder
@@ -52,13 +87,74 @@ afterEach(() => {
 });
 
 describe('c-pulse-workflow-builder', () => {
-    it('shows create workflow form when no workflow key is set', () => {
+    it('shows landing view with workflow list when no workflow is open', async () => {
         const el = createComponent();
-        const heading = el.shadowRoot.querySelector(
-            '.builder-create-heading'
-        );
+        await flushPromises();
+        const heading = el.shadowRoot.querySelector('.builder-landing-heading');
+        expect(heading).not.toBeNull();
+        expect(heading.textContent).toBe('Your workflows');
+    });
+
+    it('shows create form after clicking New workflow', async () => {
+        const el = createComponent();
+        await flushPromises();
+
+        const newBtn = Array.from(
+            el.shadowRoot.querySelectorAll('c-pulse-button')
+        ).find((b) => b.label === 'New workflow');
+        expect(newBtn).not.toBeUndefined();
+        newBtn.click();
+        await flushPromises();
+
+        const heading = el.shadowRoot.querySelector('.builder-create-heading');
         expect(heading).not.toBeNull();
         expect(heading.textContent).toBe('Create a new workflow');
+    });
+
+    it('lists existing workflows returned by the controller', async () => {
+        const listWorkflows = require('@salesforce/apex/PulseWorkflowBuilderController.listWorkflows').default;
+        listWorkflows.mockResolvedValueOnce([
+            {
+                recordId: 'a05xx0000000001',
+                name: 'Real Estate Leasing v1',
+                workflowKey: 'real_estate_leasing_v1',
+                version: 1,
+                status: 'Published',
+                subjectKinds: 'Opportunity'
+            }
+        ]);
+        const el = createComponent();
+        await flushPromises();
+
+        const items = el.shadowRoot.querySelectorAll('.builder-landing-item');
+        expect(items.length).toBe(1);
+        const name = items[0].querySelector('.builder-landing-item-name');
+        expect(name.textContent).toBe('Real Estate Leasing v1');
+    });
+
+    it('loads existing workflow into editor when clicked', async () => {
+        const listWorkflows = require('@salesforce/apex/PulseWorkflowBuilderController.listWorkflows').default;
+        listWorkflows.mockResolvedValueOnce([
+            {
+                recordId: 'a05xx0000000001',
+                name: 'Test Workflow',
+                workflowKey: 'test_wf',
+                version: 1,
+                status: 'Draft',
+                subjectKinds: 'Account'
+            }
+        ]);
+        const el = createComponent();
+        await flushPromises();
+
+        const item = el.shadowRoot.querySelector('.builder-landing-item');
+        expect(item).not.toBeNull();
+        item.click();
+        await flushPromises();
+        await flushPromises();
+
+        const body = el.shadowRoot.querySelector('.builder-body');
+        expect(body).not.toBeNull();
     });
 
     it('transitions to editor after dispatching workflow meta', async () => {

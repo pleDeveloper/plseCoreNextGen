@@ -23,10 +23,60 @@
             </div>
         </div>
 
-        <template lwc:if={isCreating}>
+        <template lwc:if={showLanding}>
+            <!-- Landing: list existing workflows + option to create new -->
+            <div class="builder-landing">
+                <div class="builder-landing-header">
+                    <div>
+                        <h2 class="builder-landing-heading">Your workflows</h2>
+                        <p class="builder-landing-desc">Pick a workflow to edit, or start a new one from scratch.</p>
+                    </div>
+                    <c-pulse-button label="New workflow" variant="primary"
+                                    onclick={handleShowCreateForm}>
+                    </c-pulse-button>
+                </div>
+
+                <template lwc:if={listError}>
+                    <div class="builder-landing-error">{listError}</div>
+                </template>
+
+                <template lwc:if={hasExistingWorkflows}>
+                    <ul class="builder-landing-list">
+                        <template for:each={existingWorkflows} for:item="wf">
+                            <li key={wf.recordId}
+                                class="builder-landing-item"
+                                data-record-id={wf.recordId}
+                                onclick={handleOpenExisting}>
+                                <div class="builder-landing-item-main">
+                                    <span class="builder-landing-item-name">{wf.name}</span>
+                                    <span class="builder-landing-item-key">{wf.workflowKey}</span>
+                                </div>
+                                <div class="builder-landing-item-meta">
+                                    <c-pulse-badge label={wf.status} variant={wf.statusVariant}></c-pulse-badge>
+                                    <span class="builder-landing-item-kinds">{wf.subjectKindsDisplay}</span>
+                                    <span class="builder-landing-item-version">v{wf.version}</span>
+                                </div>
+                            </li>
+                        </template>
+                    </ul>
+                </template>
+                <template lwc:else>
+                    <div class="builder-landing-empty">
+                        No workflows yet. Click <strong>New workflow</strong> to create your first one.
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <template lwc:if={showCreatePanel}>
             <!-- Create workflow form -->
             <div class="builder-create-panel">
                 <div class="builder-create-card">
+                    <div class="builder-create-card-header">
+                        <c-pulse-button label="← Back" variant="ghost" size="sm"
+                                        onclick={handleBackToLanding}>
+                        </c-pulse-button>
+                    </div>
                     <h2 class="builder-create-heading">Create a new workflow</h2>
                     <p class="builder-create-desc">Define the workflow key, name, and which objects it targets.</p>
                     <div class="builder-create-form">

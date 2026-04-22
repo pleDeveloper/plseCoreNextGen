@@ -23,6 +23,16 @@ global with sharing class PulseWorkflowBuilderController {
         @AuraEnabled public String subjectKinds;
     }
 
+    global class WorkflowSummary {
+        @AuraEnabled public Id     recordId;
+        @AuraEnabled public String name;
+        @AuraEnabled public String workflowKey;
+        @AuraEnabled public Integer version;
+        @AuraEnabled public String status;
+        @AuraEnabled public String subjectKinds;
+        @AuraEnabled public Datetime lastModifiedDate;
+    }
+
     global class SaveResult {
         @AuraEnabled public Boolean success;
         @AuraEnabled public Id      recordId;
@@ -44,6 +54,31 @@ global with sharing class PulseWorkflowBuilderController {
         @AuraEnabled public Integer fieldLength;
         @AuraEnabled public Integer precision;
         @AuraEnabled public Integer scale;
+    }
+
+    // ── List ───────────────────────────────────────────────────────────
+
+    @AuraEnabled(cacheable=true)
+    global static List<WorkflowSummary> listWorkflows() {
+        List<WorkflowSummary> out = new List<WorkflowSummary>();
+        for (Workflow_Definition__c wd : [
+            SELECT Id, Name, Workflow_Key__c, Version__c, Status__c,
+                   Subject_Kinds__c, LastModifiedDate
+            FROM   Workflow_Definition__c
+            ORDER BY LastModifiedDate DESC
+            LIMIT  200
+        ]) {
+            WorkflowSummary s = new WorkflowSummary();
+            s.recordId         = wd.Id;
+            s.name             = wd.Name;
+            s.workflowKey      = wd.Workflow_Key__c;
+            s.version          = wd.Version__c != null ? wd.Version__c.intValue() : 1;
+            s.status           = wd.Status__c;
+            s.subjectKinds     = wd.Subject_Kinds__c;
+            s.lastModifiedDate = wd.LastModifiedDate;
+            out.add(s);
+        }
+        return out;
     }
 
     // ── Load ───────────────────────────────────────────────────────────
