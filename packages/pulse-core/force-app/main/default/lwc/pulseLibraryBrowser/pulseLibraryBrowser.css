@@ -1,0 +1,120 @@
+:host {
+    display: block;
+}
+
+.library-browser {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-spacing-md, 1rem);
+}
+
+.library-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: var(--pulse-spacing-sm, 0.5rem);
+}
+
+.library-header-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-spacing-xs, 0.25rem);
+}
+
+.library-header-label {
+    font-size: var(--pulse-font-size-sm, 0.875rem);
+    color: var(--pulse-text-muted, #94a3b8);
+}
+
+.library-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-spacing-sm, 0.5rem);
+}
+
+.bundle-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--pulse-spacing-md, 1rem);
+}
+
+.bundle-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.bundle-display-name {
+    font-size: var(--pulse-font-size-md, 1rem);
+    font-weight: 600;
+    color: var(--pulse-text-primary, #f1f5f9);
+    margin: 0 0 var(--pulse-spacing-xxs, 0.125rem) 0;
+}
+
+.bundle-key {
+    font-size: var(--pulse-font-size-xs, 0.75rem);
+    color: var(--pulse-text-muted, #94a3b8);
+    font-family: var(--pulse-font-mono, monospace);
+}
+
+.bundle-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-spacing-sm, 0.5rem);
+    margin-top: var(--pulse-spacing-xs, 0.25rem);
+    flex-wrap: wrap;
+}
+
+.bundle-version,
+.bundle-publisher,
+.bundle-date,
+.bundle-user {
+    font-size: var(--pulse-font-size-xs, 0.75rem);
+    color: var(--pulse-text-muted, #94a3b8);
+}
+
+.bundle-actions {
+    flex-shrink: 0;
+}
+
+.library-empty {
+    text-align: center;
+    padding: var(--pulse-spacing-xl, 2rem);
+}
+
+.library-empty-text {
+    color: var(--pulse-text-muted, #94a3b8);
+    font-size: var(--pulse-font-size-sm, 0.875rem);
+}
+
+.library-error {
+    background: var(--pulse-surface-error, rgba(239, 68, 68, 0.1));
+    color: var(--pulse-text-error, #ef4444);
+    border-radius: var(--pulse-radius-md, 0.5rem);
+    padding: var(--pulse-spacing-sm, 0.5rem) var(--pulse-spacing-md, 1rem);
+    font-size: var(--pulse-font-size-sm, 0.875rem);
+}
+
+.install-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-spacing-md, 1rem);
+}
+
+.rollback-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-spacing-md, 1rem);
+}
+
+.rollback-confirm p {
+    color: var(--pulse-text-secondary, #cbd5e1);
+    font-size: var(--pulse-font-size-sm, 0.875rem);
+    margin: 0;
+}
+
+.rollback-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--pulse-spacing-sm, 0.5rem);
+}

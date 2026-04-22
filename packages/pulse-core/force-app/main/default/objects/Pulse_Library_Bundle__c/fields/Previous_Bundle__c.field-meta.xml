@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Previous_Bundle__c</fullName>
+    <label>Previous Bundle</label>
+    <type>Lookup</type>
+    <referenceTo>Pulse_Library_Bundle__c</referenceTo>
+    <relationshipLabel>Superseded By</relationshipLabel>
+    <relationshipName>Superseded_By</relationshipName>
+    <deleteConstraint>SetNull</deleteConstraint>
+</CustomField>

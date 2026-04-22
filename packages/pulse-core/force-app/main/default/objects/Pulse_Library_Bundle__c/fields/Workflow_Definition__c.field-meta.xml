@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Workflow_Definition__c</fullName>
+    <label>Workflow Definition</label>
+    <type>Lookup</type>
+    <referenceTo>Workflow_Definition__c</referenceTo>
+    <relationshipLabel>Library Bundles</relationshipLabel>
+    <relationshipName>Library_Bundles</relationshipName>
+    <deleteConstraint>SetNull</deleteConstraint>
+</CustomField>
