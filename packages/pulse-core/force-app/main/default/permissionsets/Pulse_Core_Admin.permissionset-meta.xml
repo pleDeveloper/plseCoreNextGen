@@ -122,11 +122,6 @@
     </objectPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>Agent_Decision__c.Agent_Thread__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>true</editable>
         <field>Agent_Decision__c.Decision_Type__c</field>
         <readable>true</readable>
     </fieldPermissions>
