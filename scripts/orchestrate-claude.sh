@@ -51,6 +51,10 @@ LANES_WAVE4A=(
   "wave4a-conv|wave4a-conversation-hub|prompts/wave4a-conversation-hub.txt|wave4a: conversation hub — review + accept AI-extracted facts"
 )
 
+LANES_WAVE5=(
+  "wave5-sla|wave5-sla-bi|prompts/wave5-sla-bi.txt|wave5: Stage_Dwell__c + SLA heatmap + exit-time predictor"
+)
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -492,6 +496,21 @@ wave4a() {
   say "Wave 4a lane completed."
 }
 
+wave5() {
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/wave5-sla.log"
+
+  for lane in "${LANES_WAVE5[@]}"; do
+    setup_wave3_lane_inline "$lane"
+    IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    say "Follow log with: ./scripts/orchestrate-claude.sh logs wave5-sla"
+    run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
+  done
+
+  say "Wave 5 lane completed."
+}
+
 logs() {
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
@@ -652,6 +671,7 @@ main() {
     wave3b) wave3b ;;
     wave3c) wave3c ;;
     wave4a) wave4a ;;
+    wave5) wave5 ;;
     merge-wave1) merge_wave1 ;;
     merge-wave2) merge_wave2 ;;
     validate) validate ;;

@@ -1,0 +1,227 @@
+You are executing Wave 5 (SLA tracking + BI) for Pulse Core Next. Single-lane session on branch `wave5-sla-bi` off `main`.
+
+Phase 2 per v4.1 §4.8. Adds stage-dwell-time tracking that feeds both an operational heatmap LWC and a lightweight predictor that projects when currently-active instances are likely to exit each state.
+
+# Canonical references (read first)
+- `docs/pulse-nextgen-architecture-review-and-build-plan.md` v4.1:
+  - §4.8 SLA / BI / Predictor
+  - §5 Phase 2 scope markers
+- Existing runtime:
+  - `packages/pulse-core/force-app/main/default/classes/WorkflowRuntime.cls` — already has `TransitionHook` interface + `registerHook()` static. Use this extension point to capture state-entry/exit moments without modifying WorkflowRuntime itself.
+  - `packages/pulse-core/force-app/main/default/classes/ProjectionWriteService.cls` — example of a TransitionHook consumer (if it already is one; inspect to confirm).
+  - `packages/pulse-core/force-app/main/default/objects/Workflow_Instance__c/` — has Current_State__c, Pinned_Version__c, etc.
+
+# Goal
+Three deliverables, all in `packages/pulse-core/`:
+
+1. `Stage_Dwell__c` fact object — append-only per-state-exit record for BI queries and predictor training.
+2. `StageDwellHook` Apex TransitionHook implementation + registration mechanism — captures dwell times automatically as instances transition.
+3. `StageDwellPredictor` Apex service — queries recent Stage_Dwell__c rows, computes median + p90 per (workflow_key, state_key, subject_kind), exposes `predictExitFor(instanceId)` returning an estimated exit datetime + confidence.
+4. `pulseSlaHeatmap` LWC — surface the aggregated per-state dwell stats (median, p90, count) as a heatmap in the Admin Studio's "Reports" / "SLA" panel.
+
+## 1. Stage_Dwell__c object
+
+Path: `packages/pulse-core/force-app/main/default/objects/Stage_Dwell__c/`
+
+Shape:
+- `Workflow_Instance__c` — Master-Detail lookup to `Workflow_Instance__c` (rollup-safe; append-only)
+- `Workflow_Key__c` — Text(80), indexed (external id not required, but queryable)
+- `Subject_Kind__c` — Text(40)
+- `State_Key__c` — Text(80)
+- `State_Label__c` — Text(240)
+- `State_Type__c` — Text(40) (form / approval / terminal / etc.)
+- `Entered_At__c` — DateTime, indexed (SLA queries scan by this)
+- `Exited_At__c` — DateTime (null while active; set on transition-out)
+- `Duration_Seconds__c` — Number(18, 0), calculated by the hook (not a formula; computed in Apex for durability across recomputation)
+- `Next_State_Key__c` — Text(80), nullable (present when state exit is to another state rather than to terminal)
+- `Signal__c` — Text(80), nullable (the signal that caused the exit)
+- `Actor_Type__c` — Text(40) — Human / AI / System
+
+Include sharing model (ReadWrite, standard), deployment status Deployed, per-field labels.
+
+No picklists — keep textual to avoid metadata churn. Picklist on Actor_Type and State_Type is tempting but the existing v3 data already uses plain text; stay consistent.
+
+Add a `Stage_Dwell__c` record-triggered-proof indicator: an `@TestVisible` static counter in StageDwellHook so the test can verify row creation without SOQL round trips during the transition.
+
+## 2. StageDwellHook (Apex)
+
+Path: `packages/pulse-core/force-app/main/default/classes/StageDwellHook.cls`
+
+```
+public with sharing class StageDwellHook implements WorkflowRuntime.TransitionHook {
+
+    // Registration helper — call from a post-install or setup script to
+    // register the hook once per app lifetime. Runtime's static hooks list
+    // persists for the transaction only, so external callers should re-register
+    // per transaction. (This is a known limitation; see notes below.)
+    public static void register() {
+        WorkflowRuntime.registerHook(new StageDwellHook());
+    }
+
+    public void afterTransitions(List<WorkflowRuntime.TransitionContext> contexts) {
+        // For each TransitionContext:
+        //   - Look up (or create in-memory and buffer) a Stage_Dwell__c for the
+        //     FROM state of this instance whose Exited_At is null → set
+        //     Exited_At = stepResult.Completed_Date (or now()), compute
+        //     Duration_Seconds, set Next_State_Key, Signal, Actor_Type.
+        //   - Create a NEW Stage_Dwell__c for the TO state:
+        //     Entered_At = stepResult.Completed_Date, Exited_At = null,
+        //     State_Key = ctx.toStateKey, etc. (Terminal states get an entry
+        //     row too; the predictor can filter if it wants.)
+        //
+        // Bulk pattern: aggregate all upserts, single DML at the end.
+        //
+        // If a FROM-state Stage_Dwell__c row does NOT exist for this instance
+        // (first transition after legacy data, or tests that don't seed), skip
+        // updating the FROM row and just create the TO row.
+    }
+
+    // ── Private helpers ──────────────────────────────────────────────
+    // Build Stage_Dwell__c rows, look up open rows per instance, compute
+    // duration in seconds.
+}
+```
+
+### Registration during runtime
+The `TransitionHook` list in `WorkflowRuntime` is a static Apex collection — it survives only for the current transaction. To make `StageDwellHook` always run, there are two options:
+
+- **Option A (recommended for this wave):** modify `WorkflowRuntime.advance()` to auto-register the hook at the top of each call: `if (!hasStageDwellRegistered) { StageDwellHook.register(); hasStageDwellRegistered = true; }`. The `hasStageDwellRegistered` flag is a static Boolean inside WorkflowRuntime. One-line touch to `advance()`.
+
+- **Option B:** expect every caller (LWC controllers, trigger code, queueables) to `StageDwellHook.register()` before calling `advance()`. More ceremony; error-prone.
+
+Go with **Option A**. It's a 4-line delta in WorkflowRuntime that adds no cross-package dependency (StageDwellHook is in Core). Add a one-line comment explaining the auto-registration.
+
+### StageDwellHookTest
+Cover:
+- Single transition creates TO row, marks FROM row exited, sets Duration_Seconds correctly.
+- Batch of 5 instances transitioning simultaneously produces correct per-instance rows.
+- Terminal transition sets Exited_At on FROM row AND creates a terminal TO row with Exited_At = null (the predictor can decide how to interpret).
+- First-ever transition for a brand-new instance (no prior Stage_Dwell row for FROM state) only creates the TO row, no errors.
+
+## 3. StageDwellPredictor (Apex)
+
+Path: `packages/pulse-core/force-app/main/default/classes/StageDwellPredictor.cls`
+
+```
+global with sharing class StageDwellPredictor {
+
+    global class StageStats {
+        @AuraEnabled global String  workflowKey;
+        @AuraEnabled global String  subjectKind;
+        @AuraEnabled global String  stateKey;
+        @AuraEnabled global Integer sampleCount;      // N rows used in this aggregation
+        @AuraEnabled global Integer medianSeconds;
+        @AuraEnabled global Integer p90Seconds;
+        @AuraEnabled global Integer minSeconds;
+        @AuraEnabled global Integer maxSeconds;
+    }
+
+    global class ExitPrediction {
+        @AuraEnabled global Id       instanceId;
+        @AuraEnabled global String   currentStateKey;
+        @AuraEnabled global Datetime enteredAt;
+        @AuraEnabled global Integer  medianSecondsForState;
+        @AuraEnabled global Integer  p90SecondsForState;
+        @AuraEnabled global Datetime expectedExitDate;   // enteredAt + medianSecondsForState
+        @AuraEnabled global Datetime p90ExitDate;        // enteredAt + p90SecondsForState
+        @AuraEnabled global Boolean  isOverdue;          // now() > p90ExitDate
+        @AuraEnabled global Integer  sampleCount;
+    }
+
+    @AuraEnabled(cacheable=true)
+    global static List<StageStats> aggregateDwellStats(
+        String workflowKey,        // nullable — null = all workflows
+        Integer lookbackDays       // default 90 if null/zero
+    ) {
+        // SOQL: SELECT Workflow_Key__c, Subject_Kind__c, State_Key__c, Duration_Seconds__c
+        // FROM Stage_Dwell__c WHERE Exited_At__c != null AND Entered_At__c >= :cutoff
+        // GROUP BY Workflow_Key__c, Subject_Kind__c, State_Key__c
+        //
+        // Aggregate stats computed in Apex since SOQL doesn't have median/p90.
+        // Use the percentile algorithm: sort the N durations, pick index
+        // floor(N * 0.5) for median, floor(N * 0.9) for p90.
+        // Bounded to the 50,000-row SOQL cap — if lookback is large, warn
+        // via a comment and accept truncation.
+    }
+
+    @AuraEnabled(cacheable=true)
+    global static ExitPrediction predictExitFor(Id workflowInstanceId) {
+        // Load the instance's current state + entered_at (from the open
+        // Stage_Dwell__c row for this instance with Exited_At=null).
+        // Look up stats for (workflow_key, subject_kind, state_key) via
+        // aggregateDwellStats. Compute expectedExitDate = enteredAt + median,
+        // p90ExitDate = enteredAt + p90. Return an ExitPrediction.
+        //
+        // If no dwell history exists for this state → return prediction with
+        // sampleCount=0, nulls for the date fields (LWC can render "—").
+    }
+}
+```
+
+### StageDwellPredictorTest
+- Seed 20+ Stage_Dwell__c rows across 2 states with known durations; assert median and p90 match.
+- aggregateDwellStats filters by workflowKey + lookbackDays correctly.
+- predictExitFor returns the right date arithmetic for an instance mid-flight.
+- predictExitFor returns sampleCount=0 cleanly when no history exists for that state.
+
+## 4. pulseSlaHeatmap LWC
+
+Path: `packages/pulse-core/force-app/main/default/lwc/pulseSlaHeatmap/`
+
+`js-meta.xml`:
+- `isExposed = true`
+- `targets = lightning__AppPage, lightning__RecordPage`
+- `masterLabel = 'Pulse SLA Heatmap'`
+
+Props:
+- `@api workflowKey` (nullable — null = all workflows)
+- `@api lookbackDays = 90`
+
+Behavior:
+- `connectedCallback()` → `loadPulseBrandTokens(this)`, `@wire(aggregateDwellStats, { workflowKey, lookbackDays })`.
+- Render a grid: rows = states, columns = median / p90 / N. Cells colored by relative duration:
+  - state's p90 ≤ 25% of max-p90 across all states → `--pulse-success`
+  - state's p90 ≤ 50% → `--pulse-info`
+  - state's p90 ≤ 75% → `--pulse-warning`
+  - state's p90 > 75% → `--pulse-error`
+- Header with workflow key filter + lookback slider (pulseInput type=number).
+- Empty state: "No completed dwell records yet." with a muted hint about when data accrues.
+- Click a row → emit `select` event with the stateKey — the admin-studio parent panel can later use it to drill down. For this wave, just fire the event; don't build a drill-down surface.
+
+Tests:
+- Renders empty state when aggregateDwellStats returns [].
+- Renders multiple rows sorted by p90 descending.
+- Color bucket assignment covers all 4 tiers.
+
+## 5. Admin Studio integration
+
+Modify `packages/pulse-core/force-app/main/default/lwc/pulseAdminStudio/`:
+- Add a new nav item "SLA" (or "Reports" if you prefer a more general label — I defer to your judgment — but prefer "SLA" since Reports implies more than just SLA in a real product).
+- Active-panel rendering: `<c-pulse-sla-heatmap></c-pulse-sla-heatmap>` when nav=sla.
+- Update `pulseAdminStudio.test.js` with a render-SLA-panel click case.
+
+# Brand / discipline rules (same as every Wave 3+)
+- Every new LWC calls `loadPulseBrandTokens(this)`.
+- No hardcoded hex outside `var(--token, #fallback)`.
+- No lightning-* base components.
+- Sentence case headings; no buzzwords.
+- Global visibility: `StageDwellPredictor` stays `global` (extension packages may want to query stats). `StageDwellHook` can be `public` since it's Core-internal. `Stage_Dwell__c` — MD lookup to Workflow_Instance__c carries no special visibility.
+
+# Out of scope
+- No cross-channel fanout (Slack alerts when a state passes p90). Defer to a channels wave.
+- No machine-learning model — simple percentile-from-history is the predictor. No calling any AI service.
+- No SLA breach notification record or platform event. Predictor returns data; the UI shows it; consumers can act on it via existing workflow-advance paths.
+- Do not touch any existing Apex test class beyond the one trivial Admin Studio test edit.
+
+# Validation gate
+1. `sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages --ignore-conflicts` → 0 errors.
+2. `./scripts/check-global-discipline.sh` → OK.
+3. `sf apex run test -o pulse-core-next-dev --test-level RunLocalTests --wait 30` → total count grows by ≥10 (hook tests + predictor tests), 100% pass rate held.
+4. `npx jest --no-cache pulseSlaHeatmap` → all LWC tests green.
+
+# Commit
+```
+git add -A && git commit -m "wave5: Stage_Dwell__c + SLA heatmap + exit-time predictor"
+```
+
+Do not push. Orchestrator merges; reviewer inspects.
