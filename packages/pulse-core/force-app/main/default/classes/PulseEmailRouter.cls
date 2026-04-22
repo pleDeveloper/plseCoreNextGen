@@ -29,6 +29,46 @@ public with sharing class PulseEmailRouter {
     }
 
     /**
+     * For subjects that start with "Re:" (case-insensitive) but carry no
+     * [Pulse:...] tag, try to find an existing Conversation__c whose
+     * non-Re subject matches and whose participants contain the sender.
+     * Returns the matching Conversation Id, or null.
+     *
+     * Used by the inbound handler to let replies append to the same
+     * Conversation thread when the user strips the subject tag.
+     */
+    public static Id findThreadConversationId(String fromAddress, String subject) {
+        if (String.isBlank(subject) || String.isBlank(fromAddress)) return null;
+        String trimmed = subject.trim();
+        if (!trimmed.toLowerCase().startsWith('re:')) return null;
+
+        // Strip leading "Re:" prefixes (possibly chained, e.g. "Re: Re: foo")
+        String stripped = trimmed;
+        while (stripped.length() >= 3 && stripped.substring(0, 3).equalsIgnoreCase('re:')) {
+            stripped = stripped.substring(3).trim();
+        }
+        if (String.isBlank(stripped)) return null;
+
+        // Participants__c is LongTextArea → can't LIKE in SOQL; filter in memory.
+        List<Conversation__c> matches = [
+            SELECT Id, Subject__c, Participants__c, CreatedDate
+            FROM Conversation__c
+            WHERE Subject__c = :stripped
+              AND Source_Adapter__c = 'inbound_email'
+            ORDER BY CreatedDate DESC
+            LIMIT 10
+        ];
+        String needle = fromAddress.toLowerCase();
+        for (Conversation__c c : matches) {
+            if (String.isNotBlank(c.Participants__c)
+                    && c.Participants__c.toLowerCase().contains(needle)) {
+                return c.Id;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Attempts to route an inbound email by matching the sender's address
      * to a Contact on an Opportunity that has an active Workflow_Instance__c.
      */

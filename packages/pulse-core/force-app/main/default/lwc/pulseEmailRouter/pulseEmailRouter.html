@@ -1,0 +1,176 @@
+<template>
+    <div class="router-shell">
+        <header class="router-header">
+            <div>
+                <h2 class="router-title pulse-gradient-text">Email routing</h2>
+                <p class="router-desc">
+                    Match inbound emails to the right Opportunity. Configure declarative
+                    routing rules and resolve unrouted emails without leaving Admin Studio.
+                </p>
+            </div>
+        </header>
+
+        <template lwc:if={toast}>
+            <div class={toast.class}>
+                <span>{toast.message}</span>
+                <button class="router-toast-close" onclick={handleDismissToast} aria-label="Dismiss">
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+        </template>
+
+        <!-- Unrouted emails panel -->
+        <section class="router-panel">
+            <div class="router-panel-head">
+                <div>
+                    <h3 class="router-panel-title">Unrouted emails</h3>
+                    <p class="router-panel-sub">{unroutedCountLabel}</p>
+                </div>
+                <c-pulse-button label="Refresh" variant="ghost" size="sm"
+                                onclick={handleRefreshEmails}>
+                </c-pulse-button>
+            </div>
+
+            <template lwc:if={loadingEmails}>
+                <div class="router-loading">Loading…</div>
+            </template>
+
+            <template lwc:if={emailsError}>
+                <div class="router-error-banner">{emailsError}</div>
+            </template>
+
+            <template lwc:if={hasUnrouted}>
+                <ul class="router-email-list">
+                    <template for:each={unrouted} for:item="c">
+                        <li key={c.conversationId} class="router-email-card">
+                            <div class="router-email-meta">
+                                <span class="router-email-from">{c.senderEmail}</span>
+                                <span class="router-email-subject">{c.subject}</span>
+                            </div>
+                            <div class="router-email-snippet">{c.snippet}</div>
+                            <div class="router-email-actions">
+                                <c-pulse-input value={c.pickerValue}
+                                               placeholder="Paste record Id (e.g. 006…)"
+                                               data-conversation-id={c.conversationId}
+                                               onchange={handlePickerChange}>
+                                </c-pulse-input>
+                                <c-pulse-button label="Route to existing"
+                                                variant="secondary" size="sm"
+                                                disabled={c.busy}
+                                                data-conversation-id={c.conversationId}
+                                                onclick={handleRouteToExisting}>
+                                </c-pulse-button>
+                                <c-pulse-button label="Create new Opportunity"
+                                                variant="primary" size="sm"
+                                                disabled={c.busy}
+                                                data-conversation-id={c.conversationId}
+                                                onclick={handleCreateOpportunity}>
+                                </c-pulse-button>
+                                <c-pulse-button label="Create rule from this"
+                                                variant="ghost" size="sm"
+                                                data-conversation-id={c.conversationId}
+                                                onclick={handleCreateRule}>
+                                </c-pulse-button>
+                            </div>
+                            <template lwc:if={c.error}>
+                                <div class="router-email-error">{c.error}</div>
+                            </template>
+                        </li>
+                    </template>
+                </ul>
+            </template>
+            <template lwc:else>
+                <template lwc:if={loadingEmails}></template>
+                <template lwc:else>
+                    <div class="router-empty">
+                        No unrouted emails. Inbound emails that match a routing rule or
+                        existing thread go straight to the right record.
+                    </div>
+                </template>
+            </template>
+        </section>
+
+        <!-- Routing rules panel -->
+        <section class="router-panel">
+            <div class="router-panel-head">
+                <div>
+                    <h3 class="router-panel-title">Routing rules</h3>
+                    <p class="router-panel-sub">
+                        Configured via Custom Metadata — this view is read-only.
+                    </p>
+                </div>
+                <div class="router-panel-actions">
+                    <c-pulse-button label="Refresh" variant="ghost" size="sm"
+                                    onclick={handleRefreshRules}>
+                    </c-pulse-button>
+                    <c-pulse-button label="Add rule" variant="primary" size="sm"
+                                    onclick={handleAddRule}>
+                    </c-pulse-button>
+                </div>
+            </div>
+
+            <template lwc:if={loadingRules}>
+                <div class="router-loading">Loading…</div>
+            </template>
+
+            <template lwc:if={rulesError}>
+                <div class="router-error-banner">{rulesError}</div>
+            </template>
+
+            <template lwc:if={hasRules}>
+                <ul class="router-rules-list">
+                    <template for:each={rules} for:item="r">
+                        <li key={r.developerName} class="router-rule-card">
+                            <div class="router-rule-head">
+                                <div class="router-rule-title-wrap">
+                                    <span class="router-rule-title">{r.developerName}</span>
+                                    <span class={r.statusClass}>{r.statusLabel}</span>
+                                </div>
+                                <c-pulse-button label="Edit rule" variant="ghost" size="sm"
+                                                data-developer-name={r.developerName}
+                                                onclick={handleEditRule}>
+                                </c-pulse-button>
+                            </div>
+                            <dl class="router-rule-grid">
+                                <div class="router-rule-kv">
+                                    <dt>Rule key</dt><dd>{r.ruleKey}</dd>
+                                </div>
+                                <div class="router-rule-kv">
+                                    <dt>Priority</dt><dd>{r.priorityLabel}</dd>
+                                </div>
+                                <div class="router-rule-kv">
+                                    <dt>Source</dt><dd>{r.sourceAdapter}</dd>
+                                </div>
+                                <div class="router-rule-kv">
+                                    <dt>Match strategy</dt><dd>{r.matchStrategy}</dd>
+                                </div>
+                                <div class="router-rule-kv">
+                                    <dt>Target object</dt><dd>{r.targetObject}</dd>
+                                </div>
+                                <div class="router-rule-kv">
+                                    <dt>Starts workflow</dt><dd>{r.triggerWorkflowKey}</dd>
+                                </div>
+                            </dl>
+                        </li>
+                    </template>
+                </ul>
+            </template>
+            <template lwc:else>
+                <template lwc:if={loadingRules}></template>
+                <template lwc:else>
+                    <div class="router-empty">
+                        No routing rules configured. Create one via Setup → Custom Metadata Types.
+                    </div>
+                </template>
+            </template>
+
+            <p class="router-rules-hint">
+                Rule authoring is read-only in-app for this release. Create or edit rules in
+                Setup → Custom Metadata Types → Conversation Routing Rule. In-app editing
+                arrives in the next admin-studio release.
+            </p>
+        </section>
+    </div>
+</template>

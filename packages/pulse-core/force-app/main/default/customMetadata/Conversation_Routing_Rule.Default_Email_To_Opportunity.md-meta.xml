@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+    <label>Default Email To Opportunity</label>
+    <protected>false</protected>
+    <values>
+        <field>Active__c</field>
+        <value xsi:type="xsd:boolean">true</value>
+    </values>
+    <values>
+        <field>Create_Defaults_JSON__c</field>
+        <value xsi:type="xsd:string">{"StageName":"Qualification","CloseDate":"+30d","Name":"New inquiry from {senderEmail}"}</value>
+    </values>
+    <values>
+        <field>Match_Strategy__c</field>
+        <value xsi:type="xsd:string">EMAIL_SENDER_TO_CONTACT</value>
+    </values>
+    <values>
+        <field>Priority__c</field>
+        <value xsi:type="xsd:double">100.0</value>
+    </values>
+    <values>
+        <field>Rule_Key__c</field>
+        <value xsi:type="xsd:string">default_email_to_opportunity</value>
+    </values>
+    <values>
+        <field>Source_Adapter__c</field>
+        <value xsi:type="xsd:string">email</value>
+    </values>
+    <values>
+        <field>Target_Object__c</field>
+        <value xsi:type="xsd:string">Opportunity</value>
+    </values>
+    <values>
+        <field>Trigger_Workflow_Key__c</field>
+        <value xsi:type="xsd:string">real_estate_leasing_v1</value>
+    </values>
+</CustomMetadata>
