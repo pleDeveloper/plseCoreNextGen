@@ -135,7 +135,13 @@ List<plse__Workflow_Instance__c> existingInsts = [
 ];
 if (!existingInsts.isEmpty()) {
     inst = existingInsts[0];
-    System.debug('### Reusing existing Workflow_Instance__c: ' + inst.Id + ' (state=' + inst.plse__Current_State__c + ')');
+    // Force-reset the state so re-running the seed after demo drift
+    // returns the instance to the AI-driven qualification step.
+    inst.plse__Current_State__c = 'intake_qualification';
+    inst.plse__Status__c = 'Active';
+    inst.plse__Pinned_Version__c = 1;
+    update inst;
+    System.debug('### Reset existing Workflow_Instance__c to intake_qualification: ' + inst.Id);
 } else {
     inst = new plse__Workflow_Instance__c(
         plse__Workflow_Definition__c = def.Id,
