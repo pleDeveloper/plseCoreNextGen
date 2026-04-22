@@ -132,6 +132,51 @@ private class AnthropicAdapterTest {
 
         System.assertEquals(true, resp.isError);
         System.assert(resp.errorMessage.contains('429'), resp.errorMessage);
+        // Structured envelope parsed: expect type and message extracted.
+        System.assert(resp.errorMessage.contains('rate_limit_error'),
+            'Error type should surface: ' + resp.errorMessage);
+        System.assert(resp.errorMessage.contains('Too many requests'),
+            'Error message should surface: ' + resp.errorMessage);
+    }
+
+    @IsTest
+    static void testChatWithUnauthorizedError() {
+        // 401 with Anthropic error envelope — common when x-api-key header is wrong.
+        Test.setMock(HttpCalloutMock.class, new AnthropicUnauthorizedMock());
+
+        AnthropicAdapter adapter = new AnthropicAdapter('TestCredential', 'claude-sonnet-4-20250514');
+        PulseAiModels.Request req = new PulseAiModels.Request();
+        req.messages.add(new PulseAiModels.Message('user', 'Hello'));
+
+        Test.startTest();
+        PulseAiModels.Response resp = adapter.chat(req);
+        Test.stopTest();
+
+        System.assertEquals(true, resp.isError);
+        System.assert(resp.errorMessage.contains('401'), resp.errorMessage);
+        System.assert(resp.errorMessage.contains('authentication_error'),
+            'Should include structured error type: ' + resp.errorMessage);
+        System.assert(resp.errorMessage.contains('invalid x-api-key'),
+            'Should include structured error message: ' + resp.errorMessage);
+    }
+
+    @IsTest
+    static void testChatWithNonJsonErrorBody() {
+        // Non-JSON 500 body — should still produce a readable error, not a silent empty response.
+        Test.setMock(HttpCalloutMock.class, new AnthropicPlainTextErrorMock());
+
+        AnthropicAdapter adapter = new AnthropicAdapter('TestCredential', 'claude-sonnet-4-20250514');
+        PulseAiModels.Request req = new PulseAiModels.Request();
+        req.messages.add(new PulseAiModels.Message('user', 'Hello'));
+
+        Test.startTest();
+        PulseAiModels.Response resp = adapter.chat(req);
+        Test.stopTest();
+
+        System.assertEquals(true, resp.isError);
+        System.assert(resp.errorMessage.contains('500'), resp.errorMessage);
+        System.assert(resp.errorMessage.contains('Internal Server Error'),
+            'Should include raw body when envelope missing: ' + resp.errorMessage);
     }
 
     @IsTest
@@ -165,7 +210,25 @@ private class AnthropicAdapterTest {
         public HttpResponse respond(HttpRequest req) {
             HttpResponse res = new HttpResponse();
             res.setStatusCode(429);
-            res.setBody('{"error":{"type":"rate_limit_error","message":"Too many requests"}}');
+            res.setBody('{"type":"error","error":{"type":"rate_limit_error","message":"Too many requests"}}');
+            return res;
+        }
+    }
+
+    private class AnthropicUnauthorizedMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            HttpResponse res = new HttpResponse();
+            res.setStatusCode(401);
+            res.setBody('{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}');
+            return res;
+        }
+    }
+
+    private class AnthropicPlainTextErrorMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            HttpResponse res = new HttpResponse();
+            res.setStatusCode(500);
+            res.setBody('Internal Server Error');
             return res;
         }
     }
