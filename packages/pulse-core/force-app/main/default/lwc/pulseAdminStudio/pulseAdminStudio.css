@@ -189,3 +189,10 @@
     line-height: var(--pulse-lh-body);
     margin-bottom: var(--pulse-space-6);
 }
+
+/* ── Action Hub panel ───────────────────────── */
+.studio-action-hub-wrap {
+    padding: var(--pulse-space-6);
+    width: 100%;
+    overflow-y: auto;
+}

@@ -76,10 +76,10 @@ describe('c-pulse-admin-studio', () => {
         expect(badge.textContent).toBe('Dev');
     });
 
-    it('renders all five navigation items', () => {
+    it('renders all six navigation items', () => {
         const el = createComponent();
         const items = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        expect(items.length).toBe(5);
+        expect(items.length).toBe(6);
     });
 
     it('defaults to Workflow builder as active nav', () => {
@@ -124,7 +124,7 @@ describe('c-pulse-admin-studio', () => {
     it('shows placeholder for non-builder tabs with coming badge', () => {
         const el = createComponent();
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        navItems[3].click(); // Library
+        navItems[4].click(); // Library
         return Promise.resolve().then(() => {
             const badge = el.shadowRoot.querySelector('.pulse-badge');
             expect(badge).not.toBeNull();

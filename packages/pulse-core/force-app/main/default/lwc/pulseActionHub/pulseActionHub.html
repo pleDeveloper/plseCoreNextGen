@@ -1,0 +1,82 @@
+<template>
+    <!-- Loading -->
+    <template lwc:if={isLoading}>
+        <c-pulse-card>
+            <p class="hub-loading">Loading approvals…</p>
+        </c-pulse-card>
+    </template>
+
+    <!-- Error -->
+    <template lwc:elseif={hasError}>
+        <c-pulse-card>
+            <c-pulse-badge label={error} variant="error"></c-pulse-badge>
+        </c-pulse-card>
+    </template>
+
+    <!-- Content -->
+    <template lwc:else>
+        <div class="hub-container">
+            <div class="hub-heading-row">
+                <h2 class="hub-heading">Approvals awaiting you</h2>
+                <c-pulse-badge label={countLabel} variant="magenta"></c-pulse-badge>
+            </div>
+
+            <!-- Resolve error -->
+            <template lwc:if={hasResolveError}>
+                <div class="hub-resolve-error">
+                    <c-pulse-badge label={resolveError} variant="error"></c-pulse-badge>
+                    <c-pulse-button label="Dismiss" variant="ghost" size="sm"
+                                    onclick={handleDismissResolveError}></c-pulse-button>
+                </div>
+            </template>
+
+            <!-- Empty state -->
+            <template lwc:if={noActions}>
+                <c-pulse-card>
+                    <p class="hub-empty">No pending approvals for this workflow.</p>
+                </c-pulse-card>
+            </template>
+
+            <!-- Action cards -->
+            <template lwc:if={hasActions}>
+                <ul class="hub-action-list" role="list">
+                    <template for:each={actionCards} for:item="action">
+                        <li key={action.actionId} class="hub-action-item" role="listitem">
+                            <c-pulse-card elevated>
+                                <div class="hub-action-header">
+                                    <span class="hub-tool-key">{action.toolKey}</span>
+                                    <c-pulse-badge label={action.hitlPolicy} variant="purple"></c-pulse-badge>
+                                </div>
+                                <pre class="hub-request-json">{action.formattedRequest}</pre>
+                                <div class="hub-action-meta">
+                                    <template lwc:if={action.requestedByName}>
+                                        <span class="hub-requester">Requested by {action.requestedByName}</span>
+                                    </template>
+                                </div>
+                                <div class="hub-notes-row">
+                                    <c-pulse-input label="Notes (optional)"
+                                                   placeholder="Add notes…"
+                                                   value={action.notes}
+                                                   data-action-id={action.actionId}
+                                                   onchange={handleNotesChange}></c-pulse-input>
+                                </div>
+                                <div class="hub-action-buttons">
+                                    <c-pulse-button label="Approve"
+                                                    variant="primary"
+                                                    data-action-id={action.actionId}
+                                                    disabled={action.isResolving}
+                                                    onclick={handleApprove}></c-pulse-button>
+                                    <c-pulse-button label="Reject"
+                                                    variant="ghost"
+                                                    data-action-id={action.actionId}
+                                                    disabled={action.isResolving}
+                                                    onclick={handleReject}></c-pulse-button>
+                                </div>
+                            </c-pulse-card>
+                        </li>
+                    </template>
+                </ul>
+            </template>
+        </div>
+    </template>
+</template>
