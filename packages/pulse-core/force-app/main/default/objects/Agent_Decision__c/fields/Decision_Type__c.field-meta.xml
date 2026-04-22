@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Decision_Type__c</fullName>
+    <label>Decision Type</label>
+    <type>Picklist</type>
+    <required>false</required>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Propose_Action</fullName>
+                <default>true</default>
+                <label>Propose Action</label>
+            </value>
+            <value>
+                <fullName>Ask_User</fullName>
+                <default>false</default>
+                <label>Ask User</label>
+            </value>
+            <value>
+                <fullName>Advance_Phase</fullName>
+                <default>false</default>
+                <label>Advance Phase</label>
+            </value>
+            <value>
+                <fullName>Observe</fullName>
+                <default>false</default>
+                <label>Observe</label>
+            </value>
+            <value>
+                <fullName>Error</fullName>
+                <default>false</default>
+                <label>Error</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

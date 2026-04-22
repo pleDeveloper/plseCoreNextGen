@@ -1,0 +1,184 @@
+<template>
+    <template lwc:if={loading}>
+        <c-pulse-card>
+            <p class="decision-loading">Loading agent decisions…</p>
+        </c-pulse-card>
+    </template>
+
+    <template lwc:elseif={hasDecisions}>
+        <c-pulse-card elevated>
+            <div class={slideClass}>
+                <div class="decision-header">
+                    <c-pulse-badge label={active.typeLabel} variant={active.typeVariant}></c-pulse-badge>
+                    <span class="decision-counter">{queueCounter}</span>
+                </div>
+
+                <template lwc:if={error}>
+                    <div class="decision-error">
+                        <c-pulse-badge label={error} variant="error"></c-pulse-badge>
+                        <c-pulse-button label="Dismiss" variant="ghost" size="sm" onclick={handleDismissError}></c-pulse-button>
+                    </div>
+                </template>
+
+                <div class="decision-rationale">
+                    <span class="decision-rationale-label">✦ Why I'm proposing this</span>
+                    <p class="decision-rationale-text">{active.rationale}</p>
+                </div>
+
+                <!-- Preview area -->
+                <template lwc:if={active.preview.isEmail}>
+                    <div class="decision-preview decision-preview-email">
+                        <div class="decision-row">
+                            <span class="decision-row-label">To</span>
+                            <span class="decision-row-value">{active.preview.to}</span>
+                        </div>
+                        <div class="decision-row">
+                            <span class="decision-row-label">Subject</span>
+                            <span class="decision-row-value decision-row-subject">{active.preview.subject}</span>
+                        </div>
+                        <div class="decision-email-body">{active.preview.body}</div>
+                    </div>
+                </template>
+
+                <template lwc:elseif={active.preview.isRecord}>
+                    <div class="decision-preview decision-preview-record">
+                        <template lwc:if={active.preview.objectType}>
+                            <div class="decision-row">
+                                <span class="decision-row-label">Object</span>
+                                <span class="decision-row-value">{active.preview.objectType}</span>
+                            </div>
+                        </template>
+                        <template lwc:if={active.preview.hasRows}>
+                            <ul class="decision-record-rows">
+                                <template for:each={active.preview.rows} for:item="r">
+                                    <li key={r.key} class="decision-record-row">
+                                        <span class="decision-record-key">{r.key}</span>
+                                        <span class="decision-record-value">{r.value}</span>
+                                    </li>
+                                </template>
+                            </ul>
+                        </template>
+                    </div>
+                </template>
+
+                <template lwc:elseif={active.preview.isQuestion}>
+                    <div class="decision-preview decision-preview-question">
+                        <p class="decision-question-prompt">{active.preview.prompt}</p>
+                        <template lwc:if={active.preview.fieldKey}>
+                            <p class="decision-question-field">
+                                Field: <code>{active.preview.fieldKey}</code>
+                            </p>
+                        </template>
+                        <label class="decision-answer-label">
+                            <span>Your answer</span>
+                            <textarea class="decision-answer-input"
+                                      rows="3"
+                                      value={answerValue}
+                                      onchange={handleAnswerChange}></textarea>
+                        </label>
+                        <div class="decision-actions">
+                            <c-pulse-button label="Submit answer"
+                                            variant="primary"
+                                            size="sm"
+                                            onclick={handleAnswerSubmit}></c-pulse-button>
+                        </div>
+                    </div>
+                </template>
+
+                <template lwc:elseif={active.preview.isAdvance}>
+                    <div class="decision-preview">
+                        <p>Advance via signal: <strong>{active.preview.signal}</strong></p>
+                    </div>
+                </template>
+
+                <template lwc:else>
+                    <pre class="decision-preview-raw">{active.preview.raw}</pre>
+                </template>
+
+                <!-- Refine editor -->
+                <template lwc:if={refining}>
+                    <div class="decision-refine">
+                        <template lwc:if={activeDraft.mode}>
+                            <template lwc:if={activeDraft.email}>
+                                <label class="decision-refine-field">
+                                    <span>To</span>
+                                    <c-pulse-input label="" value={activeDraft.email.to} onchange={handleRefineEmailTo}></c-pulse-input>
+                                </label>
+                                <label class="decision-refine-field">
+                                    <span>Subject</span>
+                                    <c-pulse-input label="" value={activeDraft.email.subject} onchange={handleRefineEmailSubject}></c-pulse-input>
+                                </label>
+                                <label class="decision-refine-field">
+                                    <span>Body</span>
+                                    <textarea class="decision-refine-textarea" rows="6"
+                                              onchange={handleRefineEmailBody}>{activeDraft.email.body}</textarea>
+                                </label>
+                            </template>
+                            <template lwc:elseif={activeDraft.raw}>
+                                <label class="decision-refine-field">
+                                    <span>Raw JSON</span>
+                                    <textarea class="decision-refine-textarea" rows="8"
+                                              onchange={handleRefineRaw}>{activeDraft.raw}</textarea>
+                                </label>
+                            </template>
+                        </template>
+                        <div class="decision-actions">
+                            <c-pulse-button label="Cancel" variant="ghost" size="sm" onclick={handleRefineCancel}></c-pulse-button>
+                            <c-pulse-button label="Approve with edits" variant="primary" size="sm" onclick={handleApprove}></c-pulse-button>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Reject input -->
+                <template lwc:if={rejecting}>
+                    <div class="decision-reject">
+                        <label class="decision-refine-field">
+                            <span>Why reject?</span>
+                            <textarea class="decision-refine-textarea" rows="3"
+                                      value={rejectReason}
+                                      onchange={handleRejectReason}></textarea>
+                        </label>
+                        <div class="decision-actions">
+                            <c-pulse-button label="Cancel" variant="ghost" size="sm" onclick={handleDismissError}></c-pulse-button>
+                            <c-pulse-button label="Submit reject" variant="primary" size="sm" onclick={handleRejectSubmit}></c-pulse-button>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Ask Claude hint picker -->
+                <template lwc:if={askingClaude}>
+                    <div class="decision-ask">
+                        <p class="decision-ask-title">Ask Claude to adjust:</p>
+                        <ul class="decision-ask-hints">
+                            <template for:each={askHints} for:item="h">
+                                <li key={h.value}>
+                                    <c-pulse-button label={h.label} variant="ghost" size="sm"
+                                                    data-value={h.value}
+                                                    onclick={handleAskHint}></c-pulse-button>
+                                </li>
+                            </template>
+                        </ul>
+                        <c-pulse-button label="Cancel" variant="ghost" size="sm" onclick={handleAskCancel}></c-pulse-button>
+                    </div>
+                </template>
+
+                <!-- Primary actions -->
+                <template lwc:if={active.isPropose}>
+                    <div class="decision-actions decision-actions-main">
+                        <c-pulse-button label="Approve" variant="primary" size="md" onclick={handleApprove}></c-pulse-button>
+                        <c-pulse-button label="Refine" variant="secondary" size="md" onclick={handleRefineOpen}></c-pulse-button>
+                        <c-pulse-button label="Reject" variant="ghost" size="md" onclick={handleReject}></c-pulse-button>
+                        <c-pulse-button label="✦ Ask Claude" variant="ghost" size="md" onclick={handleAskOpen}></c-pulse-button>
+                    </div>
+                </template>
+
+                <template lwc:elseif={active.isAdvance}>
+                    <div class="decision-actions decision-actions-main">
+                        <c-pulse-button label="Approve" variant="primary" size="md" onclick={handleApprove}></c-pulse-button>
+                        <c-pulse-button label="Reject" variant="ghost" size="md" onclick={handleReject}></c-pulse-button>
+                    </div>
+                </template>
+            </div>
+        </c-pulse-card>
+    </template>
+</template>

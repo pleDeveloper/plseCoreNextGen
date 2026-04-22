@@ -14,6 +14,12 @@ public with sharing class WorkflowContract {
         public Integer version;
         public List<String> subjectKinds;
         public List<State> states;
+        // Agent Mode config at workflow-scope. Shape:
+        //   { "enabled": true|false, "persona": "Claude",
+        //     "autonomy": "Propose_Only"|"Act_With_Approval"|"Autonomous_Safe",
+        //     "systemPrompt": "..." }
+        // Precedence: action.agent > state.agent > workflow.agent
+        public Map<String, Object> agent;
 
         private Map<String, State> stateIndex;
 
@@ -30,6 +36,82 @@ public with sharing class WorkflowContract {
             }
             return stateIndex.get(key);
         }
+
+        /**
+         * Resolve the effective agent config for a phase. Merges workflow
+         * and state agent blocks, with state overriding workflow when both
+         * are present. Returns null when agent mode is not enabled on this
+         * phase (explicitly disabled or missing).
+         */
+        public Map<String, Object> agentConfigForPhase(String phaseKey) {
+            return resolveAgent(this.agent, getState(phaseKey) == null
+                ? null : getState(phaseKey).agent, null);
+        }
+
+        /**
+         * Resolve the effective agent config for a specific action. Merges
+         * workflow, state, and action agent blocks, action winning last.
+         */
+        public Map<String, Object> agentConfigForAction(String phaseKey, String actionKey) {
+            State s = getState(phaseKey);
+            if (s == null) {
+                return resolveAgent(this.agent, null, null);
+            }
+            ActionDef a = s.getAction(actionKey);
+            return resolveAgent(this.agent, s.agent, a == null ? null : a.agent);
+        }
+
+        /**
+         * Whether agent mode is enabled anywhere on this workflow — used to
+         * decide whether to auto-create an Agent_Thread__c at first use.
+         */
+        public Boolean agentEnabledAnywhere() {
+            Map<String, Object> w = this.agent;
+            if (w != null && isAgentEnabledMap(w)) return true;
+            if (states == null) return false;
+            for (State s : states) {
+                if (s.agent != null && isAgentEnabledMap(s.agent)) return true;
+                if (s.actions != null) {
+                    for (ActionDef a : s.actions) {
+                        if (a.agent != null && isAgentEnabledMap(a.agent)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Returns the merged agent config or null when not enabled. Defaults:
+     *   persona="Claude", autonomy="Act_With_Approval".
+     */
+    public static Map<String, Object> resolveAgent(
+        Map<String, Object> wf, Map<String, Object> st, Map<String, Object> act
+    ) {
+        Map<String, Object> merged = new Map<String, Object>();
+        if (wf != null) merged.putAll(wf);
+        if (st != null) merged.putAll(st);
+        if (act != null) merged.putAll(act);
+        if (merged.isEmpty()) return null;
+        // If explicit enabled=false at most-specific level wins — but we
+        // treat missing 'enabled' as enabled when any scope set it true.
+        Boolean enabled = isAgentEnabledMap(merged);
+        if (!enabled) return null;
+        // Fill defaults
+        if (merged.get('persona') == null) merged.put('persona', 'Claude');
+        if (merged.get('autonomy') == null) merged.put('autonomy', 'Act_With_Approval');
+        return merged;
+    }
+
+    private static Boolean isAgentEnabledMap(Map<String, Object> m) {
+        if (m == null) return false;
+        Object v = m.get('enabled');
+        if (v == null) {
+            // If any other agent field is present, treat as enabled.
+            return m.containsKey('persona') || m.containsKey('systemPrompt')
+                || m.containsKey('autonomy');
+        }
+        return v == true;
     }
 
     public class State {
@@ -40,6 +122,8 @@ public with sharing class WorkflowContract {
         public List<Transition> transitions;
         public ToolConfig toolConfig;
         public UiConfig uiConfig;
+        // Agent Mode config at state scope (see Workflow.agent docs).
+        public Map<String, Object> agent;
 
         // ── New in phase/actions model ─────────────────────────────
         // If actions is non-empty, the state is a "phase" with one or
@@ -126,6 +210,8 @@ public with sharing class WorkflowContract {
         public List<String> dependsOn;   // action keys that must terminate before this instantiates
         public Map<String, Object> config; // type-specific (toolKey, hitlPolicy, etc.)
         public Integer sequence;         // display order
+        // Agent Mode config at action scope (see Workflow.agent docs).
+        public Map<String, Object> agent;
         // Optional assignment directive resolved at instantiation:
         //   { "type": "workflow_owner" }                      (default)
         //   { "type": "user", "userId": "005..." }
@@ -308,6 +394,10 @@ public with sharing class WorkflowContract {
                 wf.states.add(mapState((Map<String, Object>) sObj));
             }
         }
+        Object agentObj = raw.get('agent');
+        if (agentObj instanceof Map<String, Object>) {
+            wf.agent = (Map<String, Object>) agentObj;
+        }
         return wf;
     }
 
@@ -356,6 +446,10 @@ public with sharing class WorkflowContract {
         if (statusRulesObj instanceof Map<String, Object>) {
             s.statusRules = (Map<String, Object>) statusRulesObj;
         }
+        Object stateAgentObj = raw.get('agent');
+        if (stateAgentObj instanceof Map<String, Object>) {
+            s.agent = (Map<String, Object>) stateAgentObj;
+        }
         Object actionsObj = raw.get('actions');
         if (actionsObj instanceof List<Object>) {
             s.actions = new List<ActionDef>();
@@ -403,6 +497,10 @@ public with sharing class WorkflowContract {
         Object assignObj = raw.get('assignmentRule');
         if (assignObj instanceof Map<String, Object>) {
             a.assignmentRule = (Map<String, Object>) assignObj;
+        }
+        Object actionAgentObj = raw.get('agent');
+        if (actionAgentObj instanceof Map<String, Object>) {
+            a.agent = (Map<String, Object>) actionAgentObj;
         }
         return a;
     }

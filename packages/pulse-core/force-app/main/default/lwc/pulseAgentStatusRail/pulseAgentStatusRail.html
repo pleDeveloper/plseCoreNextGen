@@ -1,0 +1,47 @@
+<template>
+    <template lwc:if={hasAgent}>
+        <div class="agent-rail">
+            <div class={pulseClass} aria-hidden="true">
+                <span class="agent-sparkle">✦</span>
+                <span class="agent-initial">{personaInitial}</span>
+            </div>
+            <div class="agent-rail-main">
+                <div class="agent-rail-top">
+                    <span class="agent-persona">{state.persona}</span>
+                    <c-pulse-badge label={statusLabel} variant={statusVariant}></c-pulse-badge>
+                </div>
+                <div class="agent-rail-sub">
+                    <button class="agent-autonomy-pill" type="button" onclick={toggleDropdown}>
+                        {autonomyLabel}
+                        <span class="agent-chevron">▾</span>
+                    </button>
+                    <template lwc:if={dropdownOpen}>
+                        <ul class="agent-autonomy-menu" role="menu">
+                            <template for:each={autonomyOptions} for:item="opt">
+                                <li key={opt.key} role="menuitem">
+                                    <button class="agent-autonomy-option"
+                                            type="button"
+                                            data-value={opt.key}
+                                            onclick={handleAutonomyChange}>
+                                        <template lwc:if={opt.selected}>✓ </template>
+                                        {opt.label}
+                                    </button>
+                                </li>
+                            </template>
+                        </ul>
+                    </template>
+                </div>
+            </div>
+            <div class="agent-rail-actions">
+                <c-pulse-button label="Kick agent"
+                                variant="ghost"
+                                size="sm"
+                                disabled={kickInFlight}
+                                onclick={handleKick}></c-pulse-button>
+            </div>
+        </div>
+        <template lwc:if={error}>
+            <p class="agent-rail-error">{error}</p>
+        </template>
+    </template>
+</template>
