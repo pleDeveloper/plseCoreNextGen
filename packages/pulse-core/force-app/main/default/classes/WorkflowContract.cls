@@ -90,6 +90,12 @@ public with sharing class WorkflowContract {
         public List<String> dependsOn;   // action keys that must terminate before this instantiates
         public Map<String, Object> config; // type-specific (toolKey, hitlPolicy, etc.)
         public Integer sequence;         // display order
+        // Optional assignment directive resolved at instantiation:
+        //   { "type": "workflow_owner" }                      (default)
+        //   { "type": "user", "userId": "005..." }
+        //   { "type": "parent_owner" }                        (uses OwnerId of Parent_Record_Id__c)
+        //   { "type": "group", "groupId": "00G..." } | { "type": "group", "groupName": "QueueName" }
+        public Map<String, Object> assignmentRule;
     }
 
     public class FieldDef {
@@ -341,6 +347,10 @@ public with sharing class WorkflowContract {
             a.sequence = ((Decimal) seqObj).intValue();
         } else if (seqObj instanceof Integer) {
             a.sequence = (Integer) seqObj;
+        }
+        Object assignObj = raw.get('assignmentRule');
+        if (assignObj instanceof Map<String, Object>) {
+            a.assignmentRule = (Map<String, Object>) assignObj;
         }
         return a;
     }

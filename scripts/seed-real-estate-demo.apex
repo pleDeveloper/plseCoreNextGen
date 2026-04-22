@@ -369,6 +369,7 @@ if (!existingActions.isEmpty()) {
     a.plse__Tool_Key__c          = 'send_email';
     a.plse__HITL_Policy__c       = 'Approval_Required';
     a.plse__Required_For_Phase__c = true;
+    a.plse__Assigned_User__c     = UserInfo.getUserId();
     if (a.plse__Status__c != 'Executed' && a.plse__Status__c != 'Rejected') {
         a.plse__Status__c = 'Pending';
     }
@@ -386,7 +387,8 @@ if (!existingActions.isEmpty()) {
         plse__Status__c           = 'Pending',
         plse__Required_For_Phase__c = true,
         plse__Sequence__c         = 0,
-        plse__Request_JSON__c     = demoEmailJson
+        plse__Request_JSON__c     = demoEmailJson,
+        plse__Assigned_User__c    = UserInfo.getUserId()
     );
     System.debug('### Created pending Workflow_Action__c');
 }

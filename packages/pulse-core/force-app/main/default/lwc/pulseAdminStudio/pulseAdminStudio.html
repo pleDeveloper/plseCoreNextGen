@@ -51,6 +51,11 @@
                             <c-pulse-action-hub></c-pulse-action-hub>
                         </div>
                     </template>
+                    <template lwc:elseif={isActionHubConfig}>
+                        <div class="studio-panel-wrap">
+                            <c-pulse-action-hub-config></c-pulse-action-hub-config>
+                        </div>
+                    </template>
                     <template lwc:elseif={isConversations}>
                         <div class="studio-conversations-wrap">
                             <c-pulse-conversation-hub></c-pulse-conversation-hub>

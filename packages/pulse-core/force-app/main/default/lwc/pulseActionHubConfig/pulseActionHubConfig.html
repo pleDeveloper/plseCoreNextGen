@@ -1,0 +1,123 @@
+<template>
+    <template lwc:if={isLoading}>
+        <c-pulse-card>
+            <p class="cfg-loading">Loading column configs…</p>
+        </c-pulse-card>
+    </template>
+
+    <template lwc:elseif={hasError}>
+        <c-pulse-card>
+            <c-pulse-badge label={error} variant="error"></c-pulse-badge>
+        </c-pulse-card>
+    </template>
+
+    <template lwc:else>
+        <div class="cfg-root">
+            <div class="cfg-header">
+                <div>
+                    <h2 class="cfg-title">Action Hub column configs</h2>
+                    <p class="cfg-sub">Control which parent record columns surface per object in the Global Action Hub.</p>
+                </div>
+                <c-pulse-button label="New column config"
+                                variant="primary"
+                                size="sm"
+                                onclick={handleNewConfig}></c-pulse-button>
+            </div>
+
+            <div class="cfg-layout">
+                <div class="cfg-list">
+                    <template lwc:if={noConfigs}>
+                        <c-pulse-card>
+                            <p class="cfg-empty">No column configs yet. Add one to customize the Global Action Hub.</p>
+                        </c-pulse-card>
+                    </template>
+                    <template lwc:if={hasConfigs}>
+                        <ul class="cfg-list-ul" role="list">
+                            <template for:each={listRows} for:item="row">
+                                <li key={row.configKey} class="cfg-list-item" role="listitem">
+                                    <button class="cfg-list-row"
+                                            data-key={row.configKey}
+                                            onclick={handleEdit}>
+                                        <div class="cfg-list-text">
+                                            <span class="cfg-list-title">{row.masterLabel}</span>
+                                            <span class="cfg-list-sub">{row.subtitle}</span>
+                                        </div>
+                                        <c-pulse-badge label={row.activeBadgeLabel}
+                                                       variant={row.activeBadgeVariant}></c-pulse-badge>
+                                    </button>
+                                </li>
+                            </template>
+                        </ul>
+                    </template>
+                </div>
+
+                <div class="cfg-editor">
+                    <c-pulse-card elevated>
+                        <h3 class="cfg-editor-title">{editorTitle}</h3>
+
+                        <div class="cfg-editor-grid">
+                            <c-pulse-input label="Config Key"
+                                           placeholder="Opportunity_Columns"
+                                           value={editor.configKey}
+                                           onchange={handleConfigKeyChange}></c-pulse-input>
+                            <c-pulse-input label="Target Object (API name, use * for fallback)"
+                                           placeholder="Opportunity"
+                                           value={editor.targetObject}
+                                           onchange={handleTargetObjectChange}></c-pulse-input>
+                            <c-pulse-input label="Display Label"
+                                           placeholder="Opportunity Columns"
+                                           value={editor.masterLabel}
+                                           onchange={handleMasterLabelChange}></c-pulse-input>
+                            <c-pulse-toggle label="Active"
+                                            checked={editor.active}
+                                            onchange={handleActiveChange}></c-pulse-toggle>
+                        </div>
+
+                        <div class="cfg-cols-header">
+                            <h4 class="cfg-cols-title">Columns</h4>
+                            <c-pulse-button label="Add column"
+                                            variant="ghost"
+                                            size="sm"
+                                            onclick={handleAddColumn}></c-pulse-button>
+                        </div>
+                        <ul class="cfg-cols-list" role="list">
+                            <template for:each={editorColumnRows} for:item="col">
+                                <li key={col.key} class="cfg-col-row" role="listitem">
+                                    <c-pulse-input label="Field API"
+                                                   placeholder="Name"
+                                                   value={col.field}
+                                                   data-idx={col.index}
+                                                   onchange={handleColumnFieldChange}></c-pulse-input>
+                                    <c-pulse-input label="Column Label"
+                                                   placeholder="Name"
+                                                   value={col.label}
+                                                   data-idx={col.index}
+                                                   onchange={handleColumnLabelChange}></c-pulse-input>
+                                    <c-pulse-button label="Remove"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    data-idx={col.index}
+                                                    disabled={col.canRemove}
+                                                    onclick={handleRemoveColumn}></c-pulse-button>
+                                </li>
+                            </template>
+                        </ul>
+
+                        <template lwc:if={hasDeployMessage}>
+                            <div class="cfg-deploy-msg">
+                                <c-pulse-badge label={deployMessage} variant="purple"></c-pulse-badge>
+                            </div>
+                        </template>
+
+                        <div class="cfg-save-row">
+                            <c-pulse-button label={saveButtonLabel}
+                                            variant="primary"
+                                            disabled={saveDisabled}
+                                            onclick={handleSave}></c-pulse-button>
+                        </div>
+                    </c-pulse-card>
+                </div>
+            </div>
+        </div>
+    </template>
+</template>
