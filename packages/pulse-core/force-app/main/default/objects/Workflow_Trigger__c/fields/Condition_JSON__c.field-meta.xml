@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Condition_JSON__c</fullName>
+    <label>Condition JSON</label>
+    <description>Serialised AND/OR condition tree. Shape: { "logic": "AND|OR", "rules": [{"field":"StageName","op":"EQUALS","value":"Qualification"}, ...] }. Empty/null means fire on every event.</description>
+    <length>32000</length>
+    <type>LongTextArea</type>
+    <visibleLines>10</visibleLines>
+</CustomField>

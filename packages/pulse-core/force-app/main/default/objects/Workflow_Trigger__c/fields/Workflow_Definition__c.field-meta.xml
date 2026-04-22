@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Workflow_Definition__c</fullName>
+    <label>Workflow Definition</label>
+    <referenceTo>Workflow_Definition__c</referenceTo>
+    <relationshipLabel>Triggers</relationshipLabel>
+    <relationshipName>Triggers</relationshipName>
+    <required>true</required>
+    <type>Lookup</type>
+    <deleteConstraint>Restrict</deleteConstraint>
+</CustomField>

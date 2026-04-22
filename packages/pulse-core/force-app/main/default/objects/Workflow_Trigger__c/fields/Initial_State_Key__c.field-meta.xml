@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Initial_State_Key__c</fullName>
+    <label>Initial State Key</label>
+    <description>Optional. State key the new Workflow_Instance__c should start at. If blank, the workflow definition's first state is used.</description>
+    <length>80</length>
+    <type>Text</type>
+</CustomField>
