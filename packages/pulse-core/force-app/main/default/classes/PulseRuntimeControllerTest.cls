@@ -149,7 +149,7 @@ private class PulseRuntimeControllerTest {
 
         Test.startTest();
         PulseRuntimeController.ActionResolveResult result =
-            PulseRuntimeController.resolveAction(action.Id, 'Reject', 'Not needed');
+            PulseRuntimeController.resolveAction(action.Id, 'Reject', 'Not needed', null);
         Test.stopTest();
 
         System.assertEquals(true, result.success, result.message);
@@ -172,7 +172,7 @@ private class PulseRuntimeControllerTest {
 
         Test.startTest();
         PulseRuntimeController.ActionResolveResult result =
-            PulseRuntimeController.resolveAction(action.Id, 'Approve', null);
+            PulseRuntimeController.resolveAction(action.Id, 'Approve', null, null);
         Test.stopTest();
 
         System.assertEquals(false, result.success);
@@ -190,7 +190,7 @@ private class PulseRuntimeControllerTest {
 
         Test.startTest();
         PulseRuntimeController.ActionResolveResult result =
-            PulseRuntimeController.resolveAction(action.Id, 'Maybe', null);
+            PulseRuntimeController.resolveAction(action.Id, 'Maybe', null, null);
         Test.stopTest();
 
         System.assertEquals(false, result.success);
@@ -203,11 +203,130 @@ private class PulseRuntimeControllerTest {
     static void resolveActionMissingParams() {
         Test.startTest();
         PulseRuntimeController.ActionResolveResult result =
-            PulseRuntimeController.resolveAction(null, null, null);
+            PulseRuntimeController.resolveAction(null, null, null, null);
         Test.stopTest();
 
         System.assertEquals(false, result.success);
         System.assert(result.message.contains('required'), result.message);
+    }
+
+    // ─── resolveAction: refine payload ──────────────────────────
+
+    @IsTest
+    static void resolveActionRefinePayload() {
+        PulseToolRegistry.clearForTest();
+        PulseToolRegistry.registerToolForTest('stub_refine_tool', new StubRefineTool());
+
+        Workflow_Definition__c def = insertDefinition();
+        Account acc = insertAccount();
+        Workflow_Instance__c inst = insertInstance(def.Id, 'intake', acc.Id);
+        Workflow_Action__c action = new Workflow_Action__c(
+            Workflow_Instance__c = inst.Id,
+            Tool_Key__c          = 'stub_refine_tool',
+            Action_Type__c       = 'AI_Tool_Call',
+            HITL_Policy__c       = 'Approval_Required',
+            Request_JSON__c      = '{"body":"original draft"}',
+            Status__c            = 'Pending'
+        );
+        insert action;
+
+        String refined = '{"body":"edited by approver"}';
+
+        Test.startTest();
+        PulseRuntimeController.ActionResolveResult result =
+            PulseRuntimeController.resolveAction(action.Id, 'Approve', null, refined);
+        Test.stopTest();
+
+        System.assertEquals(true, result.success, result.message);
+        Workflow_Action__c reloaded = [
+            SELECT Status__c, Request_JSON__c FROM Workflow_Action__c WHERE Id = :action.Id
+        ];
+        System.assertEquals('Executed', reloaded.Status__c);
+        System.assertEquals(refined, reloaded.Request_JSON__c,
+            'Refined payload should have replaced the original draft');
+
+        // Audit event fired
+        List<Workflow_Event__c> refinedEvents = [
+            SELECT Event_Type__c FROM Workflow_Event__c
+            WHERE Workflow_Instance__c = :inst.Id AND Event_Type__c = 'TOOL_REFINED'
+        ];
+        System.assertEquals(1, refinedEvents.size(), 'TOOL_REFINED event should have fired');
+    }
+
+    // ─── saveFieldValues: round-trip into Context_JSON__c ───────
+
+    @IsTest
+    static void saveFieldValuesMergesContext() {
+        Workflow_Definition__c def = insertDefinition();
+        Account acc = insertAccount();
+        Workflow_Instance__c inst = insertInstance(def.Id, 'intake', acc.Id);
+
+        Map<String, Object> values = new Map<String, Object>{
+            'patient_name' => 'Alice',
+            'note'         => 'seed'
+        };
+
+        Test.startTest();
+        PulseRuntimeController.InstanceView view =
+            PulseRuntimeController.saveFieldValues(inst.Id, values);
+        Test.stopTest();
+
+        System.assertNotEquals(null, view, 'Should return refreshed view');
+        Workflow_Instance__c reloaded = [
+            SELECT Context_JSON__c FROM Workflow_Instance__c WHERE Id = :inst.Id
+        ];
+        Map<String, Object> ctx =
+            (Map<String, Object>) JSON.deserializeUntyped(reloaded.Context_JSON__c);
+        System.assertEquals('Alice', ctx.get('patient_name'));
+        System.assertEquals('seed',  ctx.get('note'));
+
+        // Second call merges, doesn't clobber
+        PulseRuntimeController.saveFieldValues(inst.Id,
+            new Map<String, Object>{ 'patient_name' => 'Bob' });
+        reloaded = [SELECT Context_JSON__c FROM Workflow_Instance__c WHERE Id = :inst.Id];
+        ctx = (Map<String, Object>) JSON.deserializeUntyped(reloaded.Context_JSON__c);
+        System.assertEquals('Bob', ctx.get('patient_name'), 'Should overwrite existing key');
+        System.assertEquals('seed', ctx.get('note'), 'Should preserve unrelated key');
+    }
+
+    // ─── phaseFields: view populated from context (no projection) ──
+
+    @IsTest
+    static void getInstancePhaseFieldsFromContext() {
+        Workflow_Definition__c def = insertDefinition();
+        Account acc = insertAccount();
+        Workflow_Instance__c inst = insertInstance(def.Id, 'intake', acc.Id);
+        inst.Context_JSON__c = JSON.serialize(
+            new Map<String, Object>{ 'patient_name' => 'Charlie' }
+        );
+        update inst;
+
+        Test.startTest();
+        PulseRuntimeController.InstanceView view =
+            PulseRuntimeController.getInstanceForRecord(acc.Id);
+        Test.stopTest();
+
+        System.assertNotEquals(null, view.phaseFields, 'phaseFields should be populated');
+        System.assertEquals(1, view.phaseFields.size(), 'intake phase has 1 field');
+        PulseRuntimeController.PhaseFieldView f = view.phaseFields[0];
+        System.assertEquals('patient_name', f.key);
+        System.assertEquals('Patient Name', f.label);
+        System.assertEquals('Text', f.fieldType);
+        System.assertEquals(true, f.required);
+        System.assertEquals('Charlie', f.currentValue,
+            'Current value should read from Context_JSON__c');
+        System.assertEquals(null, f.projectedFieldApiName,
+            'No projection on intake fields in this fixture');
+    }
+
+    // ─── saveFieldValues: null / empty guards ───────────────────
+
+    @IsTest
+    static void saveFieldValuesNullGuards() {
+        Test.startTest();
+        System.assertEquals(null,
+            PulseRuntimeController.saveFieldValues(null, new Map<String, Object>{ 'a' => 1 }));
+        Test.stopTest();
     }
 
     // ─── Test data helpers ──────────────────────────────────────
@@ -272,6 +391,19 @@ private class PulseRuntimeControllerTest {
         );
         insert action;
         return action;
+    }
+
+    // Stub tool used by resolveActionRefinePayload — succeeds and echoes input.
+    private class StubRefineTool implements PulseTool {
+        public String getToolKey() { return 'stub_refine_tool'; }
+        public String getDescription() { return 'Stub refine tool'; }
+        public Map<String, Object> getInputSchema() {
+            return new Map<String, Object>{ 'type' => 'object' };
+        }
+        public String getDefaultHitlPolicy() { return 'Approval_Required'; }
+        public PulseToolModels.Result execute(PulseToolModels.Context ctx) {
+            return PulseToolModels.ok(JSON.serialize(ctx.input));
+        }
     }
 
     private static String buildContractJson() {
