@@ -1,7 +1,9 @@
 public with sharing class PulseEmailRouter {
 
+    // Matches [Pulse:<sfId>] where sfId is a 15-char or 18-char Salesforce Id
+    // with any object-type prefix (not just a0 for custom objects).
     private static final Pattern PULSE_TAG_PATTERN =
-        Pattern.compile('\\[Pulse:(a0[0-9a-zA-Z]{13,15})\\]');
+        Pattern.compile('\\[Pulse:([a-zA-Z0-9]{15,18})\\]');
 
     /**
      * Extracts a Workflow_Instance__c Id from an email subject line
