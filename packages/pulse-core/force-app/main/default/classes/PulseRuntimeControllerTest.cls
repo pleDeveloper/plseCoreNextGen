@@ -459,13 +459,17 @@ private class PulseRuntimeControllerTest {
 
         Test.startTest();
         // intake → review
-        PulseRuntimeController.advanceInstance(inst.Id, 'submit', null, null);
+        PulseRuntimeController.AdvanceView step1 =
+            PulseRuntimeController.advanceInstance(inst.Id, 'submit', null, null);
+        System.assertEquals(true, step1.success,
+            'step1: ' + (step1.error == null ? '(no error)' : step1.error));
         // review → complete (terminal)
         PulseRuntimeController.AdvanceView view =
             PulseRuntimeController.advanceInstance(inst.Id, 'approve', null, null);
         Test.stopTest();
 
-        System.assertEquals(true, view.success, view.error);
+        System.assertEquals(true, view.success,
+            'step2: ' + (view.error == null ? '(no error)' : view.error));
         System.assertNotEquals(null, view.refreshed);
         System.assertNotEquals(null, view.refreshed.allPhases);
 
