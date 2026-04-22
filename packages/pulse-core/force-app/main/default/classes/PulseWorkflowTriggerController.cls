@@ -12,27 +12,27 @@ global with sharing class PulseWorkflowTriggerController {
     // ── Inner DTOs ────────────────────────────────────────────────────
 
     global class TriggerDto {
-        @AuraEnabled global Id     recordId;
-        @AuraEnabled global Id     workflowDefinitionId;
-        @AuraEnabled global String name;
-        @AuraEnabled global String targetObject;
-        @AuraEnabled global String eventType;
-        @AuraEnabled global String conditionJson;
-        @AuraEnabled global String initialStateKey;
-        @AuraEnabled global Boolean active;
+        @AuraEnabled public Id     recordId;
+        @AuraEnabled public Id     workflowDefinitionId;
+        @AuraEnabled public String name;
+        @AuraEnabled public String targetObject;
+        @AuraEnabled public String eventType;
+        @AuraEnabled public String conditionJson;
+        @AuraEnabled public String initialStateKey;
+        @AuraEnabled public Boolean active;
     }
 
     global class UpsertResult {
-        @AuraEnabled global Boolean success;
-        @AuraEnabled global Id      recordId;
-        @AuraEnabled global String  triggerName;              // canonical Apex trigger on target
-        @AuraEnabled global Boolean apexTriggerAlreadyExisted;
-        @AuraEnabled global Boolean apexTriggerProvisioned;   // true if callout succeeded or trigger already present
-        @AuraEnabled global String  provisioningMessage;
-        @AuraEnabled global String  warning;                  // non-fatal problem (e.g. NC missing)
-        @AuraEnabled global String  error;
+        @AuraEnabled public Boolean success;
+        @AuraEnabled public Id      recordId;
+        @AuraEnabled public String  triggerName;              // canonical Apex trigger on target
+        @AuraEnabled public Boolean apexTriggerAlreadyExisted;
+        @AuraEnabled public Boolean apexTriggerProvisioned;   // true if callout succeeded or trigger already present
+        @AuraEnabled public String  provisioningMessage;
+        @AuraEnabled public String  warning;                  // non-fatal problem (e.g. NC missing)
+        @AuraEnabled public String  error;
 
-        global UpsertResult() {
+        public UpsertResult() {
             this.success = false;
             this.apexTriggerAlreadyExisted = false;
             this.apexTriggerProvisioned = false;
@@ -40,17 +40,17 @@ global with sharing class PulseWorkflowTriggerController {
     }
 
     global class FieldInfo {
-        @AuraEnabled global String apiName;
-        @AuraEnabled global String label;
-        @AuraEnabled global String fieldType;   // STRING, PICKLIST, DATE, DATETIME, BOOLEAN, CURRENCY, DOUBLE, INTEGER, etc.
-        @AuraEnabled global Boolean nillable;
-        @AuraEnabled global List<String> picklistValues;
+        @AuraEnabled public String apiName;
+        @AuraEnabled public String label;
+        @AuraEnabled public String fieldType;   // STRING, PICKLIST, DATE, DATETIME, BOOLEAN, CURRENCY, DOUBLE, INTEGER, etc.
+        @AuraEnabled public Boolean nillable;
+        @AuraEnabled public List<String> picklistValues;
     }
 
     // ── List ──────────────────────────────────────────────────────────
 
     @AuraEnabled(cacheable=true)
-    global static List<TriggerDto> listTriggers(Id workflowDefinitionId) {
+    public static List<TriggerDto> listTriggers(Id workflowDefinitionId) {
         List<TriggerDto> out = new List<TriggerDto>();
         if (workflowDefinitionId == null) return out;
 
@@ -78,7 +78,7 @@ global with sharing class PulseWorkflowTriggerController {
     // ── Upsert ────────────────────────────────────────────────────────
 
     @AuraEnabled
-    global static UpsertResult upsertTrigger(TriggerDto payload) {
+    public static UpsertResult upsertTrigger(TriggerDto payload) {
         System.debug(LoggingLevel.INFO,
             '### upsertTrigger called with: ' + JSON.serialize(payload));
         try {
@@ -176,7 +176,7 @@ global with sharing class PulseWorkflowTriggerController {
     // ── Delete ────────────────────────────────────────────────────────
 
     @AuraEnabled
-    global static Boolean deleteTrigger(Id triggerId) {
+    public static Boolean deleteTrigger(Id triggerId) {
         if (triggerId == null) return false;
         Workflow_Trigger__c t = new Workflow_Trigger__c(Id = triggerId);
         delete t;
@@ -186,7 +186,7 @@ global with sharing class PulseWorkflowTriggerController {
     // ── Field describe ────────────────────────────────────────────────
 
     @AuraEnabled(cacheable=true)
-    global static List<FieldInfo> describeObjectFields(String sObjectApiName) {
+    public static List<FieldInfo> describeObjectFields(String sObjectApiName) {
         List<FieldInfo> out = new List<FieldInfo>();
         if (String.isBlank(sObjectApiName)) return out;
 

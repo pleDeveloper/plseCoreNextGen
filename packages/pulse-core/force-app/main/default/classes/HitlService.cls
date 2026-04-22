@@ -30,6 +30,18 @@ public with sharing class HitlService {
     }
 
     public static PulseToolModels.Result resolveApproval(Id actionId, Boolean approved, Id resolvedById) {
+        return resolveApproval(actionId, approved, resolvedById, null);
+    }
+
+    /**
+     * Resolve with optional refined payload. When `refinedRequestJson` is
+     * non-blank, the action's Request_JSON__c is updated to the refined
+     * value before execution, and the tool runs with the edited payload.
+     * This is the "manager edited the draft before approving" flow.
+     */
+    public static PulseToolModels.Result resolveApproval(
+        Id actionId, Boolean approved, Id resolvedById, String refinedRequestJson
+    ) {
         Workflow_Action__c action = [
             SELECT Id, Tool_Key__c, Request_JSON__c, Status__c, Workflow_Instance__c,
                    Action_Key__c, Phase_Key__c
@@ -52,6 +64,27 @@ public with sharing class HitlService {
                 JSON.serialize(new Map<String, String>{ 'actionId' => actionId }));
 
             return PulseToolModels.ok('{"status":"rejected"}');
+        }
+
+        // If the approver edited the draft, persist the refined payload and
+        // emit a distinct audit event so the trail records what changed.
+        Boolean wasRefined = false;
+        if (String.isNotBlank(refinedRequestJson) && refinedRequestJson != action.Request_JSON__c) {
+            // Validate the refined JSON is parseable before saving it.
+            try {
+                JSON.deserializeUntyped(refinedRequestJson);
+            } catch (Exception e) {
+                return PulseToolModels.fail('Refined payload is not valid JSON: ' + e.getMessage());
+            }
+            action.Request_JSON__c = refinedRequestJson;
+            update action;
+            wasRefined = true;
+
+            writeAuditEvent(action.Workflow_Instance__c, 'TOOL_REFINED', action.Tool_Key__c,
+                JSON.serialize(new Map<String, Object>{
+                    'actionId' => actionId,
+                    'refinedByUserId' => resolvedById
+                }));
         }
 
         PulseTool tool = PulseToolRegistry.getTool(action.Tool_Key__c);

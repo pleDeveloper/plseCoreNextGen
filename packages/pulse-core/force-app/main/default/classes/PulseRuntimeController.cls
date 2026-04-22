@@ -196,8 +196,16 @@ global with sharing class PulseRuntimeController {
 
     // ─── resolveAction ──────────────────────────────────────────
 
+    /**
+     * Resolve a pending HITL action. When decision = 'Approve' and
+     * `refinedPayloadJson` is non-blank, the action's Request_JSON__c
+     * is replaced with the refined value before execution — the
+     * "manager edited the draft" flow. Pass null to approve/reject as-is.
+     */
     @AuraEnabled
-    public static ActionResolveResult resolveAction(Id actionId, String decision, String notes) {
+    public static ActionResolveResult resolveAction(
+        Id actionId, String decision, String notes, String refinedPayloadJson
+    ) {
         ActionResolveResult result = new ActionResolveResult();
 
         if (actionId == null || String.isBlank(decision)) {
@@ -215,7 +223,7 @@ global with sharing class PulseRuntimeController {
 
         try {
             PulseToolModels.Result toolResult = HitlService.resolveApproval(
-                actionId, approved, UserInfo.getUserId()
+                actionId, approved, UserInfo.getUserId(), refinedPayloadJson
             );
             result.success = toolResult.success;
             if (toolResult.success) {
