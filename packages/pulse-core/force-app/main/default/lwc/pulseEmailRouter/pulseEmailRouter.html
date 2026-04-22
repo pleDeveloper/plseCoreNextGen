@@ -98,7 +98,7 @@
                 <div>
                     <h3 class="router-panel-title">Routing rules</h3>
                     <p class="router-panel-sub">
-                        Configured via Custom Metadata — this view is read-only.
+                        Create, edit, and deactivate inbound-email routing rules.
                     </p>
                 </div>
                 <div class="router-panel-actions">
@@ -106,6 +106,7 @@
                                     onclick={handleRefreshRules}>
                     </c-pulse-button>
                     <c-pulse-button label="Add rule" variant="primary" size="sm"
+                                    data-testid="add-rule"
                                     onclick={handleAddRule}>
                     </c-pulse-button>
                 </div>
@@ -128,10 +129,18 @@
                                     <span class="router-rule-title">{r.developerName}</span>
                                     <span class={r.statusClass}>{r.statusLabel}</span>
                                 </div>
-                                <c-pulse-button label="Edit rule" variant="ghost" size="sm"
-                                                data-developer-name={r.developerName}
-                                                onclick={handleEditRule}>
-                                </c-pulse-button>
+                                <div class="router-rule-actions">
+                                    <c-pulse-button label="Edit" variant="ghost" size="sm"
+                                                    data-developer-name={r.developerName}
+                                                    data-testid="edit-rule"
+                                                    onclick={handleEditRule}>
+                                    </c-pulse-button>
+                                    <c-pulse-button label="Delete" variant="ghost" size="sm"
+                                                    data-developer-name={r.developerName}
+                                                    data-testid="delete-rule"
+                                                    onclick={handleDeleteRule}>
+                                    </c-pulse-button>
+                                </div>
                             </div>
                             <dl class="router-rule-grid">
                                 <div class="router-rule-kv">
@@ -161,16 +170,121 @@
                 <template lwc:if={loadingRules}></template>
                 <template lwc:else>
                     <div class="router-empty">
-                        No routing rules configured. Create one via Setup → Custom Metadata Types.
+                        No routing rules configured yet. Click "Add rule" to create one.
                     </div>
                 </template>
             </template>
-
-            <p class="router-rules-hint">
-                Rule authoring is read-only in-app for this release. Create or edit rules in
-                Setup → Custom Metadata Types → Conversation Routing Rule. In-app editing
-                arrives in the next admin-studio release.
-            </p>
         </section>
+
+        <!-- Editor modal -->
+        <c-pulse-modal open={editorOpen}
+                       size="lg"
+                       title={editorTitle}
+                       dismissible="true"
+                       onclose={handleEditorClose}>
+            <div class="router-form">
+                <div class="router-form-grid">
+                    <c-pulse-input label="Rule key"
+                                   value={editorRuleKey}
+                                   data-field="ruleKey"
+                                   placeholder="e.g. email_from_acme_com"
+                                   required="true"
+                                   onchange={handleFieldChange}>
+                    </c-pulse-input>
+                    <c-pulse-input label="Priority"
+                                   type="number"
+                                   value={editorPriority}
+                                   data-field="priority"
+                                   placeholder="100"
+                                   onchange={handleFieldChange}>
+                    </c-pulse-input>
+                    <c-pulse-input label="Source adapter"
+                                   value={editorSourceAdapter}
+                                   data-field="sourceAdapter"
+                                   placeholder="inbound_email"
+                                   onchange={handleFieldChange}>
+                    </c-pulse-input>
+                    <c-pulse-input label="Match strategy"
+                                   value={editorMatchStrategy}
+                                   data-field="matchStrategy"
+                                   placeholder="EMAIL_SENDER_TO_CONTACT"
+                                   required="true"
+                                   onchange={handleFieldChange}>
+                    </c-pulse-input>
+                    <c-pulse-input label="Target object"
+                                   value={editorTargetObject}
+                                   data-field="targetObject"
+                                   placeholder="Opportunity"
+                                   required="true"
+                                   onchange={handleFieldChange}>
+                    </c-pulse-input>
+                    <c-pulse-input label="Starts workflow key"
+                                   value={editorTriggerWorkflowKey}
+                                   data-field="triggerWorkflowKey"
+                                   placeholder="real_estate_leasing_v1"
+                                   onchange={handleFieldChange}>
+                    </c-pulse-input>
+                </div>
+                <div class="router-form-field">
+                    <label class="router-form-label" for="createDefaultsJson">
+                        Create defaults (JSON object)
+                    </label>
+                    <textarea id="createDefaultsJson"
+                              class="router-form-textarea"
+                              data-field="createDefaultsJson"
+                              rows="5"
+                              placeholder="JSON object of field defaults (e.g. StageName, Name)"
+                              oninput={handleFieldChange}>{editorCreateDefaultsJson}</textarea>
+                    <p class="router-form-help">
+                        JSON object of field defaults applied when creating a record via this rule.
+                    </p>
+                </div>
+                <label class="router-form-checkbox">
+                    <input type="checkbox"
+                           checked={editorActive}
+                           data-field="active"
+                           onchange={handleFieldChange}/>
+                    <span>Active</span>
+                </label>
+
+                <template lwc:if={editorError}>
+                    <div class="router-error-banner">{editorError}</div>
+                </template>
+
+                <div class="router-form-actions">
+                    <c-pulse-button label="Cancel" variant="ghost"
+                                    disabled={editorBusy}
+                                    onclick={handleEditorClose}>
+                    </c-pulse-button>
+                    <c-pulse-button label="Save rule" variant="primary"
+                                    disabled={editorBusy}
+                                    data-testid="save-rule"
+                                    onclick={handleSaveRule}>
+                    </c-pulse-button>
+                </div>
+            </div>
+        </c-pulse-modal>
+
+        <!-- Delete confirmation modal -->
+        <c-pulse-modal open={confirmOpen}
+                       size="sm"
+                       title="Deactivate routing rule"
+                       dismissible="true"
+                       onclose={handleConfirmClose}>
+            <div class="router-form">
+                <p class="router-form-text">{confirmMessage}</p>
+                <div class="router-form-actions">
+                    <c-pulse-button label="Cancel" variant="ghost"
+                                    disabled={confirmBusy}
+                                    onclick={handleConfirmClose}>
+                    </c-pulse-button>
+                    <c-pulse-button label="Deactivate" variant="primary"
+                                    disabled={confirmBusy}
+                                    data-testid="confirm-delete"
+                                    onclick={handleConfirmDelete}>
+                    </c-pulse-button>
+                </div>
+            </div>
+        </c-pulse-modal>
     </div>
 </template>

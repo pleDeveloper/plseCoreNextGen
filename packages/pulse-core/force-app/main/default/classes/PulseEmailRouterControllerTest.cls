@@ -151,4 +151,259 @@ private class PulseEmailRouterControllerTest {
             PulseEmailRouterController.routeToExistingRecord(null, null);
         System.assertEquals(false, r1.success);
     }
+
+    // ── Routing rule CRUD tests ────────────────────────────────────
+
+    /** Stub IRuleDeployer — records the container so tests can assert the
+     *  prepared payload without going through Metadata.Operations, which
+     *  throws AsyncException in @IsTest context. */
+    private class StubRuleDeployer implements PulseEmailRouterController.IRuleDeployer {
+        public Metadata.DeployContainer captured;
+        public Id enqueue(Metadata.DeployContainer container) {
+            this.captured = container;
+            // Return a deterministic non-null Id — doesn't have to exist.
+            return '707000000000000AAA';
+        }
+    }
+
+    @IsTest
+    static void upsertRoutingRule_rejectsBlankRuleKey() {
+        Test.startTest();
+        PulseEmailRouterController.RuleDeployResult r =
+            PulseEmailRouterController.upsertRoutingRule(
+                new Map<String, Object>{
+                    'targetObject'  => 'Opportunity',
+                    'matchStrategy' => 'EMAIL_SENDER_TO_CONTACT'
+                }
+            );
+        Test.stopTest();
+        System.assertEquals(false, r.success);
+        System.assert(r.error != null && r.error.contains('ruleKey'),
+            'Expected ruleKey error, got: ' + r.error);
+    }
+
+    @IsTest
+    static void upsertRoutingRule_rejectsBlankTargetObject() {
+        Test.startTest();
+        PulseEmailRouterController.RuleDeployResult r =
+            PulseEmailRouterController.upsertRoutingRule(
+                new Map<String, Object>{
+                    'ruleKey'       => 'my_rule',
+                    'matchStrategy' => 'EMAIL_SENDER_TO_CONTACT'
+                }
+            );
+        Test.stopTest();
+        System.assertEquals(false, r.success);
+        System.assert(r.error != null && r.error.contains('targetObject'),
+            'Expected targetObject error, got: ' + r.error);
+    }
+
+    @IsTest
+    static void upsertRoutingRule_rejectsBlankMatchStrategy() {
+        Test.startTest();
+        PulseEmailRouterController.RuleDeployResult r =
+            PulseEmailRouterController.upsertRoutingRule(
+                new Map<String, Object>{
+                    'ruleKey'      => 'my_rule',
+                    'targetObject' => 'Opportunity'
+                }
+            );
+        Test.stopTest();
+        System.assertEquals(false, r.success);
+        System.assert(r.error != null && r.error.contains('matchStrategy'),
+            'Expected matchStrategy error, got: ' + r.error);
+    }
+
+    @IsTest
+    static void upsertRoutingRule_rejectsInvalidCreateDefaultsJson() {
+        Test.startTest();
+        PulseEmailRouterController.RuleDeployResult r =
+            PulseEmailRouterController.upsertRoutingRule(
+                new Map<String, Object>{
+                    'ruleKey'            => 'my_rule',
+                    'targetObject'       => 'Opportunity',
+                    'matchStrategy'      => 'EMAIL_SENDER_TO_CONTACT',
+                    'createDefaultsJson' => '[ not-json'
+                }
+            );
+        Test.stopTest();
+        System.assertEquals(false, r.success);
+        System.assert(r.error != null, 'Expected error for invalid JSON');
+    }
+
+    @IsTest
+    static void upsertRoutingRule_rejectsJsonThatIsNotObject() {
+        Test.startTest();
+        PulseEmailRouterController.RuleDeployResult r =
+            PulseEmailRouterController.upsertRoutingRule(
+                new Map<String, Object>{
+                    'ruleKey'            => 'my_rule',
+                    'targetObject'       => 'Opportunity',
+                    'matchStrategy'      => 'EMAIL_SENDER_TO_CONTACT',
+                    'createDefaultsJson' => '["not","an","object"]'
+                }
+            );
+        Test.stopTest();
+        System.assertEquals(false, r.success);
+        System.assert(r.error != null && r.error.contains('JSON object'),
+            'Expected JSON-object error, got: ' + r.error);
+    }
+
+    @IsTest
+    static void upsertRoutingRule_happyPathBuildsContainerAndEnqueues() {
+        StubRuleDeployer stub = new StubRuleDeployer();
+        PulseEmailRouterController.deployer = stub;
+
+        Test.startTest();
+        PulseEmailRouterController.RuleDeployResult r =
+            PulseEmailRouterController.upsertRoutingRule(
+                new Map<String, Object>{
+                    'ruleKey'            => 'custom_rule_A',
+                    'active'             => true,
+                    'priority'           => 50,
+                    'sourceAdapter'      => 'inbound_email',
+                    'matchStrategy'      => 'EMAIL_SENDER_TO_CONTACT',
+                    'targetObject'       => 'Opportunity',
+                    'createDefaultsJson' => '{"StageName":"Qualification"}',
+                    'triggerWorkflowKey' => 'real_estate_leasing_v1'
+                }
+            );
+        Test.stopTest();
+
+        System.assertEquals(true, r.success, 'Expected success, got error: ' + r.error);
+        System.assertNotEquals(null, r.jobId);
+        System.assertEquals('custom_rule_A', r.developerName);
+
+        System.assertNotEquals(null, stub.captured, 'Stub deployer should capture container');
+        // Also retained on the class for introspection from test harnesses.
+        System.assertNotEquals(null, PulseEmailRouterController.lastDeployContainer);
+    }
+
+    @IsTest
+    static void upsertRoutingRule_usesExplicitDeveloperNameWhenProvided() {
+        StubRuleDeployer stub = new StubRuleDeployer();
+        PulseEmailRouterController.deployer = stub;
+
+        Test.startTest();
+        PulseEmailRouterController.RuleDeployResult r =
+            PulseEmailRouterController.upsertRoutingRule(
+                new Map<String, Object>{
+                    'ruleKey'       => 'x',
+                    'developerName' => 'Explicit_Rule_Name',
+                    'targetObject'  => 'Opportunity',
+                    'matchStrategy' => 'EMAIL_SENDER_TO_CONTACT'
+                }
+            );
+        Test.stopTest();
+
+        System.assertEquals(true, r.success, 'error: ' + r.error);
+        System.assertEquals('Explicit_Rule_Name', r.developerName);
+    }
+
+    @IsTest
+    static void deleteRoutingRule_requiresDeveloperName() {
+        Test.startTest();
+        PulseEmailRouterController.RuleDeployResult r =
+            PulseEmailRouterController.deleteRoutingRule('');
+        Test.stopTest();
+        System.assertEquals(false, r.success);
+        System.assert(r.error != null && r.error.contains('developerName'),
+            'Expected developerName error, got: ' + r.error);
+    }
+
+    @IsTest
+    static void deleteRoutingRule_softDeletesByDeactivating() {
+        StubRuleDeployer stub = new StubRuleDeployer();
+        PulseEmailRouterController.deployer = stub;
+
+        Test.startTest();
+        PulseEmailRouterController.RuleDeployResult r =
+            PulseEmailRouterController.deleteRoutingRule('Some_Rule');
+        Test.stopTest();
+
+        System.assertEquals(true, r.success, 'Error: ' + r.error);
+        System.assertNotEquals(null, r.jobId);
+        System.assertEquals('Some_Rule', r.developerName);
+        System.assertNotEquals(null, stub.captured);
+    }
+
+    @IsTest
+    static void getDeployStatus_handlesBlankJobId() {
+        Test.startTest();
+        PulseEmailRouterController.DeployStatusView v =
+            PulseEmailRouterController.getDeployStatus('');
+        Test.stopTest();
+        System.assertEquals('Unknown', v.status);
+        System.assertEquals(true, v.done);
+        System.assert(v.errors != null);
+    }
+
+    @IsTest
+    static void getDeployStatus_returnsUnknownForUnknownJob() {
+        Test.startTest();
+        PulseEmailRouterController.DeployStatusView v =
+            PulseEmailRouterController.getDeployStatus('707000000000000AAA');
+        Test.stopTest();
+        // No matching AsyncApexJob in this test → Unknown + done.
+        System.assertEquals('Unknown', v.status);
+        System.assertEquals(true, v.done);
+    }
+
+    @IsTest
+    static void coerceToRoutingRuleInput_handlesNullAndCoercions() {
+        // null raw map → empty shell.
+        PulseEmailRouterController.RoutingRuleInput empty =
+            PulseEmailRouterController.coerceToRoutingRuleInput(null);
+        System.assertEquals(null, empty.ruleKey);
+
+        // Priority arrives as Decimal (JSON number deserializes to Decimal).
+        PulseEmailRouterController.RoutingRuleInput p =
+            PulseEmailRouterController.coerceToRoutingRuleInput(
+                new Map<String, Object>{
+                    'ruleKey'       => 'k',
+                    'priority'      => Decimal.valueOf('50'),
+                    'active'        => 'true',
+                    'matchStrategy' => 'X',
+                    'targetObject'  => 'Opportunity'
+                }
+            );
+        System.assertEquals(50, p.priority);
+        System.assertEquals(true, p.active);
+
+        // Already-parsed list under createDefaultsJson → re-serialized.
+        PulseEmailRouterController.RoutingRuleInput s =
+            PulseEmailRouterController.coerceToRoutingRuleInput(
+                new Map<String, Object>{
+                    'ruleKey'            => 'k',
+                    'createDefaultsJson' => new Map<String, Object>{ 'StageName' => 'Q' }
+                }
+            );
+        System.assert(s.createDefaultsJson != null &&
+            s.createDefaultsJson.contains('StageName'));
+    }
+
+    @IsTest
+    static void toDeveloperName_sanitizesInputs() {
+        System.assertEquals('my_rule',
+            PulseEmailRouterController.toDeveloperName('my rule'));
+        System.assertEquals('X_9_starts',
+            PulseEmailRouterController.toDeveloperName('9 starts'));
+        System.assertEquals('Unnamed',
+            PulseEmailRouterController.toDeveloperName(''));
+    }
+
+    @IsTest
+    static void ruleDeployResultDtoCoverage() {
+        PulseEmailRouterController.RuleDeployResult r =
+            new PulseEmailRouterController.RuleDeployResult();
+        r.success = true; r.error = null;
+        r.developerName = 'd'; r.jobId = null;
+
+        PulseEmailRouterController.DeployStatusView v =
+            new PulseEmailRouterController.DeployStatusView();
+        v.status = 'Completed'; v.done = true; v.errors = null;
+
+        System.assertNotEquals(null, r);
+        System.assertNotEquals(null, v);
+    }
 }
