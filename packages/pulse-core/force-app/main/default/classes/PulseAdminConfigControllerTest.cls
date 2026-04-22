@@ -216,6 +216,10 @@ private class PulseAdminConfigControllerTest {
             Status__c        = 'Completed'
         );
         insert older;
+        // Force a deterministic CreatedDate gap — two sequential inserts can
+        // land in the same millisecond, making ORDER BY CreatedDate DESC
+        // non-deterministic. Test.setCreatedDate rewrites the timestamp.
+        Test.setCreatedDate(older.Id, Datetime.now().addDays(-1));
 
         Deployment_Request__c newer = new Deployment_Request__c(
             Target_Object__c  = 'NewerObject',
