@@ -60,6 +60,14 @@ String contractJson =
         '"actions":[' +
           '{"key":"send_followup_email","label":"Send follow-up email","type":"ai_tool",' +
             '"required":true,"dependsOn":[],"sequence":0,' +
+            '"statuses":[' +
+              '{"key":"Drafting","label":"Drafting","order":0,"category":"open","isInitial":true,"entryConditions":{}},' +
+              '{"key":"Pending_Approval","label":"Pending approval","order":1,"category":"open","entryConditions":{"logic":"AND","rules":[]}},' +
+              '{"key":"Sent","label":"Sent","order":2,"category":"open","entryConditions":{}},' +
+              '{"key":"Bounced","label":"Bounced","order":3,"category":"terminal_failure","entryConditions":{}},' +
+              '{"key":"Complete","label":"Complete","order":4,"category":"terminal_success","entryConditions":{}}' +
+            '],' +
+            '"initialStatusKey":"Drafting",' +
             '"config":{"toolKey":"send_email","hitlPolicy":"Approval_Required",' +
             '"parameters":{"systemPrompt":"You are a leasing qualification assistant for Pulse Core Next. Review the conversation history and the applicant context. Draft a follow-up email to the prospect asking for any missing qualifying information: headcount, desired move-in date, and credit qualification documentation. Be professional and concise. Use the send_email tool."}}}' +
         '],' +
