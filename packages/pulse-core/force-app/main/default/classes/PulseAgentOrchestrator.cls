@@ -214,6 +214,46 @@ public with sharing class PulseAgentOrchestrator {
 
     @TestVisible private static Boolean suppressEnqueueForTest = false;
 
+    /**
+     * Look for an existing phase-initial placeholder Workflow_Action__c
+     * that matches toolKey + instance and still has no Request_JSON__c.
+     * If found, populate its Request_JSON__c with `payload` and return it.
+     * Otherwise create a fresh approval row via HitlService.
+     *
+     * Rationale: PulseActionInstantiationService creates empty ai_tool
+     * placeholders the moment a phase is entered. When the agent then
+     * proposes propose_action for the same toolKey, we want to FILL the
+     * placeholder in place — not stack a parallel row next to it. Without
+     * this, the placeholder sits Pending forever and every agent turn
+     * sees it and proposes yet another draft, producing an infinite
+     * loop of duplicate drafts.
+     */
+    private static Workflow_Action__c reusePlaceholderOrCreate(
+        Id instanceId, String toolKey, String payload
+    ) {
+        // SOQL cannot filter on Request_JSON__c (LongTextArea), so we pull
+        // the small Pending set and filter in memory.
+        for (Workflow_Action__c p : [
+            SELECT Id, Request_JSON__c, Status__c, Tool_Key__c, Action_Type__c
+            FROM Workflow_Action__c
+            WHERE Workflow_Instance__c = :instanceId
+              AND Status__c = 'Pending'
+              AND Tool_Key__c = :toolKey
+              AND Action_Type__c = 'AI_Tool_Call'
+            ORDER BY CreatedDate ASC
+            LIMIT 20
+        ]) {
+            if (String.isBlank(p.Request_JSON__c)) {
+                p.Request_JSON__c = payload;
+                update p;
+                return p;
+            }
+        }
+        return HitlService.createApproval(
+            instanceId, toolKey, payload, 'Approval_Required'
+        );
+    }
+
     public static Agent_Thread__c getOrCreateThread(Id instanceId) {
         return getOrCreateThreadInternal(instanceId, loadInstance(instanceId));
     }
@@ -356,9 +396,9 @@ public with sharing class PulseAgentOrchestrator {
             if (autonomy == AUT_AUTONOMOUS_SAFE
                 && String.isNotBlank(toolKey)
                 && AUTONOMOUS_SAFE_TOOLS.contains(toolKey)) {
-                // Auto-execute via HitlService: create action row, resolve true.
-                Workflow_Action__c a = HitlService.createApproval(
-                    inst.Id, toolKey, payload, 'Autonomous'
+                // Auto-execute via HitlService: reuse or create action row, resolve true.
+                Workflow_Action__c a = reusePlaceholderOrCreate(
+                    inst.Id, toolKey, payload
                 );
                 d.Related_Action__c = a.Id;
                 // Insert decision so it has an Id before we call resolve
@@ -370,11 +410,12 @@ public with sharing class PulseAgentOrchestrator {
                 // No Workflow_Action__c — just keep the proposal visible.
                 d.Status__c = 'Pending_User';
             } else {
-                // Act_With_Approval — create a pending Workflow_Action__c
-                // that the Decision Queue card links to.
+                // Act_With_Approval — populate an existing phase-initial
+                // placeholder if one matches the toolKey and is still blank;
+                // otherwise create a new pending Workflow_Action__c.
                 if (String.isNotBlank(toolKey)) {
-                    Workflow_Action__c a = HitlService.createApproval(
-                        inst.Id, toolKey, payload, 'Approval_Required'
+                    Workflow_Action__c a = reusePlaceholderOrCreate(
+                        inst.Id, toolKey, payload
                     );
                     d.Related_Action__c = a.Id;
                 }
@@ -464,10 +505,17 @@ public with sharing class PulseAgentOrchestrator {
             + 'ask for it again — move on to the next action or advance the phase.'
             + '\n- When `context.pendingActions[]` contains an ai_tool action WITHOUT arguments yet, '
             + 'that is YOUR placeholder to fill. Call `propose_action` with its `toolKey` and a fully '
-            + 'populated `arguments` object (for send_email: `to`, `subject`, `body`; for update_record: '
-            + '`recordId`, `objectType`, `fields`). Do NOT create a parallel decision — populate the '
-            + 'pending placeholder. Cite `context.parentRecordId` and the conversation participants '
-            + 'when drafting recipient/content.'
+            + 'populated `arguments` object. Tool argument names (use EXACTLY these keys):'
+            + '\n  - send_email: `toAddress` (string), `subject` (string), `body` (string). '
+            + 'NOT `to` — the tool will reject anything other than `toAddress`.'
+            + '\n  - update_record: `recordId` (string), `objectType` (string), `fields` (object).'
+            + '\n  - external_api: tool-specific — consult the tool description.'
+            + '\nDo NOT create a parallel decision — populate the pending placeholder. Pull the '
+            + 'recipient email from `context.conversations[*].participants` or the applicant email '
+            + 'already captured in `context`.'
+            + '\n- After a send_email has been Executed for a given action_key, DO NOT draft another '
+            + 'email for the same action_key. Either propose `advance_phase` to the next phase '
+            + '(if appropriate) or `observe` that you are waiting on the client to reply.'
             + '\n- Never call the same tool twice with identical args without new input.'
             + '\n- All side-effecting tool calls are gated by human approval unless autonomy allows.'
             + '\n\nWorkflow system prompt:\n' + (String.isBlank(userPrompt) ? '(none provided)' : userPrompt);
@@ -528,24 +576,40 @@ public with sharing class PulseAgentOrchestrator {
             m.put('context', new Map<String, Object>());
         }
 
-        // Pending actions for this phase
-        List<Workflow_Action__c> pending = [
-            SELECT Id, Tool_Key__c, Status__c, Request_JSON__c, Action_Key__c, Phase_Key__c
+        // Actions on this instance — split into pending (needs agent
+        // population or human approval) and recently-executed (agent can
+        // see what's already been done to avoid duplicating work).
+        List<Workflow_Action__c> allActions = [
+            SELECT Id, Tool_Key__c, Status__c, Request_JSON__c,
+                   Action_Key__c, Phase_Key__c, CreatedDate, Resolved_Date__c
             FROM Workflow_Action__c
             WHERE Workflow_Instance__c = :inst.Id
-              AND Status__c = 'Pending'
             ORDER BY CreatedDate DESC
-            LIMIT 20
+            LIMIT 30
         ];
         List<Map<String, Object>> pendList = new List<Map<String, Object>>();
-        for (Workflow_Action__c a : pending) {
-            pendList.add(new Map<String, Object>{
-                'id' => a.Id,
-                'toolKey' => a.Tool_Key__c,
-                'actionKey' => a.Action_Key__c
-            });
+        List<Map<String, Object>> doneList = new List<Map<String, Object>>();
+        for (Workflow_Action__c a : allActions) {
+            Boolean hasDraft = String.isNotBlank(a.Request_JSON__c);
+            if (a.Status__c == 'Pending') {
+                pendList.add(new Map<String, Object>{
+                    'id' => a.Id,
+                    'toolKey' => a.Tool_Key__c,
+                    'actionKey' => a.Action_Key__c,
+                    'hasDraft' => hasDraft
+                });
+            } else if (a.Status__c == 'Executed' || a.Status__c == 'Approved' || a.Status__c == 'Rejected') {
+                doneList.add(new Map<String, Object>{
+                    'id' => a.Id,
+                    'toolKey' => a.Tool_Key__c,
+                    'actionKey' => a.Action_Key__c,
+                    'status' => a.Status__c,
+                    'resolvedDate' => a.Resolved_Date__c
+                });
+            }
         }
         m.put('pendingActions', pendList);
+        m.put('recentlyResolvedActions', doneList);
 
         // Conversation history — the agent should read prior emails/chat
         // messages on this record before concluding information is missing.
