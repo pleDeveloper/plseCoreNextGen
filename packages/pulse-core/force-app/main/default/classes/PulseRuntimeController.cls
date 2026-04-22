@@ -22,6 +22,24 @@ global with sharing class PulseRuntimeController {
         @AuraEnabled public List<PhaseActionView> phaseActions;
         @AuraEnabled public String   phaseAdvancement;   // 'auto' | 'manual_decision'
         @AuraEnabled public Boolean  phaseComplete;
+        // ── Per-phase field capture (new) ──────────────────────────
+        @AuraEnabled public List<PhaseFieldView> phaseFields;
+    }
+
+    /**
+     * Field definition for the current phase, combined with the current
+     * value (from parent projection or Context_JSON__c) and any picklist
+     * values if the projected target is a picklist. Returned alongside
+     * InstanceView so the LWC can render an editable form.
+     */
+    global class PhaseFieldView {
+        @AuraEnabled public String   key;
+        @AuraEnabled public String   label;
+        @AuraEnabled public String   fieldType;              // Text, Number, Date, DateTime, Picklist, Currency, Percent, LongTextArea, Checkbox
+        @AuraEnabled public Boolean  required;
+        @AuraEnabled public String   currentValue;           // serialized; null if not set
+        @AuraEnabled public List<String> picklistValues;     // non-null only for Picklist
+        @AuraEnabled public String   projectedFieldApiName;  // null if projection disabled or not mapped
     }
 
     global class PhaseActionView {
@@ -95,6 +113,7 @@ global with sharing class PulseRuntimeController {
 
         List<Workflow_Instance__c> instances = [
             SELECT Id, Current_State__c, Status__c, Pinned_Version__c,
+                   Context_JSON__c, Parent_Record_Id__c, Parent_Object_Type__c,
                    Workflow_Definition__c,
                    Workflow_Definition__r.Name,
                    Workflow_Definition__r.Workflow_Key__c,
@@ -149,6 +168,7 @@ global with sharing class PulseRuntimeController {
             // Re-fetch the instance to build a refreshed view
             List<Workflow_Instance__c> refreshed = [
                 SELECT Id, Current_State__c, Status__c, Pinned_Version__c,
+                       Context_JSON__c, Parent_Record_Id__c, Parent_Object_Type__c,
                        Workflow_Definition__c,
                        Workflow_Definition__r.Name,
                        Workflow_Definition__r.Workflow_Key__c,
@@ -163,6 +183,132 @@ global with sharing class PulseRuntimeController {
         }
 
         return view;
+    }
+
+    /**
+     * Variant of advanceInstance that first saves phase field values into
+     * the instance context + projected parent fields, then advances. Used
+     * by the record-page form so the approver's captured values travel
+     * with the phase transition.
+     */
+    @AuraEnabled
+    public static AdvanceView advanceInstanceWithFields(
+        Id instanceId, String signal, String payloadJson, String idempotencyKey,
+        Map<String, Object> fieldValues
+    ) {
+        if (instanceId != null && fieldValues != null && !fieldValues.isEmpty()) {
+            try {
+                saveFieldValuesInternal(instanceId, fieldValues);
+            } catch (Exception e) {
+                AdvanceView err = new AdvanceView();
+                err.success = false;
+                err.error = 'Failed to save field values: ' + e.getMessage();
+                return err;
+            }
+        }
+        return advanceInstance(instanceId, signal, payloadJson, idempotencyKey);
+    }
+
+    // ─── saveFieldValues ────────────────────────────────────────
+
+    /**
+     * Save per-phase field values. Merges into Workflow_Instance__c.Context_JSON__c
+     * and, for any field whose projection is enabled and mapped in
+     * Workflow_Projection__mdt, writes to the parent record in a single
+     * bulk DML via ProjectionWriteService. Returns the refreshed view.
+     */
+    @AuraEnabled
+    public static InstanceView saveFieldValues(
+        Id instanceId, Map<String, Object> values
+    ) {
+        if (instanceId == null) return null;
+        saveFieldValuesInternal(instanceId, values);
+
+        List<Workflow_Instance__c> refreshed = [
+            SELECT Id, Current_State__c, Status__c, Pinned_Version__c,
+                   Context_JSON__c, Parent_Record_Id__c, Parent_Object_Type__c,
+                   Workflow_Definition__c,
+                   Workflow_Definition__r.Name,
+                   Workflow_Definition__r.Workflow_Key__c,
+                   Workflow_Definition__r.Definition_JSON__c
+            FROM Workflow_Instance__c
+            WHERE Id = :instanceId
+            LIMIT 1
+        ];
+        if (refreshed.isEmpty()) return null;
+        return buildInstanceView(refreshed[0]);
+    }
+
+    private static void saveFieldValuesInternal(
+        Id instanceId, Map<String, Object> values
+    ) {
+        if (instanceId == null || values == null || values.isEmpty()) return;
+
+        List<Workflow_Instance__c> rows = [
+            SELECT Id, Context_JSON__c, Parent_Record_Id__c, Parent_Object_Type__c,
+                   Workflow_Definition__r.Workflow_Key__c,
+                   Workflow_Definition__r.Definition_JSON__c,
+                   Current_State__c
+            FROM Workflow_Instance__c
+            WHERE Id = :instanceId
+            LIMIT 1
+        ];
+        if (rows.isEmpty()) return;
+        Workflow_Instance__c inst = rows[0];
+
+        // 1) Merge into Context_JSON__c (flat map of key → value).
+        Map<String, Object> ctx;
+        if (String.isNotBlank(inst.Context_JSON__c)) {
+            try {
+                ctx = (Map<String, Object>) JSON.deserializeUntyped(inst.Context_JSON__c);
+            } catch (Exception e) {
+                ctx = new Map<String, Object>();
+            }
+        } else {
+            ctx = new Map<String, Object>();
+        }
+        for (String k : values.keySet()) {
+            ctx.put(k, values.get(k));
+        }
+        inst.Context_JSON__c = JSON.serialize(ctx);
+        update inst;
+
+        // 2) For projection-enabled fields on the current phase, write
+        //    through to the parent record via ProjectionWriteService.
+        if (inst.Parent_Record_Id__c == null ||
+            String.isBlank(inst.Parent_Object_Type__c)) return;
+
+        WorkflowContract.Workflow wf;
+        try {
+            wf = WorkflowContract.parse(inst.Workflow_Definition__r.Definition_JSON__c);
+        } catch (Exception e) {
+            return;
+        }
+        WorkflowContract.State phase = wf != null ? wf.getState(inst.Current_State__c) : null;
+        if (phase == null || phase.fields == null || phase.fields.isEmpty()) return;
+
+        // Collect only fields that (a) the caller is submitting and
+        // (b) are flagged projection.enabled in the contract.
+        Map<String, String> projectable = new Map<String, String>();
+        for (WorkflowContract.FieldDef fd : phase.fields) {
+            if (fd.key == null || !values.containsKey(fd.key)) continue;
+            if (fd.projection == null || fd.projection.enabled != true) continue;
+            Object raw = values.get(fd.key);
+            projectable.put(fd.key, raw == null ? null : String.valueOf(raw));
+        }
+        if (projectable.isEmpty()) return;
+
+        ProjectionWriteService.ProjectionRequest req =
+            new ProjectionWriteService.ProjectionRequest();
+        req.parentRecordId     = inst.Parent_Record_Id__c;
+        req.parentObjectType   = inst.Parent_Object_Type__c;
+        req.workflowKey        = inst.Workflow_Definition__r.Workflow_Key__c;
+        req.workflowInstanceId = inst.Id;
+        req.fieldValues        = projectable;
+
+        ProjectionWriteService.project(
+            new List<ProjectionWriteService.ProjectionRequest>{ req }
+        );
     }
 
     // ─── getPendingActions ──────────────────────────────────────
@@ -332,7 +478,164 @@ global with sharing class PulseRuntimeController {
         view.phaseAdvancement = curStateForAdv != null ? curStateForAdv.effectiveAdvancement() : null;
         view.phaseComplete    = PulseActionInstantiationService.phaseComplete(inst.Id);
 
+        // Per-phase editable fields (projection + context-backed)
+        view.phaseFields = buildPhaseFields(inst, wf);
+
         return view;
+    }
+
+    /**
+     * Build a list of PhaseFieldView for the current phase. Resolves the
+     * current value from (a) parent record's projected field when the
+     * projection is enabled + mapped, else (b) Context_JSON__c. Picklist
+     * values are resolved via describe on the projected target field.
+     */
+    private static List<PhaseFieldView> buildPhaseFields(
+        Workflow_Instance__c inst,
+        WorkflowContract.Workflow wf
+    ) {
+        List<PhaseFieldView> out = new List<PhaseFieldView>();
+        if (inst == null || wf == null || String.isBlank(inst.Current_State__c)) return out;
+
+        WorkflowContract.State phase = wf.getState(inst.Current_State__c);
+        if (phase == null || phase.fields == null || phase.fields.isEmpty()) return out;
+
+        // Parse context once
+        Map<String, Object> ctx = new Map<String, Object>();
+        if (String.isNotBlank(inst.Context_JSON__c)) {
+            try {
+                ctx = (Map<String, Object>) JSON.deserializeUntyped(inst.Context_JSON__c);
+            } catch (Exception e) {
+                ctx = new Map<String, Object>();
+            }
+        }
+
+        // Collect the set of field keys that want projection lookup + the
+        // workflow key so we can resolve target fields in one CMDT query.
+        Set<String> projectionKeys = new Set<String>();
+        for (WorkflowContract.FieldDef fd : phase.fields) {
+            if (fd.projection != null && fd.projection.enabled == true && fd.key != null) {
+                projectionKeys.add(fd.key);
+            }
+        }
+
+        Map<String, Workflow_Projection__mdt> projectionByFieldKey = new Map<String, Workflow_Projection__mdt>();
+        if (!projectionKeys.isEmpty()) {
+            String workflowKey = wf.workflowKey;
+            // Workflow-scoped + shared (Workflow_Key__c = null) rows.
+            for (Workflow_Projection__mdt p : [
+                SELECT Field_Key__c, Target_Object__c, Target_Field__c,
+                       Workflow_Key__c, Write_Precedence__c, Active__c
+                FROM Workflow_Projection__mdt
+                WHERE Active__c = TRUE
+                  AND Field_Key__c IN :projectionKeys
+                  AND (Workflow_Key__c = :workflowKey OR Workflow_Key__c = NULL)
+            ]) {
+                // Prefer workflow-scoped over shared; lower precedence wins.
+                Workflow_Projection__mdt existing = projectionByFieldKey.get(p.Field_Key__c);
+                if (existing == null) {
+                    projectionByFieldKey.put(p.Field_Key__c, p);
+                } else {
+                    Boolean existingIsScoped = existing.Workflow_Key__c == workflowKey;
+                    Boolean candidateIsScoped = p.Workflow_Key__c == workflowKey;
+                    if (candidateIsScoped && !existingIsScoped) {
+                        projectionByFieldKey.put(p.Field_Key__c, p);
+                    } else if (candidateIsScoped == existingIsScoped) {
+                        Decimal ep = existing.Write_Precedence__c != null ? existing.Write_Precedence__c : 99999;
+                        Decimal cp = p.Write_Precedence__c        != null ? p.Write_Precedence__c        : 99999;
+                        if (cp < ep) projectionByFieldKey.put(p.Field_Key__c, p);
+                    }
+                }
+            }
+        }
+
+        // Load parent record once (only fields we need) to read projected
+        // values. SOQL with dynamic SELECT list keyed by fields we care about.
+        SObject parentRecord = null;
+        if (!projectionByFieldKey.isEmpty()
+            && inst.Parent_Record_Id__c != null
+            && String.isNotBlank(inst.Parent_Object_Type__c)) {
+            Set<String> parentFields = new Set<String>{ 'Id' };
+            String parentObj = null;
+            for (Workflow_Projection__mdt p : projectionByFieldKey.values()) {
+                if (p.Target_Object__c == inst.Parent_Object_Type__c
+                    && String.isNotBlank(p.Target_Field__c)) {
+                    parentFields.add(p.Target_Field__c);
+                    parentObj = p.Target_Object__c;
+                }
+            }
+            if (parentObj != null && parentFields.size() > 1) {
+                try {
+                    String soql = 'SELECT ' + String.join(new List<String>(parentFields), ',')
+                                + ' FROM ' + parentObj
+                                + ' WHERE Id = :parentId LIMIT 1';
+                    Id parentId = inst.Parent_Record_Id__c;
+                    List<SObject> rs = Database.query(soql);
+                    if (!rs.isEmpty()) parentRecord = rs[0];
+                } catch (Exception e) {
+                    // Degrade silently — fall back to context-only values.
+                }
+            }
+        }
+
+        // Global describe cache for picklist resolution
+        Map<String, Schema.SObjectType> gd = Schema.getGlobalDescribe();
+
+        for (WorkflowContract.FieldDef fd : phase.fields) {
+            if (fd == null || String.isBlank(fd.key)) continue;
+            PhaseFieldView v = new PhaseFieldView();
+            v.key       = fd.key;
+            v.label     = String.isNotBlank(fd.label) ? fd.label : fd.key;
+            v.fieldType = fd.fieldType != null ? fd.fieldType : 'Text';
+            v.required  = fd.required == true;
+
+            Workflow_Projection__mdt proj = projectionByFieldKey.get(fd.key);
+            Object currentVal = null;
+            if (proj != null) {
+                v.projectedFieldApiName = proj.Target_Field__c;
+                // Prefer the projected parent value when present.
+                if (parentRecord != null
+                    && proj.Target_Object__c == inst.Parent_Object_Type__c
+                    && String.isNotBlank(proj.Target_Field__c)) {
+                    try {
+                        currentVal = parentRecord.get(proj.Target_Field__c);
+                    } catch (Exception e) {
+                        currentVal = null;
+                    }
+                }
+                // Picklist options (only if target happens to be a picklist)
+                if ('Picklist'.equalsIgnoreCase(v.fieldType)
+                    && gd.containsKey(proj.Target_Object__c)) {
+                    Schema.DescribeSObjectResult od =
+                        gd.get(proj.Target_Object__c).getDescribe();
+                    Map<String, Schema.SObjectField> fmap = od.fields.getMap();
+                    if (fmap.containsKey(proj.Target_Field__c.toLowerCase())) {
+                        Schema.DescribeFieldResult fdesc =
+                            fmap.get(proj.Target_Field__c.toLowerCase()).getDescribe();
+                        if (fdesc.getType() == Schema.DisplayType.PICKLIST) {
+                            v.picklistValues = new List<String>();
+                            for (Schema.PicklistEntry pe : fdesc.getPicklistValues()) {
+                                if (pe.isActive()) v.picklistValues.add(pe.getValue());
+                            }
+                        }
+                    }
+                }
+            }
+            if (currentVal == null && ctx.containsKey(fd.key)) {
+                currentVal = ctx.get(fd.key);
+            }
+            v.currentValue = serializeFieldValue(currentVal);
+            out.add(v);
+        }
+        return out;
+    }
+
+    private static String serializeFieldValue(Object val) {
+        if (val == null) return null;
+        if (val instanceof Boolean) return ((Boolean) val) ? 'true' : 'false';
+        if (val instanceof Date)     return String.valueOf((Date) val);
+        if (val instanceof Datetime) return ((Datetime) val).format('yyyy-MM-dd\'T\'HH:mm:ss');
+        return String.valueOf(val);
     }
 
     private static List<PhaseActionView> buildPhaseActions(
