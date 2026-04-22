@@ -24,6 +24,38 @@ global with sharing class PulseRuntimeController {
         @AuraEnabled public Boolean  phaseComplete;
         // ── Per-phase field capture (new) ──────────────────────────
         @AuraEnabled public List<PhaseFieldView> phaseFields;
+        // ── Journey overview: every phase in the workflow, with status ──
+        @AuraEnabled public List<PhaseOverviewView> allPhases;
+    }
+
+    /**
+     * Journey-view summary of a single phase in the workflow. Populated
+     * for every state in the definition so the record-page UI can render
+     * a scannable "all phases" trail alongside the rich current-phase
+     * form + action cards.
+     */
+    global class PhaseOverviewView {
+        @AuraEnabled public String  key;                // state key
+        @AuraEnabled public String  label;              // state label from contract
+        @AuraEnabled public String  stateType;          // form | approval | ai_driven | terminal
+        @AuraEnabled public Integer sequence;           // 1-based position in journey
+        @AuraEnabled public String  status;             // completed | current | upcoming | terminal_success | terminal_failure
+        @AuraEnabled public List<PhaseFieldSummary> fields;
+        @AuraEnabled public List<String> checkpoints;   // derived from fields + 'Complete' sentinel
+        @AuraEnabled public String  activeCheckpoint;   // null unless phase is current
+        @AuraEnabled public Datetime completedAt;
+    }
+
+    /**
+     * Preview-level field metadata for the journey overview. Intentionally
+     * no values — the current phase's rich editable form already travels
+     * in InstanceView.phaseFields.
+     */
+    global class PhaseFieldSummary {
+        @AuraEnabled public String  key;
+        @AuraEnabled public String  label;
+        @AuraEnabled public String  fieldType;
+        @AuraEnabled public Boolean required;
     }
 
     /**
@@ -481,7 +513,142 @@ global with sharing class PulseRuntimeController {
         // Per-phase editable fields (projection + context-backed)
         view.phaseFields = buildPhaseFields(inst, wf);
 
+        // Journey overview — every phase in the workflow with status
+        view.allPhases = buildAllPhases(inst, wf);
+
         return view;
+    }
+
+    /**
+     * Build the scannable journey view: one PhaseOverviewView per state in
+     * the contract (in contract order). Derives status from the step-result
+     * history + instance status, builds per-phase checkpoint trails from
+     * the fields[] declaration, and computes the active checkpoint for the
+     * current phase by scanning which fields already have non-null values.
+     *
+     * Bulk-safe: one step-result query covering all phases, one context
+     * parse, no per-phase SOQL. Governor-safe even for large workflows.
+     */
+    private static List<PhaseOverviewView> buildAllPhases(
+        Workflow_Instance__c inst,
+        WorkflowContract.Workflow wf
+    ) {
+        List<PhaseOverviewView> out = new List<PhaseOverviewView>();
+        if (inst == null || wf == null || wf.states == null || wf.states.isEmpty()) {
+            return out;
+        }
+
+        // Step-result aggregation: for each phase key, remember latest
+        // Completed outcome + timestamp + whether any terminal outcome
+        // indicates this phase was the failure landing pad.
+        Map<String, Datetime> lastCompletedAtByKey = new Map<String, Datetime>();
+        Set<String> completedKeys = new Set<String>();
+        for (Workflow_Step_Result__c sr : [
+            SELECT State_Key__c, Outcome__c, Completed_Date__c
+            FROM Workflow_Step_Result__c
+            WHERE Workflow_Instance__c = :inst.Id
+              AND Outcome__c = 'Completed'
+        ]) {
+            if (String.isBlank(sr.State_Key__c)) continue;
+            completedKeys.add(sr.State_Key__c);
+            Datetime existing = lastCompletedAtByKey.get(sr.State_Key__c);
+            if (existing == null
+                || (sr.Completed_Date__c != null && sr.Completed_Date__c > existing)) {
+                lastCompletedAtByKey.put(sr.State_Key__c, sr.Completed_Date__c);
+            }
+        }
+
+        // Parse context once for active-checkpoint derivation on the
+        // current phase. Projected parent values aren't fetched here —
+        // Context_JSON is the "source of truth that travels with the
+        // instance" and saveFieldValues mirrors into context anyway.
+        Map<String, Object> ctx = new Map<String, Object>();
+        if (String.isNotBlank(inst.Context_JSON__c)) {
+            try {
+                ctx = (Map<String, Object>) JSON.deserializeUntyped(inst.Context_JSON__c);
+            } catch (Exception e) {
+                ctx = new Map<String, Object>();
+            }
+        }
+
+        String instStatus = inst.Status__c;
+        Boolean instComplete = instStatus == 'Completed';
+        Boolean instFailed   = instStatus == 'Failed';
+        String curKey = inst.Current_State__c;
+
+        Integer idx = 0;
+        for (WorkflowContract.State s : wf.states) {
+            idx++;
+            if (s == null || String.isBlank(s.key)) continue;
+
+            PhaseOverviewView p = new PhaseOverviewView();
+            p.key        = s.key;
+            p.label      = String.isNotBlank(s.label) ? s.label : s.key;
+            p.stateType  = s.stateType;
+            p.sequence   = idx;
+
+            // Fields summary + checkpoint trail derived from field labels.
+            p.fields = new List<PhaseFieldSummary>();
+            List<String> checkpoints = new List<String>();
+            if (s.fields != null) {
+                for (WorkflowContract.FieldDef fd : s.fields) {
+                    if (fd == null || String.isBlank(fd.key)) continue;
+                    PhaseFieldSummary fs = new PhaseFieldSummary();
+                    fs.key       = fd.key;
+                    fs.label     = String.isNotBlank(fd.label) ? fd.label : fd.key;
+                    fs.fieldType = fd.fieldType != null ? fd.fieldType : 'Text';
+                    fs.required  = fd.required == true;
+                    p.fields.add(fs);
+                    checkpoints.add('Capture ' + fs.label);
+                }
+            }
+            checkpoints.add('Complete');
+            p.checkpoints = checkpoints;
+
+            // Status derivation — explicit over implicit.
+            Boolean isCurrent = curKey != null && curKey == s.key;
+            Boolean isTerminal = 'terminal'.equalsIgnoreCase(s.stateType);
+            if (isCurrent) {
+                if (isTerminal && instComplete) {
+                    p.status = 'terminal_success';
+                } else if (isTerminal && instFailed) {
+                    p.status = 'terminal_failure';
+                } else {
+                    p.status = 'current';
+                }
+            } else if (completedKeys.contains(s.key)) {
+                p.status = 'completed';
+            } else {
+                p.status = 'upcoming';
+            }
+
+            // completedAt comes from the latest Completed step-result row.
+            p.completedAt = lastCompletedAtByKey.get(s.key);
+
+            // Active checkpoint: only meaningful for the current phase.
+            // Walk fields in declaration order — the first field without a
+            // non-null value in context is the live checkpoint. If every
+            // field is filled, the active checkpoint is 'Complete'.
+            if (isCurrent) {
+                String active = 'Complete';
+                if (s.fields != null) {
+                    for (WorkflowContract.FieldDef fd : s.fields) {
+                        if (fd == null || String.isBlank(fd.key)) continue;
+                        Object val = ctx.get(fd.key);
+                        if (val == null || (val instanceof String && String.isBlank((String) val))) {
+                            active = 'Capture ' + (String.isNotBlank(fd.label) ? fd.label : fd.key);
+                            break;
+                        }
+                    }
+                }
+                p.activeCheckpoint = active;
+            } else {
+                p.activeCheckpoint = null;
+            }
+
+            out.add(p);
+        }
+        return out;
     }
 
     /**

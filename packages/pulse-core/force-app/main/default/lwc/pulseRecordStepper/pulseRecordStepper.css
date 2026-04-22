@@ -434,3 +434,308 @@
     display: flex;
     justify-content: flex-end;
 }
+
+/* ── Journey view ───────────────────────────── */
+.journey {
+    list-style: none;
+    margin: var(--pulse-space-4, 16px) 0 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-4, 16px);
+}
+
+.journey-phase {
+    position: relative;
+    border: 1px solid var(--pulse-border, #E5E7EB);
+    border-radius: var(--pulse-radius-2xl, 16px);
+    background: var(--pulse-white, #FFFFFF);
+    box-shadow: var(--pulse-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
+    overflow: hidden;
+    transition: box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.journey-phase-current {
+    border-color: var(--pulse-purple, #7B2FF2);
+    border-left: 4px solid var(--pulse-purple, #7B2FF2);
+    box-shadow: var(--pulse-shadow-purple, 0 4px 16px rgba(123, 47, 242, 0.25));
+}
+
+.journey-phase-completed {
+    background: var(--pulse-off-white, #F9FAFB);
+}
+
+.journey-phase-upcoming {
+    background: var(--pulse-off-white, #F9FAFB);
+    opacity: 0.9;
+}
+
+.journey-phase-failed {
+    border-color: var(--pulse-error, #EF4444);
+    border-left: 4px solid var(--pulse-error, #EF4444);
+}
+
+.journey-phase-header {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-3, 12px);
+    width: 100%;
+    padding: var(--pulse-space-4, 16px);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+}
+
+.journey-phase-header:hover {
+    background: var(--pulse-off-white, #F9FAFB);
+}
+
+.journey-phase-current .journey-phase-header:hover {
+    background: rgba(123, 47, 242, 0.04);
+}
+
+.journey-phase-num {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-small, 14px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    line-height: 1;
+}
+
+.journey-phase-num-current {
+    background: var(--pulse-gradient, linear-gradient(135deg, #D946EF 0%, #7B2FF2 100%));
+    color: var(--pulse-white, #FFFFFF);
+    box-shadow: 0 2px 8px rgba(123, 47, 242, 0.35);
+}
+
+.journey-phase-num-complete {
+    background: var(--pulse-success, #10B981);
+    color: var(--pulse-white, #FFFFFF);
+}
+
+.journey-phase-num-failed {
+    background: var(--pulse-error, #EF4444);
+    color: var(--pulse-white, #FFFFFF);
+}
+
+.journey-phase-num-upcoming {
+    background: var(--pulse-light-gray, #F3F4F6);
+    color: var(--pulse-slate, #6B7280);
+    border: 1px solid var(--pulse-border, #E5E7EB);
+}
+
+.journey-phase-check {
+    font-size: var(--pulse-text-small, 14px);
+    font-weight: var(--pulse-weight-bold, 700);
+}
+
+.journey-phase-head-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.journey-phase-label {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-body, 16px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-dark, #111827);
+    line-height: 1.3;
+}
+
+.journey-phase-upcoming .journey-phase-label {
+    color: var(--pulse-slate, #6B7280);
+}
+
+.journey-phase-subtext {
+    font-size: var(--pulse-text-caption, 12px);
+    color: var(--pulse-slate, #6B7280);
+    font-style: italic;
+    margin: 0;
+}
+
+.journey-phase-status {
+    flex: 0 0 auto;
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-caption, 12px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    padding: var(--pulse-space-1, 4px) var(--pulse-space-3, 12px);
+    border-radius: var(--pulse-radius-pill, 100px);
+    letter-spacing: 0.2px;
+    border: 1px solid transparent;
+}
+
+.journey-status-current {
+    background: var(--pulse-gradient, linear-gradient(135deg, #D946EF, #7B2FF2));
+    color: var(--pulse-white, #FFFFFF);
+}
+
+.journey-status-completed {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--pulse-success, #10B981);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.journey-status-upcoming {
+    background: var(--pulse-light-gray, #F3F4F6);
+    color: var(--pulse-slate, #6B7280);
+    border-color: var(--pulse-border, #E5E7EB);
+}
+
+.journey-status-failed {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--pulse-error, #EF4444);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.journey-phase-chevron {
+    flex: 0 0 auto;
+    font-size: var(--pulse-text-small, 14px);
+    color: var(--pulse-slate, #6B7280);
+    padding: 0 var(--pulse-space-1, 4px);
+}
+
+.journey-phase-body {
+    padding: 0 var(--pulse-space-4, 16px) var(--pulse-space-4, 16px);
+    border-top: 1px solid var(--pulse-border, #E5E7EB);
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-4, 16px);
+    padding-top: var(--pulse-space-4, 16px);
+}
+
+/* Fields grid for completed/upcoming preview */
+.journey-fields-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--pulse-space-3, 12px);
+}
+
+.journey-field-preview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-1, 4px);
+    padding: var(--pulse-space-3, 12px);
+    border: 1px solid var(--pulse-border, #E5E7EB);
+    border-radius: var(--pulse-radius-md, 8px);
+    background: var(--pulse-white, #FFFFFF);
+}
+
+.journey-field-preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.journey-field-preview-label {
+    font-size: var(--pulse-text-small, 14px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-slate-dark, #374151);
+}
+
+.journey-field-type-pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: var(--pulse-weight-medium, 500);
+    letter-spacing: 0.2px;
+    color: var(--pulse-slate, #6B7280);
+    background: var(--pulse-light-gray, #F3F4F6);
+    border: 1px solid var(--pulse-border, #E5E7EB);
+    padding: 2px var(--pulse-space-2, 8px);
+    border-radius: var(--pulse-radius-pill, 100px);
+    line-height: 1.4;
+}
+
+.journey-field-preview-value {
+    font-size: var(--pulse-text-small, 14px);
+    color: var(--pulse-dark, #111827);
+    word-break: break-word;
+}
+
+.journey-field-preview-empty {
+    font-size: var(--pulse-text-small, 14px);
+    color: var(--pulse-slate-light, #9CA3AF);
+}
+
+/* Checkpoint trail */
+.journey-checkpoints {
+    list-style: none;
+    margin: 0;
+    padding: var(--pulse-space-3, 12px) 0 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--pulse-space-2, 8px) var(--pulse-space-3, 12px);
+    border-top: 1px dashed var(--pulse-border, #E5E7EB);
+}
+
+.journey-checkpoint {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.journey-checkpoint-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+}
+
+.journey-checkpoint-active {
+    background: var(--pulse-purple, #7B2FF2);
+    box-shadow: 0 0 0 3px rgba(123, 47, 242, 0.18);
+}
+
+.journey-checkpoint-done {
+    background: var(--pulse-success, #10B981);
+}
+
+.journey-checkpoint-upcoming {
+    background: var(--pulse-white, #FFFFFF);
+    border: 1.5px solid var(--pulse-slate-light, #9CA3AF);
+}
+
+.journey-checkpoint-label {
+    font-size: var(--pulse-text-caption, 12px);
+    letter-spacing: 0.2px;
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+}
+
+.journey-checkpoint-label-active {
+    color: var(--pulse-purple, #7B2FF2);
+    font-weight: var(--pulse-weight-semibold, 600);
+}
+
+.journey-checkpoint-label-done {
+    color: var(--pulse-slate-dark, #374151);
+}
+
+.journey-checkpoint-label-upcoming {
+    color: var(--pulse-slate, #6B7280);
+}
+
+.journey-checkpoint-arrow {
+    color: var(--pulse-slate-light, #9CA3AF);
+    font-size: var(--pulse-text-caption, 12px);
+}
+
+/* Tighten signal buttons when inside the expanded current phase */
+.journey-phase-body .stepper-signals {
+    margin-top: 0;
+}

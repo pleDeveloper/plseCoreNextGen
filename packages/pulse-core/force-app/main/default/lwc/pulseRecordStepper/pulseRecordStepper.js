@@ -23,6 +23,7 @@ export default class PulseRecordStepper extends LightningElement {
     @track payloadText = '';
     @track isAdvancing = false;
     @track timelineExpanded = false;
+    @track activityExpanded = false;
     @track resolvingActionId = null;
 
     // Refine state — keyed by actionId
@@ -32,6 +33,13 @@ export default class PulseRecordStepper extends LightningElement {
     // Phase field form state — fieldKey -> current edited value (string|bool)
     @track fieldValues = {};
     @track isSavingFields = false;
+
+    // Collapse state for the journey view. The current phase auto-expands
+    // on load; the user can toggle others. We track the set of phase keys
+    // that are EXPLICITLY collapsed and, separately, explicitly expanded,
+    // so toggling a non-current phase overrides the default-collapsed.
+    @track expandedPhaseKeys = new Set();
+    @track collapsedPhaseKeys = new Set();
 
     connectedCallback() {
         loadPulseBrandTokens(this);
@@ -83,7 +91,179 @@ export default class PulseRecordStepper extends LightningElement {
         return `${count} pending`;
     }
 
-    // Phase actions rendering
+    get instanceStatusVariant() {
+        const s = this.instance?.status;
+        if (s === 'Completed') return 'success';
+        if (s === 'Failed' || s === 'Cancelled') return 'error';
+        return 'purple';
+    }
+
+    // ─── Journey (allPhases) ────────────────────────────────────
+
+    get journey() {
+        const phases = this.instance?.allPhases || [];
+        if (!phases.length) return [];
+        const currentKey = this.instance?.currentStateKey;
+        return phases.map((p) => {
+            const expanded = this._isPhaseExpanded(p, currentKey);
+            const isCurrent = p.status === 'current';
+            const isCompleted = p.status === 'completed' || p.status === 'terminal_success';
+            const isFailed = p.status === 'terminal_failure';
+            const isUpcoming = p.status === 'upcoming';
+            const statusLabel = this._statusLabel(p.status, this.instance?.status);
+            const statusClass = this._statusClass(p.status);
+            const cardClass = [
+                'journey-phase',
+                isCurrent ? 'journey-phase-current' : '',
+                isCompleted ? 'journey-phase-completed' : '',
+                isFailed ? 'journey-phase-failed' : '',
+                isUpcoming ? 'journey-phase-upcoming' : '',
+                expanded ? 'journey-phase-expanded' : 'journey-phase-collapsed',
+            ].filter(Boolean).join(' ');
+            const chevronLabel = expanded ? 'Collapse phase' : 'Expand phase';
+            const numberClass = 'journey-phase-num ' + (
+                isCurrent ? 'journey-phase-num-current'
+                    : isCompleted ? 'journey-phase-num-complete'
+                    : isFailed ? 'journey-phase-num-failed'
+                    : 'journey-phase-num-upcoming'
+            );
+            const completedAtText = p.completedAt
+                ? this._formatDateTime(p.completedAt)
+                : null;
+            const checkpoints = this._buildCheckpointTrail(p);
+            const fieldPreviews = (p.fields || []).map((f) => {
+                const val = this._lookupPhaseFieldValue(p.key, f.key, isCurrent);
+                return {
+                    key: f.key,
+                    label: f.label,
+                    typeLabel: this._fieldTypeLabel(f.fieldType),
+                    required: f.required,
+                    value: val,
+                    hasValue: val != null && val !== '',
+                };
+            });
+            return {
+                ...p,
+                expanded,
+                isCurrent,
+                isCompleted,
+                isFailed,
+                isUpcoming,
+                hasFields: (p.fields || []).length > 0,
+                fieldPreviews,
+                statusLabel,
+                statusClass,
+                cardClass,
+                numberClass,
+                chevronLabel,
+                completedAtText,
+                checkpointItems: checkpoints,
+                hasCheckpoints: checkpoints.length > 0,
+            };
+        });
+    }
+
+    get hasJourney() { return this.journey.length > 0; }
+
+    _isPhaseExpanded(phase, currentKey) {
+        if (this.expandedPhaseKeys && this.expandedPhaseKeys.has(phase.key)) return true;
+        if (this.collapsedPhaseKeys && this.collapsedPhaseKeys.has(phase.key)) return false;
+        // Default: expand the current phase only.
+        return phase.key === currentKey;
+    }
+
+    _statusLabel(phaseStatus, instanceStatus) {
+        switch (phaseStatus) {
+            case 'completed':         return 'Completed';
+            case 'current':           return instanceStatus === 'Paused' ? 'On hold' : 'In progress';
+            case 'upcoming':          return 'Upcoming';
+            case 'terminal_success':  return 'Completed';
+            case 'terminal_failure':  return 'Failed';
+            default:                  return phaseStatus || '';
+        }
+    }
+
+    _statusClass(phaseStatus) {
+        const base = 'journey-phase-status';
+        const variant = {
+            completed:         'journey-status-completed',
+            current:           'journey-status-current',
+            upcoming:          'journey-status-upcoming',
+            terminal_success:  'journey-status-completed',
+            terminal_failure:  'journey-status-failed',
+        }[phaseStatus] || 'journey-status-upcoming';
+        return `${base} ${variant}`;
+    }
+
+    _lookupPhaseFieldValue(phaseKey, fieldKey, isCurrent) {
+        // For the current phase, prefer the in-flight editor value (so the
+        // preview row reflects what the user is typing). For other phases,
+        // show any value Apex shipped on phaseFields (current phase only
+        // today); a future backend enhancement can ship a per-phase value
+        // map for completed phases.
+        if (isCurrent && Object.prototype.hasOwnProperty.call(this.fieldValues, fieldKey)) {
+            return this.fieldValues[fieldKey];
+        }
+        const detailed = (this.instance?.phaseFields || []).find((f) => f.key === fieldKey);
+        return detailed ? detailed.currentValue : null;
+    }
+
+    _fieldTypeLabel(fieldType) {
+        if (!fieldType) return 'Text';
+        const normalized = fieldType.toString();
+        if (normalized.toLowerCase() === 'longtextarea') return 'Long Text';
+        if (normalized.toLowerCase() === 'datetime') return 'Date/Time';
+        // Capitalize first letter, leave the rest (matches contract casing).
+        return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+    }
+
+    _buildCheckpointTrail(phase) {
+        const checkpoints = phase.checkpoints || [];
+        if (!checkpoints.length) return [];
+        const active = phase.activeCheckpoint;
+        const isCompleted = phase.status === 'completed' || phase.status === 'terminal_success';
+        const isCurrent = phase.status === 'current';
+        let activeIdx = -1;
+        if (isCurrent && active) {
+            activeIdx = checkpoints.findIndex((c) => c === active);
+        }
+        return checkpoints.map((label, idx) => {
+            let state;
+            if (isCompleted) state = 'done';
+            else if (!isCurrent) state = 'upcoming';
+            else if (activeIdx < 0) state = 'upcoming';
+            else if (idx < activeIdx) state = 'done';
+            else if (idx === activeIdx) state = 'active';
+            else state = 'upcoming';
+            const dotClass = `journey-checkpoint-dot journey-checkpoint-${state}`;
+            const labelClass = `journey-checkpoint-label journey-checkpoint-label-${state}`;
+            return {
+                key: `${phase.key}:${idx}:${label}`,
+                label,
+                state,
+                dotClass,
+                labelClass,
+                isLast: idx === checkpoints.length - 1,
+                showSeparator: idx < checkpoints.length - 1,
+            };
+        });
+    }
+
+    _formatDateTime(dt) {
+        if (!dt) return null;
+        try {
+            const d = new Date(dt);
+            if (isNaN(d.getTime())) return String(dt);
+            return d.toLocaleString(undefined, {
+                month: 'short', day: 'numeric', year: 'numeric',
+                hour: 'numeric', minute: '2-digit',
+            });
+        } catch (e) {
+            return String(dt);
+        }
+    }
+
+    // Phase actions rendering (current phase only)
     get phaseActions() {
         const raw = this.instance?.phaseActions || [];
         return raw.map((a) => {
@@ -143,6 +323,7 @@ export default class PulseRecordStepper extends LightningElement {
                 checkedValue: val === true || val === 'true',
                 picklistOptions: (f.picklistValues || []).map((v) => ({ value: v, label: v, selected: String(val) === v })),
                 requiredBadge: f.required ? 'Required' : 'Optional',
+                typeLabel: this._fieldTypeLabel(f.fieldType),
             };
         });
     }
@@ -152,14 +333,10 @@ export default class PulseRecordStepper extends LightningElement {
     }
 
     // Signal buttons only appear when the phase is ready to advance.
-    // For manual_decision phases: show once all required actions done.
-    // For auto phases: the HitlService auto-advances, so signals shouldn't normally appear.
     get shouldShowSignals() {
         if (!this.instance) return false;
         if (!this.signals.length) return false;
-        // No declarative phase actions — legacy state, always show signals.
         if (!this.hasPhaseActions) return true;
-        // With actions defined: only show signals when phase is complete.
         return this.instance.phaseComplete === true;
     }
 
@@ -193,6 +370,19 @@ export default class PulseRecordStepper extends LightningElement {
         return `Show all ${total} steps`;
     }
 
+    get activityToggleLabel() {
+        const total = (this.instance?.history || []).length;
+        return this.activityExpanded
+            ? 'Hide activity'
+            : `Show activity (${total} step${total === 1 ? '' : 's'})`;
+    }
+
+    // Activity is collapsed-by-default for journey instances; rendered
+    // inline for legacy (journey-less) instances so back-compat is intact.
+    get activityOrLegacyExpanded() {
+        return !this.hasJourney || this.activityExpanded;
+    }
+
     get payloadPlaceholder() { return 'JSON payload, e.g. key: value'; }
 
     get modalTitle() {
@@ -202,6 +392,24 @@ export default class PulseRecordStepper extends LightningElement {
     }
 
     // ─── Handlers ───────────────────────────────────────────────
+
+    handleTogglePhase(event) {
+        const key = event.currentTarget?.dataset?.phaseKey;
+        if (!key) return;
+        const currentKey = this.instance?.currentStateKey;
+        const currentlyExpanded = this._isPhaseExpanded({ key }, currentKey);
+        const nextExpanded = new Set(this.expandedPhaseKeys);
+        const nextCollapsed = new Set(this.collapsedPhaseKeys);
+        if (currentlyExpanded) {
+            nextExpanded.delete(key);
+            nextCollapsed.add(key);
+        } else {
+            nextCollapsed.delete(key);
+            nextExpanded.add(key);
+        }
+        this.expandedPhaseKeys = nextExpanded;
+        this.collapsedPhaseKeys = nextCollapsed;
+    }
 
     handleSignalClick(event) {
         const signal = event.currentTarget.dataset.signal;
@@ -259,6 +467,7 @@ export default class PulseRecordStepper extends LightningElement {
     handleDismissActionError() { this.actionError = null; }
     handleDismissFieldError() { this.fieldError = null; }
     handleToggleTimeline() { this.timelineExpanded = !this.timelineExpanded; }
+    handleToggleActivity() { this.activityExpanded = !this.activityExpanded; }
 
     async handleApproveAction(event) {
         const actionId = event.currentTarget.dataset.actionId;
@@ -380,8 +589,6 @@ export default class PulseRecordStepper extends LightningElement {
         const key = event.currentTarget?.dataset?.fieldKey
             || event.target?.dataset?.fieldKey;
         if (!key) return;
-        // Prefer CustomEvent detail.value (emitted by c-pulse-input and our
-        // own native onchange dispatches); fall back to native element value.
         let val;
         if (event.target?.type === 'checkbox') {
             val = event.target.checked;
@@ -535,7 +742,6 @@ export default class PulseRecordStepper extends LightningElement {
                 },
             };
         }
-        // Fallback: raw JSON textarea for anything else (or unparseable)
         return {
             mode: 'raw',
             raw: action.requestJson

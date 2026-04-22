@@ -329,6 +329,160 @@ private class PulseRuntimeControllerTest {
         Test.stopTest();
     }
 
+    // ─── allPhases: every state present, status per state ───────
+
+    @IsTest
+    static void allPhasesReturnsEveryStateWithStatus() {
+        Workflow_Definition__c def = insertDefinition();
+        Account acc = insertAccount();
+        Workflow_Instance__c inst = insertInstance(def.Id, 'review', acc.Id);
+        // History: intake completed → now on review (current). complete + cancelled upcoming.
+        insertStepResult(inst.Id, 'intake', 'submit', 'Completed');
+
+        Test.startTest();
+        PulseRuntimeController.InstanceView view =
+            PulseRuntimeController.getInstanceForRecord(acc.Id);
+        Test.stopTest();
+
+        System.assertNotEquals(null, view.allPhases, 'allPhases populated');
+        System.assertEquals(4, view.allPhases.size(), 'Four states in fixture');
+
+        // Order preserved from contract
+        System.assertEquals('intake',    view.allPhases[0].key);
+        System.assertEquals('review',    view.allPhases[1].key);
+        System.assertEquals('complete',  view.allPhases[2].key);
+        System.assertEquals('cancelled', view.allPhases[3].key);
+
+        // 1-based sequence
+        System.assertEquals(1, view.allPhases[0].sequence);
+        System.assertEquals(4, view.allPhases[3].sequence);
+
+        // Status derivation
+        System.assertEquals('completed', view.allPhases[0].status,
+            'intake has a Completed step-result');
+        System.assertEquals('current',   view.allPhases[1].status,
+            'review is the active phase');
+        System.assertEquals('upcoming',  view.allPhases[2].status);
+        System.assertEquals('upcoming',  view.allPhases[3].status);
+    }
+
+    // ─── allPhases: checkpoints + activeCheckpoint derivation ───
+
+    @IsTest
+    static void allPhasesCheckpointsAndActiveCheckpoint() {
+        Workflow_Definition__c def = insertDefinition();
+        Account acc = insertAccount();
+        Workflow_Instance__c inst = insertInstance(def.Id, 'intake', acc.Id);
+        // No context values → active checkpoint should be the first field
+        Test.startTest();
+        PulseRuntimeController.InstanceView view =
+            PulseRuntimeController.getInstanceForRecord(acc.Id);
+        Test.stopTest();
+
+        PulseRuntimeController.PhaseOverviewView intake = view.allPhases[0];
+        System.assertEquals('intake', intake.key);
+        System.assertEquals('current', intake.status);
+        // Checkpoints = one per field + 'Complete'
+        System.assertEquals(2, intake.checkpoints.size());
+        System.assertEquals('Capture Patient Name', intake.checkpoints[0]);
+        System.assertEquals('Complete', intake.checkpoints[1]);
+        // Empty context → first field is the live checkpoint
+        System.assertEquals('Capture Patient Name', intake.activeCheckpoint);
+
+        // Review/complete/cancelled have no fields — checkpoints = just ['Complete']
+        PulseRuntimeController.PhaseOverviewView review = view.allPhases[1];
+        System.assertEquals(1, review.checkpoints.size());
+        System.assertEquals('Complete', review.checkpoints[0]);
+        // activeCheckpoint is null for non-current phases
+        System.assertEquals(null, review.activeCheckpoint);
+    }
+
+    @IsTest
+    static void allPhasesActiveCheckpointAdvancesAsFieldsFill() {
+        Workflow_Definition__c def = insertDefinition();
+        Account acc = insertAccount();
+        Workflow_Instance__c inst = insertInstance(def.Id, 'intake', acc.Id);
+        inst.Context_JSON__c = JSON.serialize(
+            new Map<String, Object>{ 'patient_name' => 'Alice' }
+        );
+        update inst;
+
+        Test.startTest();
+        PulseRuntimeController.InstanceView view =
+            PulseRuntimeController.getInstanceForRecord(acc.Id);
+        Test.stopTest();
+
+        PulseRuntimeController.PhaseOverviewView intake = view.allPhases[0];
+        // Only one field, now filled → active should be 'Complete'
+        System.assertEquals('Complete', intake.activeCheckpoint);
+    }
+
+    // ─── allPhases: completedAt pulled from last Completed step-result ──
+
+    @IsTest
+    static void allPhasesCompletedAtFromStepResult() {
+        Workflow_Definition__c def = insertDefinition();
+        Account acc = insertAccount();
+        Workflow_Instance__c inst = insertInstance(def.Id, 'review', acc.Id);
+        Workflow_Step_Result__c sr = insertStepResult(inst.Id, 'intake', 'submit', 'Completed');
+        // Make completed_at deterministic
+        Datetime stamp = Datetime.newInstance(2026, 1, 15, 10, 0, 0);
+        sr.Completed_Date__c = stamp;
+        update sr;
+
+        Test.startTest();
+        PulseRuntimeController.InstanceView view =
+            PulseRuntimeController.getInstanceForRecord(acc.Id);
+        Test.stopTest();
+
+        PulseRuntimeController.PhaseOverviewView intake = view.allPhases[0];
+        System.assertEquals('completed', intake.status);
+        System.assertEquals(stamp, intake.completedAt,
+            'completedAt should match latest Completed step-result timestamp');
+
+        // Current/upcoming phases should not have completedAt
+        System.assertEquals(null, view.allPhases[1].completedAt);
+        System.assertEquals(null, view.allPhases[2].completedAt);
+    }
+
+    // ─── allPhases: terminal status when instance finishes ──────
+    // Drives advance through the runtime so the instance reaches the
+    // terminal 'complete' state and its Status__c flips to 'Completed'.
+    // The refreshed view on the AdvanceResult is what the LWC actually
+    // consumes after an advance, so it's the right surface to assert on.
+
+    @IsTest
+    static void allPhasesTerminalSuccessStatus() {
+        Workflow_Definition__c def = insertDefinition();
+        Account acc = insertAccount();
+        Workflow_Instance__c inst = insertInstance(def.Id, 'intake', acc.Id);
+
+        Test.startTest();
+        // intake → review
+        PulseRuntimeController.AdvanceView step1 =
+            PulseRuntimeController.advanceInstance(inst.Id, 'submit', null, null);
+        System.assertEquals(true, step1.success,
+            'step1: ' + (step1.error == null ? '(no error)' : step1.error));
+        // review → complete (terminal)
+        PulseRuntimeController.AdvanceView view =
+            PulseRuntimeController.advanceInstance(inst.Id, 'approve', null, null);
+        Test.stopTest();
+
+        System.assertEquals(true, view.success,
+            'step2: ' + (view.error == null ? '(no error)' : view.error));
+        System.assertNotEquals(null, view.refreshed);
+        System.assertNotEquals(null, view.refreshed.allPhases);
+
+        // Find the 'complete' phase in the journey
+        PulseRuntimeController.PhaseOverviewView completePhase = null;
+        for (PulseRuntimeController.PhaseOverviewView p : view.refreshed.allPhases) {
+            if (p.key == 'complete') { completePhase = p; break; }
+        }
+        System.assertNotEquals(null, completePhase, 'complete phase present');
+        System.assertEquals('terminal_success', completePhase.status,
+            'Terminal + instance Completed → terminal_success');
+    }
+
     // ─── Test data helpers ──────────────────────────────────────
 
     private static Account insertAccount() {

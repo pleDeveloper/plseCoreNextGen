@@ -368,6 +368,145 @@ describe('c-pulse-record-stepper', () => {
         expect(saveCall[0].values.credit_review_comments).toBe('Looks clean');
     });
 
+    // ── Journey view (allPhases) ────────────────────────────────
+
+    const INSTANCE_WITH_JOURNEY = {
+        ...MOCK_INSTANCE,
+        currentStateKey: 'triage',
+        currentStateLabel: 'Triage',
+        phaseActions: [],
+        phaseFields: [],
+        allPhases: [
+            {
+                key: 'intake', label: 'Intake', stateType: 'form', sequence: 1,
+                status: 'completed',
+                fields: [{ key: 'patient_name', label: 'Patient Name', fieldType: 'Text', required: true }],
+                checkpoints: ['Capture Patient Name', 'Complete'],
+                activeCheckpoint: null,
+                completedAt: '2026-04-20T10:00:00Z',
+            },
+            {
+                key: 'triage', label: 'Triage', stateType: 'form', sequence: 2,
+                status: 'current',
+                fields: [
+                    { key: 'urgency', label: 'Urgency', fieldType: 'Picklist', required: true },
+                    { key: 'notes',   label: 'Notes',   fieldType: 'LongTextArea', required: false },
+                ],
+                checkpoints: ['Capture Urgency', 'Capture Notes', 'Complete'],
+                activeCheckpoint: 'Capture Urgency',
+                completedAt: null,
+            },
+            {
+                key: 'review', label: 'Review', stateType: 'approval', sequence: 3,
+                status: 'upcoming',
+                fields: [],
+                checkpoints: ['Complete'],
+                activeCheckpoint: null,
+                completedAt: null,
+            },
+            {
+                key: 'complete', label: 'Complete', stateType: 'terminal', sequence: 4,
+                status: 'upcoming',
+                fields: [],
+                checkpoints: ['Complete'],
+                activeCheckpoint: null,
+                completedAt: null,
+            },
+        ],
+    };
+
+    it('renders the journey with one card per phase', async () => {
+        getInstanceForRecord.mockResolvedValue(INSTANCE_WITH_JOURNEY);
+        const el = createComponent();
+        await flushPromises();
+
+        const journey = el.shadowRoot.querySelector('.journey');
+        expect(journey).not.toBeNull();
+        const phaseCards = el.shadowRoot.querySelectorAll('.journey > li');
+        expect(phaseCards.length).toBe(4);
+
+        const labels = Array.from(el.shadowRoot.querySelectorAll('.journey-phase-label'))
+            .map((n) => n.textContent.trim());
+        expect(labels).toEqual(['Intake', 'Triage', 'Review', 'Complete']);
+
+        const statuses = Array.from(el.shadowRoot.querySelectorAll('.journey-phase-status'))
+            .map((n) => n.textContent.trim());
+        expect(statuses).toEqual(['Completed', 'In progress', 'Upcoming', 'Upcoming']);
+    });
+
+    it('auto-expands the current phase and collapses others', async () => {
+        getInstanceForRecord.mockResolvedValue(INSTANCE_WITH_JOURNEY);
+        const el = createComponent();
+        await flushPromises();
+
+        const cards = el.shadowRoot.querySelectorAll('.journey-phase');
+        const expandedBodies = el.shadowRoot.querySelectorAll('.journey-phase-body');
+        expect(expandedBodies.length).toBe(1);
+        const expandedCard = Array.from(cards).find((c) =>
+            c.classList.contains('journey-phase-expanded')
+        );
+        expect(expandedCard).toBeDefined();
+        expect(expandedCard.classList.contains('journey-phase-current')).toBe(true);
+    });
+
+    it('toggles phase expansion when the header is clicked', async () => {
+        getInstanceForRecord.mockResolvedValue(INSTANCE_WITH_JOURNEY);
+        const el = createComponent();
+        await flushPromises();
+
+        const headers = el.shadowRoot.querySelectorAll('.journey-phase-header');
+        const reviewHeader = Array.from(headers).find(
+            (h) => h.dataset.phaseKey === 'review'
+        );
+        expect(reviewHeader).toBeDefined();
+        reviewHeader.click();
+        await flushPromises();
+
+        const bodies = el.shadowRoot.querySelectorAll('.journey-phase-body');
+        expect(bodies.length).toBe(2);
+
+        reviewHeader.click();
+        await flushPromises();
+        const bodiesAfter = el.shadowRoot.querySelectorAll('.journey-phase-body');
+        expect(bodiesAfter.length).toBe(1);
+    });
+
+    it('renders a checkpoint trail inside each expanded phase', async () => {
+        getInstanceForRecord.mockResolvedValue(INSTANCE_WITH_JOURNEY);
+        const el = createComponent();
+        await flushPromises();
+
+        const trails = el.shadowRoot.querySelectorAll('.journey-checkpoints');
+        expect(trails.length).toBe(1);
+
+        const labels = Array.from(trails[0].querySelectorAll('.journey-checkpoint-label'))
+            .map((n) => n.textContent.trim());
+        expect(labels).toEqual(['Capture Urgency', 'Capture Notes', 'Complete']);
+
+        const active = trails[0].querySelector('.journey-checkpoint-active');
+        expect(active).not.toBeNull();
+        const activeLabel = trails[0].querySelector('.journey-checkpoint-label-active');
+        expect(activeLabel.textContent.trim()).toBe('Capture Urgency');
+    });
+
+    it('renders a read-only field preview grid for non-current phases', async () => {
+        getInstanceForRecord.mockResolvedValue(INSTANCE_WITH_JOURNEY);
+        const el = createComponent();
+        await flushPromises();
+
+        const intakeHeader = Array.from(
+            el.shadowRoot.querySelectorAll('.journey-phase-header')
+        ).find((h) => h.dataset.phaseKey === 'intake');
+        intakeHeader.click();
+        await flushPromises();
+
+        const grids = el.shadowRoot.querySelectorAll('.journey-fields-grid');
+        expect(grids.length).toBe(1);
+        const pill = grids[0].querySelector('.journey-field-type-pill');
+        expect(pill.textContent.trim()).toBe('Text');
+        expect(grids[0].querySelector('c-pulse-input')).toBeNull();
+    });
+
     it('Advance flows phaseField values through advanceInstanceWithFields', async () => {
         getInstanceForRecord.mockResolvedValue(INSTANCE_WITH_FIELDS);
         const el = createComponent();
