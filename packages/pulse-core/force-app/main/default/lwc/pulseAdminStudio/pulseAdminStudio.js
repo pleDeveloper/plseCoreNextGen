@@ -105,6 +105,10 @@ export default class PulseAdminStudio extends LightningElement {
         return this.activeNav === 'integrations-hub';
     }
 
+    get isLibrary() {
+        return this.activeNav === 'library';
+    }
+
     get isSettings() {
         return this.activeNav === 'settings';
     }

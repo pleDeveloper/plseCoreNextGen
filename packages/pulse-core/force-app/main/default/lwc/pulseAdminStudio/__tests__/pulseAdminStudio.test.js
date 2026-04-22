@@ -39,6 +39,30 @@ jest.mock(
     { virtual: true }
 );
 
+jest.mock(
+    '@salesforce/apex/PulseLibraryInstaller.listInstalledBundles',
+    () => ({ default: jest.fn() }),
+    { virtual: true }
+);
+
+jest.mock(
+    '@salesforce/apex/PulseLibraryInstaller.installBundle',
+    () => ({ default: jest.fn() }),
+    { virtual: true }
+);
+
+jest.mock(
+    '@salesforce/apex/PulseLibraryInstaller.rollback',
+    () => ({ default: jest.fn() }),
+    { virtual: true }
+);
+
+jest.mock(
+    '@salesforce/apex',
+    () => ({ refreshApex: jest.fn(() => Promise.resolve()) }),
+    { virtual: true }
+);
+
 
 function createComponent() {
     const el = createElement('c-pulse-admin-studio', { is: PulseAdminStudio });
@@ -150,20 +174,15 @@ describe('c-pulse-admin-studio', () => {
         });
     });
 
-    it('shows Library placeholder with muted caption, no wave reference', () => {
+    it('renders Library Browser panel when Library nav clicked', () => {
         const el = createComponent();
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
         navItems[6].click(); // Library
         return Promise.resolve().then(() => {
-            const heading = el.shadowRoot.querySelector('.studio-placeholder-heading');
-            expect(heading).not.toBeNull();
-            expect(heading.textContent).toBe('Pulse Library');
-            const muted = el.shadowRoot.querySelector('.studio-placeholder-muted');
-            expect(muted).not.toBeNull();
-            expect(muted.textContent).toBe('In development.');
-            // No wave-reference badge
-            const badge = el.shadowRoot.querySelector('.pulse-badge');
-            expect(badge).toBeNull();
+            const browser = el.shadowRoot.querySelector('c-pulse-library-browser');
+            expect(browser).not.toBeNull();
+            const builder = el.shadowRoot.querySelector('c-pulse-workflow-builder');
+            expect(builder).toBeNull();
         });
     });
 

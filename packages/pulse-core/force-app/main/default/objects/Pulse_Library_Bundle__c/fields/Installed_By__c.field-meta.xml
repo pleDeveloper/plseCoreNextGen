@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Installed_By__c</fullName>
+    <label>Installed By</label>
+    <type>Lookup</type>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Installed Library Bundles</relationshipLabel>
+    <relationshipName>Installed_Library_Bundles</relationshipName>
+    <deleteConstraint>SetNull</deleteConstraint>
+</CustomField>

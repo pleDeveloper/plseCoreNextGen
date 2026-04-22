@@ -1,0 +1,117 @@
+<template>
+    <div class="library-browser">
+        <!-- Header -->
+        <c-pulse-card heading="Pulse Library">
+            <div class="library-header">
+                <div class="library-header-meta">
+                    <c-pulse-badge label={bundleCount} variant="purple"></c-pulse-badge>
+                    <span class="library-header-label">installed bundles</span>
+                </div>
+                <c-pulse-button label="Paste bundle"
+                                variant="primary"
+                                size="sm"
+                                onclick={handleOpenInstall}>
+                </c-pulse-button>
+            </div>
+        </c-pulse-card>
+
+        <!-- Error banner -->
+        <template lwc:if={error}>
+            <div class="library-error" role="alert">{error}</div>
+        </template>
+
+        <!-- Bundle list -->
+        <template lwc:if={hasBundles}>
+            <div class="library-list">
+                <template for:each={bundles} for:item="bundle">
+                    <c-pulse-card key={bundle.bundleId} elevated>
+                        <div class="bundle-row">
+                            <div class="bundle-info">
+                                <h4 class="bundle-display-name">{bundle.displayName}</h4>
+                                <span class="bundle-key">{bundle.bundleKey}</span>
+                                <div class="bundle-meta">
+                                    <c-pulse-badge label={bundle.status}
+                                                   variant={bundle.statusVariant}>
+                                    </c-pulse-badge>
+                                    <span class="bundle-version">v{bundle.version}</span>
+                                    <span class="bundle-publisher">{bundle.publisherId}</span>
+                                    <span class="bundle-date">{bundle.formattedDate}</span>
+                                    <template lwc:if={bundle.installedByName}>
+                                        <span class="bundle-user">{bundle.installedByName}</span>
+                                    </template>
+                                </div>
+                            </div>
+                            <div class="bundle-actions">
+                                <template lwc:if={bundle.canRollBack}>
+                                    <c-pulse-button label="Roll back"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    data-id={bundle.bundleId}
+                                                    data-name={bundle.displayName}
+                                                    onclick={handleRollbackClick}>
+                                    </c-pulse-button>
+                                </template>
+                            </div>
+                        </div>
+                    </c-pulse-card>
+                </template>
+            </div>
+        </template>
+
+        <!-- Empty state -->
+        <template lwc:if={showEmpty}>
+            <div class="library-empty">
+                <p class="library-empty-text">No library bundles installed yet. Paste a signed bundle above to get started.</p>
+            </div>
+        </template>
+
+        <!-- Install modal -->
+        <c-pulse-modal open={showInstallModal}
+                       title="Install bundle"
+                       dismissible
+                       onclose={handleCloseInstall}>
+            <div class="install-form">
+                <c-pulse-input label="Bundle JSON"
+                               placeholder="Paste the signed bundle JSON here"
+                               value={installBundleJson}
+                               onchange={handleBundleJsonChange}>
+                </c-pulse-input>
+                <c-pulse-input label="Signature"
+                               placeholder="Paste the detached base64 signature"
+                               value={installSignature}
+                               onchange={handleSignatureChange}>
+                </c-pulse-input>
+                <template lwc:if={installError}>
+                    <div class="library-error" role="alert">{installError}</div>
+                </template>
+                <c-pulse-button label="Install"
+                                variant="primary"
+                                onclick={handleInstall}>
+                </c-pulse-button>
+            </div>
+        </c-pulse-modal>
+
+        <!-- Rollback confirm modal -->
+        <c-pulse-modal open={showRollbackModal}
+                       title="Confirm rollback"
+                       dismissible
+                       onclose={handleCloseRollback}>
+            <div class="rollback-confirm">
+                <p>Roll back <strong>{rollbackTargetName}</strong> to the previous version? Active instances will be re-pointed to the prior workflow definition.</p>
+                <template lwc:if={rollbackError}>
+                    <div class="library-error" role="alert">{rollbackError}</div>
+                </template>
+                <div class="rollback-actions">
+                    <c-pulse-button label="Cancel"
+                                    variant="ghost"
+                                    onclick={handleCloseRollback}>
+                    </c-pulse-button>
+                    <c-pulse-button label="Roll back"
+                                    variant="primary"
+                                    onclick={handleConfirmRollback}>
+                    </c-pulse-button>
+                </div>
+            </div>
+        </c-pulse-modal>
+    </div>
+</template>
