@@ -84,6 +84,15 @@
         <viewAllRecords>true</viewAllRecords>
         <object>Conversation_Extract__c</object>
     </objectPermissions>
+    <objectPermissions>
+        <allowCreate>true</allowCreate>
+        <allowDelete>true</allowDelete>
+        <allowEdit>true</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>true</modifyAllRecords>
+        <viewAllRecords>true</viewAllRecords>
+        <object>Stage_Dwell__c</object>
+    </objectPermissions>
     <fieldPermissions>
         <editable>true</editable>
         <field>Workflow_Definition__c.Checksum__c</field>
@@ -584,4 +593,23 @@
         <field>Conversation_Extract__c.Workflow_Instance__c</field>
         <readable>true</readable>
     </fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.Actor_Type__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.Duration_Seconds__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.Entered_At__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.Exited_At__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.Next_State_Key__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.Signal__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.State_Key__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.State_Label__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.State_Type__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.Subject_Kind__c</field><readable>true</readable></fieldPermissions>
+    <fieldPermissions><editable>true</editable><field>Stage_Dwell__c.Workflow_Key__c</field><readable>true</readable></fieldPermissions>
+    <applicationVisibilities>
+        <application>Pulse</application>
+        <visible>true</visible>
+    </applicationVisibilities>
+    <tabSettings>
+        <tab>Pulse_Admin_Studio</tab>
+        <visibility>Visible</visibility>
+    </tabSettings>
 </PermissionSet>

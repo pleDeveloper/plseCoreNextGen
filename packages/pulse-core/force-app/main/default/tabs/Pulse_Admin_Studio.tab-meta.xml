@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Pulse Admin Studio</label>
+    <lwcComponent>pulseAdminStudio</lwcComponent>
+    <motif>Custom44: Chart</motif>
+</CustomTab>
