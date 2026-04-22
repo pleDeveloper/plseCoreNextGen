@@ -56,6 +56,11 @@
                             <c-pulse-conversation-hub></c-pulse-conversation-hub>
                         </div>
                     </template>
+                    <template lwc:elseif={isEmailRouting}>
+                        <div class="studio-panel-wrap">
+                            <c-pulse-email-router></c-pulse-email-router>
+                        </div>
+                    </template>
                     <template lwc:elseif={isSla}>
                         <div class="studio-sla-wrap">
                             <c-pulse-sla-heatmap></c-pulse-sla-heatmap>

@@ -1,0 +1,266 @@
+:host {
+    display: block;
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+}
+
+.router-shell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-6, 24px);
+}
+
+.router-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.router-title {
+    font-size: var(--pulse-text-h2, 24px);
+    font-weight: var(--pulse-weight-bold, 700);
+    margin: 0 0 var(--pulse-space-1, 4px) 0;
+}
+
+.router-desc {
+    font-size: var(--pulse-text-small, 13px);
+    color: var(--pulse-slate, #64748b);
+    margin: 0;
+    max-width: 640px;
+    line-height: var(--pulse-lh-body, 1.6);
+}
+
+/* Toast */
+.router-toast {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--pulse-space-3, 12px);
+    padding: var(--pulse-space-3, 12px) var(--pulse-space-4, 16px);
+    border-radius: var(--pulse-radius-md, 8px);
+    font-size: var(--pulse-text-small, 13px);
+}
+
+.router-toast-success {
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+}
+
+.router-toast-error {
+    background: var(--pulse-red-50, #fef2f2);
+    color: var(--pulse-red-700, #b91c1c);
+    border: 1px solid var(--pulse-red-200, #fecaca);
+}
+
+.router-toast-info {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.router-toast-close {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* Panels */
+.router-panel {
+    background: var(--pulse-white, #ffffff);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-xl, 12px);
+    padding: var(--pulse-space-5, 20px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-4, 16px);
+}
+
+.router-panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--pulse-space-4, 16px);
+}
+
+.router-panel-title {
+    font-size: var(--pulse-text-h3, 18px);
+    font-weight: var(--pulse-weight-bold, 700);
+    margin: 0 0 var(--pulse-space-1, 4px) 0;
+    color: var(--pulse-dark, #0f172a);
+}
+
+.router-panel-sub {
+    font-size: var(--pulse-text-small, 13px);
+    color: var(--pulse-slate, #64748b);
+    margin: 0;
+}
+
+.router-panel-actions {
+    display: flex;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.router-loading,
+.router-empty {
+    padding: var(--pulse-space-6, 24px);
+    text-align: center;
+    border: 1px dashed var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-lg, 10px);
+    color: var(--pulse-slate, #64748b);
+    font-size: var(--pulse-text-small, 13px);
+}
+
+.router-error-banner {
+    padding: var(--pulse-space-3, 12px) var(--pulse-space-4, 16px);
+    background: var(--pulse-red-50, #fef2f2);
+    color: var(--pulse-red-700, #b91c1c);
+    border: 1px solid var(--pulse-red-200, #fecaca);
+    border-radius: var(--pulse-radius-md, 8px);
+    font-size: var(--pulse-text-small, 13px);
+}
+
+/* Email list */
+.router-email-list,
+.router-rules-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-4, 16px);
+}
+
+.router-email-card {
+    background: var(--pulse-off-white, #f9fafb);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-lg, 10px);
+    padding: var(--pulse-space-4, 16px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-3, 12px);
+}
+
+.router-email-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--pulse-space-3, 12px);
+    flex-wrap: wrap;
+    font-size: var(--pulse-text-small, 13px);
+}
+
+.router-email-from {
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-dark, #0f172a);
+}
+
+.router-email-subject {
+    color: var(--pulse-slate, #64748b);
+}
+
+.router-email-snippet {
+    font-size: var(--pulse-text-small, 13px);
+    color: var(--pulse-slate, #64748b);
+    line-height: var(--pulse-lh-body, 1.6);
+}
+
+.router-email-actions {
+    display: flex;
+    gap: var(--pulse-space-2, 8px);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.router-email-error {
+    font-size: var(--pulse-text-small, 13px);
+    color: var(--pulse-red-700, #b91c1c);
+}
+
+/* Rules */
+.router-rule-card {
+    background: var(--pulse-off-white, #f9fafb);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-lg, 10px);
+    padding: var(--pulse-space-4, 16px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-3, 12px);
+}
+
+.router-rule-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--pulse-space-3, 12px);
+}
+
+.router-rule-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.router-rule-title {
+    font-weight: var(--pulse-weight-semibold, 600);
+    font-size: var(--pulse-text-body, 14px);
+    color: var(--pulse-dark, #0f172a);
+}
+
+.rule-status {
+    font-size: var(--pulse-text-caption, 12px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px var(--pulse-space-2, 8px);
+    border-radius: var(--pulse-radius-sm, 6px);
+}
+
+.rule-status-on {
+    background: #ecfdf5;
+    color: #065f46;
+}
+
+.rule-status-off {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.router-rule-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--pulse-space-2, 8px) var(--pulse-space-4, 16px);
+    margin: 0;
+}
+
+.router-rule-kv {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.router-rule-kv dt {
+    font-size: var(--pulse-text-caption, 12px);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--pulse-slate, #64748b);
+    font-weight: var(--pulse-weight-semibold, 600);
+}
+
+.router-rule-kv dd {
+    margin: 0;
+    font-size: var(--pulse-text-body, 14px);
+    color: var(--pulse-dark, #0f172a);
+    word-break: break-word;
+}
+
+.router-rules-hint {
+    font-size: var(--pulse-text-caption, 12px);
+    color: var(--pulse-slate, #64748b);
+    font-style: italic;
+    margin: 0;
+    padding-top: var(--pulse-space-2, 8px);
+    border-top: 1px dashed var(--pulse-border, #e5e7eb);
+}
