@@ -1,6 +1,8 @@
 public with sharing class PulseAgentInvoker {
 
-    @TestVisible private static Boolean enqueueSuppressed = false;
+    /** Test-only flag — public (not @TestVisible private) so the trigger
+     *  can read it at runtime. Only ever written from tests. */
+    public static Boolean enqueueSuppressed = false;
 
     /**
      * Given a set of Workflow_Instance__c ids, returns only those whose

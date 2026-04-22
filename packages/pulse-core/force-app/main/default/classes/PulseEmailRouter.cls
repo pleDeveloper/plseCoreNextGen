@@ -35,16 +35,29 @@ public with sharing class PulseEmailRouter {
             return null;
         }
 
+        // SOQL semi-joins require the outer WHERE's left operand to be an Id
+        // field. Parent_Record_Id__c is Text(18), not Id. Split into two
+        // queries: first resolve OpportunityContactRole → OpportunityIds,
+        // then filter Workflow_Instance__c by Parent_Record_Id__c IN that
+        // set (which is an equality filter, not a semi-join — allowed).
+        Set<String> oppIdStrings = new Set<String>();
+        for (OpportunityContactRole ocr : [
+            SELECT OpportunityId
+            FROM OpportunityContactRole
+            WHERE Contact.Email = :fromAddress
+        ]) {
+            oppIdStrings.add(String.valueOf(ocr.OpportunityId));
+        }
+        if (oppIdStrings.isEmpty()) {
+            return null;
+        }
+
         List<Workflow_Instance__c> instances = [
             SELECT Id, CreatedDate
             FROM Workflow_Instance__c
             WHERE Status__c = 'Active'
               AND Parent_Object_Type__c = 'Opportunity'
-              AND Parent_Record_Id__c IN (
-                  SELECT OpportunityId
-                  FROM OpportunityContactRole
-                  WHERE Contact.Email = :fromAddress
-              )
+              AND Parent_Record_Id__c IN :oppIdStrings
             ORDER BY CreatedDate DESC
             LIMIT 1
         ];
