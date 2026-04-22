@@ -1,6 +1,7 @@
 public with sharing class PulseAiFacade {
 
     private static PulseAiProvider providerOverride;
+    private static List<AI_Provider_Registration__mdt> registrationsOverride;
 
     public static PulseAiModels.Request buildRequest(Workflow_Instance__c instance) {
         PulseAiModels.Request req = new PulseAiModels.Request();
@@ -57,8 +58,11 @@ public with sharing class PulseAiFacade {
     }
 
     private static AI_Provider_Registration__mdt selectProvider() {
+        Iterable<AI_Provider_Registration__mdt> source = registrationsOverride != null
+            ? (Iterable<AI_Provider_Registration__mdt>) registrationsOverride
+            : (Iterable<AI_Provider_Registration__mdt>) AI_Provider_Registration__mdt.getAll().values();
         AI_Provider_Registration__mdt selected = null;
-        for (AI_Provider_Registration__mdt reg : AI_Provider_Registration__mdt.getAll().values()) {
+        for (AI_Provider_Registration__mdt reg : source) {
             if (reg.Active__c != true) {
                 continue;
             }
@@ -68,6 +72,11 @@ public with sharing class PulseAiFacade {
             }
         }
         return selected;
+    }
+
+    @TestVisible
+    private static void setRegistrationsForTest(List<AI_Provider_Registration__mdt> regs) {
+        registrationsOverride = regs;
     }
 
     @TestVisible

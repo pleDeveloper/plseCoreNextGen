@@ -201,10 +201,12 @@ private class PulseAgentRunnerTest {
             SELECT Event_Type__c FROM Workflow_Event__c
         ];
         Boolean hasNotFound = false;
+        List<String> seenTypes = new List<String>();
         for (Workflow_Event__c e : events) {
+            seenTypes.add(e.Event_Type__c);
             if (e.Event_Type__c == 'TOOL_NOT_FOUND') { hasNotFound = true; }
         }
-        System.assert(hasNotFound, 'Should have TOOL_NOT_FOUND event');
+        System.assert(hasNotFound, 'Should have TOOL_NOT_FOUND event. Saw: ' + seenTypes);
     }
 
     @IsTest

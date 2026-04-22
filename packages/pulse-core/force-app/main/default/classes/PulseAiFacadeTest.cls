@@ -92,6 +92,7 @@ private class PulseAiFacadeTest {
     @IsTest
     static void testNoProviderConfigured() {
         PulseAiFacade.clearProviderForTest();
+        PulseAiFacade.setRegistrationsForTest(new List<AI_Provider_Registration__mdt>());
 
         PulseAiModels.Request req = new PulseAiModels.Request();
         req.messages.add(new PulseAiModels.Message('user', 'test'));
