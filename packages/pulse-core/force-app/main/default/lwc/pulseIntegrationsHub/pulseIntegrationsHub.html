@@ -1,0 +1,98 @@
+<template>
+    <div class="integrations-panel">
+        <template lwc:if={isLoading}>
+            <p class="panel-loading">Loading integrations…</p>
+        </template>
+        <template lwc:elseif={hasError}>
+            <c-pulse-card>
+                <p class="panel-error">{error}</p>
+            </c-pulse-card>
+        </template>
+        <template lwc:else>
+            <!-- Named Credentials -->
+            <c-pulse-card>
+                <div class="section-header">
+                    <h3 class="section-title">Named credentials</h3>
+                    <a href="/lightning/setup/NamedCredential/home"
+                       target="_blank" rel="noopener"
+                       class="setup-link">Edit in Setup →</a>
+                </div>
+                <template lwc:if={hasNamedCredentials}>
+                    <div class="item-list">
+                        <template for:each={ncRows} for:item="nc">
+                            <div key={nc.developerName} class="item-row">
+                                <div class="item-primary">
+                                    <span class="item-name">{nc.label}</span>
+                                    <span class="item-detail">{nc.developerName}</span>
+                                    <span class="item-detail item-muted">{nc.endpointTruncated}</span>
+                                </div>
+                                <div class="item-badges">
+                                    <c-pulse-badge label={nc.principalType} variant="gray"></c-pulse-badge>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <p class="empty-state">No named credentials found. Configure external service credentials in Setup.</p>
+                </template>
+            </c-pulse-card>
+
+            <!-- Channel Adapters -->
+            <c-pulse-card>
+                <div class="section-header">
+                    <h3 class="section-title">Channel adapters</h3>
+                    <a href="/lightning/setup/CustomMetadata/home"
+                       target="_blank" rel="noopener"
+                       class="setup-link">Edit in Setup →</a>
+                </div>
+                <template lwc:if={hasChannelAdapters}>
+                    <div class="item-list">
+                        <template for:each={adapterRows} for:item="ca">
+                            <div key={ca.developerName} class="item-row">
+                                <div class="item-primary">
+                                    <span class="item-name">{ca.channelKey}</span>
+                                    <span class="item-detail">{ca.adapterClass}</span>
+                                </div>
+                                <div class="item-badges">
+                                    <c-pulse-badge label={ca.activeLabel} variant={ca.activeVariant}></c-pulse-badge>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <p class="empty-state">No channel adapters registered. Add adapters in Setup to enable inbound messaging channels.</p>
+                </template>
+            </c-pulse-card>
+
+            <!-- Conversation Sources -->
+            <c-pulse-card>
+                <div class="section-header">
+                    <h3 class="section-title">Conversation sources</h3>
+                    <a href="/lightning/setup/CustomMetadata/home"
+                       target="_blank" rel="noopener"
+                       class="setup-link">Edit in Setup →</a>
+                </div>
+                <template lwc:if={hasConversationSources}>
+                    <div class="item-list">
+                        <template for:each={sourceRows} for:item="cs">
+                            <div key={cs.developerName} class="item-row">
+                                <div class="item-primary">
+                                    <span class="item-name">{cs.sourceKey}</span>
+                                    <span class="item-detail">{cs.adapterClass}</span>
+                                </div>
+                                <div class="item-badges">
+                                    <c-pulse-badge label={cs.activeLabel} variant={cs.activeVariant}></c-pulse-badge>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <p class="empty-state">No conversation sources configured. Register sources in Setup to ingest conversations for extraction.</p>
+                </template>
+            </c-pulse-card>
+        </template>
+    </div>
+</template>

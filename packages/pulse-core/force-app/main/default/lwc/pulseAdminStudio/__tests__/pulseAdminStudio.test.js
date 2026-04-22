@@ -101,15 +101,40 @@ describe('c-pulse-admin-studio', () => {
         expect(builder).not.toBeNull();
     });
 
-    it('shows placeholder card when a non-builder tab is active', () => {
+    it('renders AI Config panel when ai-config nav clicked', () => {
         const el = createComponent();
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        // Click "AI config" (index 2)
+        // AI config is at index 2
         navItems[2].click();
         return Promise.resolve().then(() => {
-            const heading = el.shadowRoot.querySelector('.studio-placeholder-heading');
-            expect(heading.textContent).toBe('AI config');
-            // Builder should not be rendered
+            const panel = el.shadowRoot.querySelector('c-pulse-ai-config');
+            expect(panel).not.toBeNull();
+            const builder = el.shadowRoot.querySelector('c-pulse-workflow-builder');
+            expect(builder).toBeNull();
+        });
+    });
+
+    it('renders Integrations Hub panel when integrations-hub nav clicked', () => {
+        const el = createComponent();
+        const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
+        // Integrations hub is at index 1
+        navItems[1].click();
+        return Promise.resolve().then(() => {
+            const panel = el.shadowRoot.querySelector('c-pulse-integrations-hub');
+            expect(panel).not.toBeNull();
+            const builder = el.shadowRoot.querySelector('c-pulse-workflow-builder');
+            expect(builder).toBeNull();
+        });
+    });
+
+    it('renders Settings panel when settings nav clicked', () => {
+        const el = createComponent();
+        const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
+        // Settings is at index 7
+        navItems[7].click();
+        return Promise.resolve().then(() => {
+            const panel = el.shadowRoot.querySelector('c-pulse-settings');
+            expect(panel).not.toBeNull();
             const builder = el.shadowRoot.querySelector('c-pulse-workflow-builder');
             expect(builder).toBeNull();
         });
@@ -120,21 +145,25 @@ describe('c-pulse-admin-studio', () => {
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
         navItems[2].click();
         return Promise.resolve().then(() => {
-            const heading = el.shadowRoot.querySelector('.studio-placeholder-heading');
-            expect(heading.textContent).toBe('AI config');
             const active = el.shadowRoot.querySelector('.studio-nav-item-active');
             expect(active.querySelector('.studio-nav-label').textContent).toBe('AI config');
         });
     });
 
-    it('shows placeholder for non-builder tabs with coming badge', () => {
+    it('shows Library placeholder with muted caption, no wave reference', () => {
         const el = createComponent();
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
         navItems[6].click(); // Library
         return Promise.resolve().then(() => {
+            const heading = el.shadowRoot.querySelector('.studio-placeholder-heading');
+            expect(heading).not.toBeNull();
+            expect(heading.textContent).toBe('Pulse Library');
+            const muted = el.shadowRoot.querySelector('.studio-placeholder-muted');
+            expect(muted).not.toBeNull();
+            expect(muted.textContent).toBe('In development.');
+            // No wave-reference badge
             const badge = el.shadowRoot.querySelector('.pulse-badge');
-            expect(badge).not.toBeNull();
-            expect(badge.textContent).toContain('Coming in wave 3c+');
+            expect(badge).toBeNull();
         });
     });
 

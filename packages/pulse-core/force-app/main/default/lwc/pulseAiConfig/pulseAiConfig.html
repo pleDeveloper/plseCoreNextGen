@@ -1,0 +1,100 @@
+<template>
+    <div class="config-panel">
+        <template lwc:if={isLoading}>
+            <p class="panel-loading">Loading AI configuration…</p>
+        </template>
+        <template lwc:elseif={hasError}>
+            <c-pulse-card>
+                <p class="panel-error">{error}</p>
+            </c-pulse-card>
+        </template>
+        <template lwc:else>
+            <!-- AI Providers -->
+            <c-pulse-card>
+                <div class="section-header">
+                    <h3 class="section-title">AI providers</h3>
+                    <a href="/lightning/setup/CustomMetadata/home"
+                       target="_blank" rel="noopener"
+                       class="setup-link">Edit in Setup →</a>
+                </div>
+                <template lwc:if={hasProviders}>
+                    <div class="item-list">
+                        <template for:each={providerRows} for:item="p">
+                            <div key={p.developerName} class="item-row">
+                                <div class="item-primary">
+                                    <span class="item-name">{p.providerName}</span>
+                                    <span class="item-detail">{p.modelId}</span>
+                                    <span class="item-detail item-muted">{p.namedCredential}</span>
+                                </div>
+                                <div class="item-badges">
+                                    <c-pulse-badge label={p.priorityLabel} variant="purple"></c-pulse-badge>
+                                    <c-pulse-badge label={p.activeLabel} variant={p.activeVariant}></c-pulse-badge>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <p class="empty-state">No AI providers registered. Add a provider in Setup to connect Pulse to an AI model.</p>
+                </template>
+            </c-pulse-card>
+
+            <!-- Tool Registrations -->
+            <c-pulse-card>
+                <div class="section-header">
+                    <h3 class="section-title">Tool registrations</h3>
+                    <a href="/lightning/setup/CustomMetadata/home"
+                       target="_blank" rel="noopener"
+                       class="setup-link">Edit in Setup →</a>
+                </div>
+                <template lwc:if={hasTools}>
+                    <div class="item-list">
+                        <template for:each={toolRows} for:item="t">
+                            <div key={t.developerName} class="item-row">
+                                <div class="item-primary">
+                                    <span class="item-name">{t.toolKey}</span>
+                                    <span class="item-detail">{t.apexClass}</span>
+                                </div>
+                                <div class="item-badges">
+                                    <c-pulse-badge label={t.policyLabel} variant={t.policyVariant}></c-pulse-badge>
+                                    <c-pulse-badge label={t.activeLabel} variant={t.activeVariant}></c-pulse-badge>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <p class="empty-state">No tools registered. Register workflow tools in Setup to enable AI-driven actions.</p>
+                </template>
+            </c-pulse-card>
+
+            <!-- Extraction Profiles -->
+            <c-pulse-card>
+                <div class="section-header">
+                    <h3 class="section-title">Extraction profiles</h3>
+                    <a href="/lightning/setup/CustomMetadata/home"
+                       target="_blank" rel="noopener"
+                       class="setup-link">Edit in Setup →</a>
+                </div>
+                <template lwc:if={hasProfiles}>
+                    <div class="item-list">
+                        <template for:each={profileRows} for:item="ep">
+                            <div key={ep.developerName} class="item-row">
+                                <div class="item-primary">
+                                    <span class="item-name">{ep.profileKey}</span>
+                                    <span class="item-detail item-muted">{ep.schemaSizeLabel}</span>
+                                </div>
+                                <div class="item-badges">
+                                    <c-pulse-badge label={ep.medium} variant="purple"></c-pulse-badge>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <p class="empty-state">No extraction profiles defined. Create profiles in Setup to configure conversation data extraction.</p>
+                </template>
+            </c-pulse-card>
+        </template>
+    </div>
+</template>

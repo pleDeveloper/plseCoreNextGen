@@ -1,0 +1,106 @@
+<template>
+    <div class="settings-panel">
+        <template lwc:if={isLoading}>
+            <p class="panel-loading">Loading settings…</p>
+        </template>
+        <template lwc:elseif={hasError}>
+            <c-pulse-card>
+                <p class="panel-error">{error}</p>
+            </c-pulse-card>
+        </template>
+        <template lwc:else>
+            <!-- Feature Flags -->
+            <c-pulse-card>
+                <div class="section-header">
+                    <h3 class="section-title">Feature flags</h3>
+                    <a href="/lightning/setup/CustomMetadata/home"
+                       target="_blank" rel="noopener"
+                       class="setup-link">Edit in Setup →</a>
+                </div>
+                <template lwc:if={hasFeatureFlags}>
+                    <div class="item-list">
+                        <template for:each={flagRows} for:item="ff">
+                            <div key={ff.developerName} class="item-row">
+                                <div class="item-primary">
+                                    <span class="item-name">{ff.featureKey}</span>
+                                    <template lwc:if={ff.description}>
+                                        <span class="item-detail item-muted">{ff.description}</span>
+                                    </template>
+                                </div>
+                                <div class="item-badges">
+                                    <c-pulse-badge label={ff.enabledLabel} variant={ff.enabledVariant}></c-pulse-badge>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <p class="empty-state">No feature flags defined. Create feature flags in Setup to control Pulse capabilities.</p>
+                </template>
+            </c-pulse-card>
+
+            <!-- Pulse Permission Sets -->
+            <c-pulse-card>
+                <div class="section-header">
+                    <h3 class="section-title">Pulse permission sets</h3>
+                    <a href="/lightning/setup/PermSets/home"
+                       target="_blank" rel="noopener"
+                       class="setup-link">Edit in Setup →</a>
+                </div>
+                <template lwc:if={hasPermissionSets}>
+                    <div class="item-list">
+                        <template for:each={psRows} for:item="ps">
+                            <div key={ps.developerName} class="item-row">
+                                <div class="item-primary">
+                                    <span class="item-name">{ps.label}</span>
+                                    <span class="item-detail">{ps.developerName}</span>
+                                </div>
+                                <div class="item-badges">
+                                    <template lwc:if={ps.assignedLabel}>
+                                        <c-pulse-badge label={ps.assignedLabel} variant="success"></c-pulse-badge>
+                                    </template>
+                                    <template lwc:else>
+                                        <span class="item-muted-text">Not assigned</span>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <p class="empty-state">No Pulse permission sets found in this org.</p>
+                </template>
+            </c-pulse-card>
+
+            <!-- Recent Deployments -->
+            <c-pulse-card>
+                <div class="section-header">
+                    <h3 class="section-title">Recent deployments</h3>
+                </div>
+                <template lwc:if={hasDeployments}>
+                    <div class="item-list">
+                        <template for:each={deploymentRows} for:item="d">
+                            <div key={d.deploymentRequestId} class="item-row">
+                                <div class="item-primary">
+                                    <span class="item-name">{d.targetObject}</span>
+                                    <template lwc:if={d.completedLabel}>
+                                        <span class="item-detail item-muted">{d.completedLabel}</span>
+                                    </template>
+                                    <template lwc:if={d.hasError}>
+                                        <span class="item-detail item-error">{d.errorMessage}</span>
+                                    </template>
+                                </div>
+                                <div class="item-badges">
+                                    <c-pulse-badge label={d.status} variant={d.statusVariant}></c-pulse-badge>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <p class="empty-state">No deployment history. Schema deployments will appear here as they run.</p>
+                </template>
+            </c-pulse-card>
+        </template>
+    </div>
+</template>
