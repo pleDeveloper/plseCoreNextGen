@@ -25,9 +25,7 @@ global with sharing class AnthropicAdapter implements PulseAiProvider {
         }
 
         if (httpRes.getStatusCode() < 200 || httpRes.getStatusCode() >= 300) {
-            return buildErrorResponse(
-                'API error ' + httpRes.getStatusCode() + ': ' + httpRes.getBody()
-            );
+            return buildErrorResponse(formatApiError(httpRes));
         }
 
         return parseResponse(httpRes.getBody());
@@ -166,5 +164,33 @@ global with sharing class AnthropicAdapter implements PulseAiProvider {
         resp.isError = true;
         resp.errorMessage = message;
         return resp;
+    }
+
+    @TestVisible
+    private String formatApiError(HttpResponse httpRes) {
+        Integer status = httpRes.getStatusCode();
+        String body = httpRes.getBody();
+
+        // Anthropic error envelope: {"type":"error","error":{"type":"...","message":"..."}}
+        if (String.isNotBlank(body)) {
+            try {
+                Map<String, Object> top = (Map<String, Object>) JSON.deserializeUntyped(body);
+                if (top != null && top.get('error') != null) {
+                    Map<String, Object> err = (Map<String, Object>) top.get('error');
+                    String errType = (String) err.get('type');
+                    String errMsg = (String) err.get('message');
+                    if (String.isNotBlank(errMsg)) {
+                        return 'Anthropic API error ' + status
+                            + (String.isNotBlank(errType) ? ' [' + errType + ']' : '')
+                            + ': ' + errMsg;
+                    }
+                }
+            } catch (Exception ignored) {
+                // fall through to raw body
+            }
+        }
+
+        return 'Anthropic API error ' + status + ': '
+            + (String.isNotBlank(body) ? body : '(empty body)');
     }
 }
