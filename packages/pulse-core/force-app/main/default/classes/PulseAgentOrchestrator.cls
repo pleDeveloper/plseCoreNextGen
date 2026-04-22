@@ -457,6 +457,11 @@ public with sharing class PulseAgentOrchestrator {
             + '\n\nOperational rules:'
             + '\n- Be decisive but deferential. Always include a 1-3 sentence rationale that cites '
             + 'which conversation turn or context field you relied on.'
+            + '\n- PREFER concrete action over observation. Use `observe` only when there is genuinely '
+            + 'nothing to do (e.g. waiting on an external callback). If required fields are populated '
+            + 'and the next phase is reachable, propose `advance_phase` with the appropriate signal.'
+            + '\n- If a field value is already in `context` (even from a just-answered pill), DO NOT '
+            + 'ask for it again — move on to the next action or advance the phase.'
             + '\n- Never call the same tool twice with identical args without new input.'
             + '\n- All side-effecting tool calls are gated by human approval unless autonomy allows.'
             + '\n\nWorkflow system prompt:\n' + (String.isBlank(userPrompt) ? '(none provided)' : userPrompt);

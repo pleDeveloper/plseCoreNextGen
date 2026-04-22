@@ -287,6 +287,7 @@ Map<String,Object> declined = new Map<String,Object>{
 Map<String,Object> contract = new Map<String,Object>{
     'schema' => 'pulse.workflow.v1',
     'workflowKey' => WORKFLOW_KEY,
+    'version' => 1,
     'name' => 'Commercial Lease Application',
     'subjectKinds' => new List<String>{ 'Opportunity' },
     'agent' => new Map<String,Object>{
@@ -461,10 +462,15 @@ update inst;
 // actually has work to do when we kick it. (Fields are prefilled above,
 // so this transition is legitimate.)
 try {
-    plse.PulseRuntimeController.advanceInstance(inst.Id, 'submit', null, null);
-    System.debug('### Advanced instance to qualification.');
+    plse.PulseRuntimeController.AdvanceView av =
+        plse.PulseRuntimeController.advanceInstance(inst.Id, 'submit', null, null);
+    if (av.success) {
+        System.debug('### Advanced instance to qualification (' + av.fromStateKey + '→' + av.toStateKey + ').');
+    } else {
+        System.debug('### !!! advance returned success=false: ' + av.error);
+    }
 } catch (Exception e) {
-    System.debug('### advance failed: ' + e.getMessage());
+    System.debug('### advance threw: ' + e.getMessage());
 }
 
 // ============================================================
