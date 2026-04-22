@@ -210,3 +210,16 @@
     width: 100%;
     overflow-y: auto;
 }
+
+/* ── Generic panel wrap ──────────────────── */
+.studio-panel-wrap {
+    padding: var(--pulse-space-6);
+    width: 100%;
+    overflow-y: auto;
+}
+
+/* ── Placeholder muted caption ───────────── */
+.studio-placeholder-muted {
+    font-size: var(--pulse-text-caption);
+    color: var(--pulse-slate);
+}

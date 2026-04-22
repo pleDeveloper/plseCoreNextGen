@@ -97,6 +97,18 @@ export default class PulseAdminStudio extends LightningElement {
         return this.activeNav === 'sla';
     }
 
+    get isAiConfig() {
+        return this.activeNav === 'ai-config';
+    }
+
+    get isIntegrationsHub() {
+        return this.activeNav === 'integrations-hub';
+    }
+
+    get isSettings() {
+        return this.activeNav === 'settings';
+    }
+
     handleNavClick(event) {
         const key = event.currentTarget.dataset.key;
         if (key) {
