@@ -1,0 +1,207 @@
+You are executing Wave 4a (Conversation Hub) for Pulse Core Next. Single-lane session on branch `wave4a-conversation-hub` off `main`.
+
+Wave 3 closed the core authoring + runtime loop. Wave 4a completes the v4.1 §4.9 Conversation Intelligence story: admins/users can see conversations linked to a record, review the structured facts the extractor produced, and accept those facts into the parent record (promoted via the existing `ProjectionWriteService`) or reject them.
+
+# Canonical references (read first)
+- `docs/pulse-nextgen-architecture-review-and-build-plan.md` v4.1:
+  - §4.9 Conversation Hub
+  - §6 Chat 18 (Conversation Hub)
+- `docs/brand-kit/README.md`
+- Existing artifacts:
+  - `packages/pulse-conversations-core/force-app/main/default/objects/Conversation__c/` (header + fields)
+  - `packages/pulse-conversations-core/force-app/main/default/objects/Conversation_Turn__c/`
+  - `packages/pulse-conversations-core/force-app/main/default/objects/Conversation_Extract__c/`
+  - `packages/pulse-conversations-core/force-app/main/default/classes/PulseConversationExtractor.cls` (Queueable)
+  - `packages/pulse-core/force-app/main/default/classes/ProjectionWriteService.cls` (.project takes `List<ProjectionRequest>`, returns `List<ProjectionResult>`)
+  - Wave 3 LWC primitives + Admin Studio shell + PulseRuntimeController pattern — use the same structural conventions.
+
+# Goal
+Three deliverables, all landing in `packages/pulse-conversations-core/` (the owning package per v4.1 §3):
+
+1. `PulseConversationHubController` — Apex bridge between LWC and existing services.
+2. `pulseConversationHub` LWC — the user-facing review surface.
+3. Admin Studio integration — new "Conversations" nav panel in `pulseAdminStudio`.
+
+## 1. PulseConversationHubController (Apex)
+
+Path: `packages/pulse-conversations-core/force-app/main/default/classes/PulseConversationHubController.cls`
+
+```
+global with sharing class PulseConversationHubController {
+
+    global class ConversationView {
+        @AuraEnabled public Id       conversationId;
+        @AuraEnabled public String   medium;           // Email / Call / Meeting / Chat / ...
+        @AuraEnabled public String   subject;
+        @AuraEnabled public String   summary;
+        @AuraEnabled public String   participants;
+        @AuraEnabled public Datetime occurredAt;
+        @AuraEnabled public String   status;           // Pending / Extracted / Reviewed / Archived
+        @AuraEnabled public List<TurnView>    turns;
+        @AuraEnabled public List<ExtractView> extracts;
+    }
+
+    global class TurnView {
+        @AuraEnabled public Id       turnId;
+        @AuraEnabled public Integer  turnIndex;
+        @AuraEnabled public String   role;
+        @AuraEnabled public String   speaker;
+        @AuraEnabled public String   content;
+        @AuraEnabled public Datetime timestamp;
+    }
+
+    global class ExtractView {
+        @AuraEnabled public Id       extractId;
+        @AuraEnabled public String   profileKey;
+        @AuraEnabled public String   status;           // Pending / Accepted / Rejected
+        @AuraEnabled public Map<String, Object> facts;        // deserialized Facts_JSON
+        @AuraEnabled public Map<String, Decimal> confidence;  // deserialized Confidence_JSON (field → 0..1)
+        @AuraEnabled public String   sourceRefsJson;
+        @AuraEnabled public Id       reviewedByUserId;
+        @AuraEnabled public Datetime reviewedDate;
+    }
+
+    global class AcceptResult {
+        @AuraEnabled public Boolean success;
+        @AuraEnabled public Integer fieldsProjected;
+        @AuraEnabled public List<String> errors;
+    }
+
+    @AuraEnabled(cacheable=true)
+    public static List<ConversationView> getConversationsForRecord(Id recordId) { ... }
+
+    @AuraEnabled(cacheable=true)
+    public static List<ConversationView> getConversationsForInstance(Id workflowInstanceId) { ... }
+
+    @AuraEnabled
+    public static AcceptResult acceptExtract(
+        Id extractId,
+        List<String> acceptedFieldKeys,   // subset of facts the reviewer chose to commit
+        String targetObjectApiName,       // parent object to project onto
+        Id targetRecordId,                 // the parent record
+        String workflowKey                 // for audit / projection scope
+    ) {
+        // 1. Load Conversation_Extract__c
+        // 2. Parse Facts_JSON; filter by acceptedFieldKeys
+        // 3. Build one ProjectionWriteService.ProjectionRequest
+        //    - parentRecordId = targetRecordId
+        //    - parentObjectType = targetObjectApiName
+        //    - workflowKey = workflowKey (from arg)
+        //    - fieldValues = filtered fact map (stringified values)
+        // 4. Call ProjectionWriteService.project(new List<...>{ req })
+        // 5. If all results succeed: update Extract.Status = 'Accepted',
+        //    ReviewedBy = UserInfo.getUserId(), ReviewedDate = now().
+        //    If partial/any fail: mark 'Partial' (new status value — add to
+        //    Status__c picklist metadata if not present) and set ReviewedBy/Date.
+        // 6. Return AcceptResult with per-field error messages from ProjectionResult.
+    }
+
+    @AuraEnabled
+    public static AcceptResult rejectExtract(Id extractId, String reason) {
+        // Update Extract: Status='Rejected', ReviewedBy=current user, ReviewedDate=now()
+        // (No new field needed for reason — append to an existing Comments field if one
+        //  exists; otherwise skip the reason storage in this wave and accept the arg for
+        //  future use.)
+    }
+
+    @AuraEnabled
+    public static Id requestReextraction(Id conversationId) {
+        // Validate conversation exists + has turns.
+        // System.enqueueJob(new PulseConversationExtractor(new Set<Id>{conversationId}));
+        // Return the enqueued job id.
+    }
+}
+```
+
+### Cross-package visibility
+`PulseConversationHubController` lives in the `pulse-conversations-core` package but calls `ProjectionWriteService` (in `pulse-core`). That's a cross-package call. `ProjectionWriteService.project(...)` is currently declared `public`. Since both packages share the `plse` namespace but are separate 2GP packages, `public` is insufficient — promote `ProjectionWriteService` and its DTOs (`ProjectionRequest`, `ProjectionResult`) to `global` so this controller compiles. Update the class and any callers that still compile. No logic change; visibility only.
+
+Run `./scripts/check-global-discipline.sh` before committing to confirm no regression.
+
+### Test: `PulseConversationHubControllerTest`
+Cover each method with happy path + error paths. Use the existing conversation test helpers in `ConversationIngestionServiceTest` or build new ones inline. Target 90%+ coverage. In particular test:
+- getConversationsForRecord returns multiple conversations with nested turns + extracts
+- getConversationsForInstance scopes correctly
+- acceptExtract with full field list → all projected, Status='Accepted'
+- acceptExtract with subset field list → only those promoted, Status='Accepted'
+- acceptExtract where one field fails projection → Status='Partial' (or equivalent), AcceptResult.errors populated
+- rejectExtract → Status='Rejected', ReviewedBy/Date set
+- requestReextraction → Test.startTest/stopTest → confirms PulseConversationExtractor was enqueued (use AsyncApexJob count or mock the Queueable)
+
+## 2. pulseConversationHub LWC
+
+Path: `packages/pulse-conversations-core/force-app/main/default/lwc/pulseConversationHub/`
+
+`pulseConversationHub.js-meta.xml`:
+- `isExposed = true`
+- `targets = lightning__RecordPage, lightning__AppPage, lightning__HomePage`
+- `masterLabel = 'Pulse Conversation Hub'`
+
+Props:
+- `@api recordId` — auto-provided on record pages
+- `@api instanceId` — for app-page usage where a workflow instance is in scope
+- `@api targetObjectApiName = 'Account'` — override via app builder; used by acceptExtract
+
+JS contract:
+- `connectedCallback()` → `loadPulseBrandTokens(this)`.
+- `@wire(recordId ? getConversationsForRecord : getConversationsForInstance, { recordId, workflowInstanceId })` — pick the right wire based on which prop is set.
+- Reactive state: expandedConversationId (UI collapse/expand), expandedExtractId, selectedFieldsPerExtract (Map<extractId, Set<fieldKey>>).
+
+Render (brand-compliant, no SLDS base):
+- **Empty state**: pulseCard with "No conversations yet" message + subtle instructional copy.
+- **Conversation list**: one pulseCard per Conversation, collapsed by default. Header shows:
+  - medium as pulseBadge (Email/Call/Meeting/Chat → different variant: purple/magenta/gray)
+  - subject as h4 with pulse-gradient-text on "Pulse" brandmark NOT applied here (that's marketing)
+  - occurredAt as small muted date
+  - Extract status summary: "N pending extracts", as pulseBadge warning if N>0
+- **Expanded conversation**:
+  - Turn transcript: one sub-card per TurnView. Role as badge (Customer/Agent/System/AI). Speaker + timestamp line. Content as pre-wrap text. Max-height with scroll if >400px total.
+  - Extracts section: one expandable panel per extract.
+    - "Facts proposed by AI" heading.
+    - Per-fact row: fieldKey, value, confidence (rendered as a mini confidence bar — colored green/amber/red based on value thresholds 0.8/0.5/0.0 using semantic tokens).
+    - Checkbox per fact (pulseToggle sized down) for select-to-accept.
+    - Two pulseButtons at the bottom of the extract: "Accept selected" (variant primary, disabled if no selections) and "Reject" (variant ghost). "Accept selected" invokes acceptExtract with the checked field keys.
+  - Footer actions: "Request re-extraction" (variant secondary) if status is Extracted/Rejected.
+- **Post-action toasts**: use `alert()` fallback as with the other hubs (we're avoiding lightning-toast).
+
+CSS: brand tokens only. Spacing tokens throughout. Confidence bar uses:
+- ≥0.8 → `--pulse-success`
+- ≥0.5 → `--pulse-warning`
+- <0.5 → `--pulse-error`
+
+### LWC tests (`pulseConversationHub.test.js`)
+Cover: empty state, one-conversation-expanded state, selecting facts + clicking Accept calls acceptExtract with right args, Reject calls rejectExtract with right args, Request re-extraction calls requestReextraction. Use `apex` mock from `jest-mocks/` — match the pattern Wave 3c used.
+
+## 3. Admin Studio integration
+
+Modify `packages/pulse-core/force-app/main/default/lwc/pulseAdminStudio/`:
+
+- Add a new nav item "Conversations" to the sidebar (slot in alphabetical/logical order — after "Workflow Builder" or as appropriate). Use a standard SLDS icon utility name for the sidebar glyph.
+- Wire the active-panel switch so clicking "Conversations" renders `<c-pulse-conversation-hub instance-id={activeInstanceId}></c-pulse-conversation-hub>`. For this wave, `activeInstanceId` can be null — the component gracefully renders "No workflow instance selected" and the user gets conversations via the record-page target instead. (A real instance-picker is a later wave.)
+
+Update the Admin Studio test (`pulseAdminStudio.test.js`) to cover: click "Conversations" nav → `<c-pulse-conversation-hub>` renders in the main panel.
+
+# Discipline
+- Brand tokens: every new LWC calls `loadPulseBrandTokens(this)`. No hardcoded hex outside `var()` fallbacks. No `lightning-*` base components.
+- `global` surface: only what the Admin Studio shell (in another package) and any future UI needs. Every method of PulseConversationHubController must be `@AuraEnabled` and on a `global` class with `global` return types for LWC wire compatibility.
+- Sentence case UI copy. Anti-buzzword. "Accept selected" not "Empower facts."
+- No new CMDT, no new platform events, no new object fields in this wave. If a Status picklist value like "Partial" doesn't yet exist on `Conversation_Extract__c.Status__c`, add it as a value to the existing field metadata — that's an acceptable minor schema touch. Document the addition in the commit message.
+
+# Out of scope
+- Do not build the channel adapters (Slack/Teams).
+- Do not change `PulseConversationExtractor` or its callable provider. The extractor runs unchanged.
+- Do not add real-time CDC subscriptions — wire refresh on explicit user action is enough.
+- Do not touch `packages/pulse-channels-slack/`.
+
+# Validation gate
+1. `sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages --ignore-conflicts --json` returns `success True errors 0`.
+2. `./scripts/check-global-discipline.sh` passes.
+3. `sf apex run test -o pulse-core-next-dev --test-level RunLocalTests --wait 30` — total test count grows by ≥6 new PulseConversationHubControllerTest tests; 100% pass rate held.
+4. `npx jest --no-cache pulseConversationHub` all green.
+
+# Commit
+```
+git add -A && git commit -m "wave4a: conversation hub — review + accept AI-extracted facts"
+```
+
+Do not push. Orchestrator handles the merge; the reviewer inspects before sign-off.

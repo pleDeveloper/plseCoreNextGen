@@ -47,6 +47,10 @@ LANES_WAVE3C=(
   "wave3c-runtime|wave3c-runtime-surfaces|prompts/wave3c-runtime-surfaces.txt|wave3c: record stepper + action hub + runtime controller"
 )
 
+LANES_WAVE4A=(
+  "wave4a-conv|wave4a-conversation-hub|prompts/wave4a-conversation-hub.txt|wave4a: conversation hub — review + accept AI-extracted facts"
+)
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -473,6 +477,21 @@ wave3c() {
   say "Wave 3c lane completed."
 }
 
+wave4a() {
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/wave4a-conv.log"
+
+  for lane in "${LANES_WAVE4A[@]}"; do
+    setup_wave3_lane_inline "$lane"
+    IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    say "Follow log with: ./scripts/orchestrate-claude.sh logs wave4a-conv"
+    run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
+  done
+
+  say "Wave 4a lane completed."
+}
+
 logs() {
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
@@ -632,6 +651,7 @@ main() {
     wave3a) wave3a ;;
     wave3b) wave3b ;;
     wave3c) wave3c ;;
+    wave4a) wave4a ;;
     merge-wave1) merge_wave1 ;;
     merge-wave2) merge_wave2 ;;
     validate) validate ;;
