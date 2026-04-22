@@ -273,20 +273,37 @@ private class PulseGlobalActionHubControllerTest {
 
     @IsTest
     static void upsertColumnConfigEnqueuesDeployment() {
-        PulseGlobalActionHubController.ColumnConfigInput input =
-            new PulseGlobalActionHubController.ColumnConfigInput();
-        input.configKey = 'Test_Cfg';
-        input.targetObject = 'Account';
-        input.columnsJson = '[{"field":"Name","label":"Name"}]';
-        input.active = true;
-        input.masterLabel = 'Test Cfg';
+        // LWC sends a raw Map<String,Object> payload — Aura framework
+        // can't deserialize typed inner-class inputs (diagnosed in Lane E).
+        Map<String, Object> payload = new Map<String, Object>{
+            'configKey'    => 'Test_Cfg',
+            'targetObject' => 'Account',
+            'columnsJson'  => '[{"field":"Name","label":"Name"}]',
+            'active'       => true,
+            'masterLabel'  => 'Test Cfg'
+        };
 
         Test.startTest();
         PulseGlobalActionHubController.UpsertConfigResult res =
-            PulseGlobalActionHubController.upsertColumnConfig(input);
+            PulseGlobalActionHubController.upsertColumnConfig(payload);
         Test.stopTest();
 
         System.assertNotEquals(null, res);
+    }
+
+    @IsTest
+    static void upsertColumnConfigCoercesEdgeCases() {
+        PulseGlobalActionHubController.ColumnConfigInput a =
+            PulseGlobalActionHubController.coerceToColumnConfigInput(null);
+        System.assertEquals(null, a.configKey);
+        System.assertEquals(true, a.active); // defaults to true
+
+        PulseGlobalActionHubController.ColumnConfigInput b =
+            PulseGlobalActionHubController.coerceToColumnConfigInput(new Map<String, Object>{
+                'configKey' => 'K', 'active' => 'false'
+            });
+        System.assertEquals('K', b.configKey);
+        System.assertEquals(false, b.active);
     }
 
     // ─── 11. Invalid actionId handled ───────────────────────────────

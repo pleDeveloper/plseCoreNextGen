@@ -123,7 +123,6 @@ public with sharing class PulseGlobalActionHubController {
         String soql =
             'SELECT Id, Label__c, Tool_Key__c, HITL_Policy__c, Request_JSON__c, ' +
             '       Phase_Key__c, CreatedDate, Assigned_User__c, Assigned_To_Group__c, ' +
-            '       Assigned_To_Group__r.Name, ' +
             '       Workflow_Instance__c, Workflow_Instance__r.Parent_Object_Type__c, ' +
             '       Workflow_Instance__r.Parent_Record_Id__c, ' +
             '       Workflow_Instance__r.Workflow_Definition__r.Name, ' +
@@ -138,6 +137,23 @@ public with sharing class PulseGlobalActionHubController {
             rows = Database.query(soql);
         } catch (Exception e) {
             return new List<HubRow>();
+        }
+
+        // Group IDs are stored as Text on Workflow_Action__c (no custom
+        // Lookup to Group is allowed in metadata), so do a separate query
+        // to fetch Group names for display.
+        Set<Id> groupIdsToResolve = new Set<Id>();
+        for (Workflow_Action__c a : rows) {
+            if (String.isNotBlank(a.Assigned_To_Group__c)) {
+                try { groupIdsToResolve.add(Id.valueOf(a.Assigned_To_Group__c)); }
+                catch (Exception ignored) {}
+            }
+        }
+        Map<Id, String> groupNamesById = new Map<Id, String>();
+        if (!groupIdsToResolve.isEmpty()) {
+            for (Group g : [SELECT Id, Name FROM Group WHERE Id IN :groupIdsToResolve]) {
+                groupNamesById.put(g.Id, g.Name);
+            }
         }
 
         if (rows.isEmpty()) return new List<HubRow>();
@@ -216,10 +232,9 @@ public with sharing class PulseGlobalActionHubController {
 
             if (a.Assigned_User__c == myUserId) {
                 row.assignmentKind = 'me';
-            } else if (a.Assigned_To_Group__c != null && myGroupIds.contains(a.Assigned_To_Group__c)) {
+            } else if (String.isNotBlank(a.Assigned_To_Group__c) && myGroupIds.contains(a.Assigned_To_Group__c)) {
                 row.assignmentKind = 'group';
-                row.assignedGroupName = a.Assigned_To_Group__r != null
-                    ? a.Assigned_To_Group__r.Name : null;
+                row.assignedGroupName = groupNamesById.get(a.Assigned_To_Group__c);
             } else {
                 row.assignmentKind = 'unassigned';
             }
@@ -337,33 +352,42 @@ public with sharing class PulseGlobalActionHubController {
 
     // ─── upsertColumnConfig ─────────────────────────────────────────
 
+    /**
+     * Accepts Map<String, Object> instead of a typed inner DTO class.
+     * The Aura LWC→Apex framework fails to deserialize typed inner-class
+     * inputs with a generic "internal server error (-583189392)" envelope
+     * — see docs/diagnostics/aura-upsertTrigger-repro.sh. We coerce the
+     * raw map to ColumnConfigInput internally.
+     */
     @AuraEnabled
-    public static UpsertConfigResult upsertColumnConfig(ColumnConfigInput payload) {
+    public static UpsertConfigResult upsertColumnConfig(Map<String, Object> payload) {
+        ColumnConfigInput input = coerceToColumnConfigInput(payload);
+
         UpsertConfigResult res = new UpsertConfigResult();
-        if (payload == null || String.isBlank(payload.configKey)) {
+        if (input == null || String.isBlank(input.configKey)) {
             res.success = false;
             res.message = 'configKey is required';
             return res;
         }
-        if (String.isBlank(payload.targetObject)) {
+        if (String.isBlank(input.targetObject)) {
             res.success = false;
             res.message = 'targetObject is required';
             return res;
         }
 
-        String devName = toDeveloperName(payload.configKey);
-        String label   = String.isNotBlank(payload.masterLabel)
-            ? payload.masterLabel : payload.configKey.replace('_', ' ');
+        String devName = toDeveloperName(input.configKey);
+        String label   = String.isNotBlank(input.masterLabel)
+            ? input.masterLabel : input.configKey.replace('_', ' ');
 
         Metadata.CustomMetadata cm = new Metadata.CustomMetadata();
         cm.fullName = 'Action_Hub_Column_Config.' + devName;
         cm.label    = label;
 
-        cm.values.add(makeValue('Config_Key__c', payload.configKey));
-        cm.values.add(makeValue('Target_Object__c', payload.targetObject));
+        cm.values.add(makeValue('Config_Key__c', input.configKey));
+        cm.values.add(makeValue('Target_Object__c', input.targetObject));
         cm.values.add(makeValue('Columns_JSON__c',
-            String.isNotBlank(payload.columnsJson) ? payload.columnsJson : '[]'));
-        cm.values.add(makeValue('Active__c', payload.active != null ? payload.active : true));
+            String.isNotBlank(input.columnsJson) ? input.columnsJson : '[]'));
+        cm.values.add(makeValue('Active__c', input.active != null ? input.active : true));
 
         Metadata.DeployContainer container = new Metadata.DeployContainer();
         container.addMetadata(cm);
@@ -381,6 +405,34 @@ public with sharing class PulseGlobalActionHubController {
     }
 
     // ─── Internal helpers ───────────────────────────────────────────
+
+    @TestVisible
+    private static ColumnConfigInput coerceToColumnConfigInput(Map<String, Object> raw) {
+        ColumnConfigInput out = new ColumnConfigInput();
+        if (raw == null) return out;
+        Object k = raw.get('configKey');
+        if (k instanceof String) out.configKey = (String) k;
+        Object t = raw.get('targetObject');
+        if (t instanceof String) out.targetObject = (String) t;
+        Object c = raw.get('columnsJson');
+        if (c instanceof String) {
+            out.columnsJson = (String) c;
+        } else if (c != null) {
+            // Allow clients to pass an already-parsed array/object — re-serialize
+            out.columnsJson = JSON.serialize(c);
+        }
+        Object a = raw.get('active');
+        if (a instanceof Boolean) {
+            out.active = (Boolean) a;
+        } else if (a instanceof String) {
+            out.active = 'true'.equalsIgnoreCase((String) a);
+        } else {
+            out.active = true;
+        }
+        Object l = raw.get('masterLabel');
+        if (l instanceof String) out.masterLabel = (String) l;
+        return out;
+    }
 
     private static Set<Id> resolveMyGroupIds() {
         Set<Id> ids = new Set<Id>();

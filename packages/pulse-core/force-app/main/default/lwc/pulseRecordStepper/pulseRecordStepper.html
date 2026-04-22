@@ -22,7 +22,7 @@
 
     <!-- Active instance -->
     <template lwc:else>
-        <!-- Header card -->
+        <!-- Header card: trim summary -->
         <c-pulse-card elevated>
             <div class="stepper-header">
                 <div class="stepper-header-top">
@@ -33,7 +33,7 @@
                 </div>
                 <div class="stepper-current-state">
                     <span class="stepper-state-pill">{instance.currentStateLabel}</span>
-                    <c-pulse-badge label={instance.status} variant="purple"></c-pulse-badge>
+                    <c-pulse-badge label={instance.status} variant={instanceStatusVariant}></c-pulse-badge>
                 </div>
             </div>
         </c-pulse-card>
@@ -65,298 +65,656 @@
             </div>
         </template>
 
-        <!-- Phase fields: one editable input per contract FieldDef -->
-        <template lwc:if={hasPhaseFields}>
-            <c-pulse-card>
-                <h3 class="stepper-phase-heading">Fields for this phase</h3>
-                <ul class="stepper-fields-list">
-                    <template for:each={phaseFields} for:item="f">
-                        <li key={f.key} class="stepper-field-item">
-                            <div class="stepper-field-label-row">
-                                <label class="stepper-field-label" for={f.key}>
-                                    {f.label}
-                                </label>
-                                <span class="stepper-phase-required">{f.requiredBadge}</span>
-                            </div>
-
-                            <template lwc:if={f.isText}>
-                                <c-pulse-input label=""
-                                               value={f.value}
-                                               data-field-key={f.key}
-                                               onchange={handleFieldChange}></c-pulse-input>
-                            </template>
-                            <template lwc:elseif={f.isLongText}>
-                                <textarea class="stepper-field-textarea"
-                                          rows="3"
-                                          data-field-key={f.key}
-                                          onchange={handleFieldChange}>{f.value}</textarea>
-                            </template>
-                            <template lwc:elseif={f.isNumber}>
-                                <c-pulse-input label=""
-                                               type="number"
-                                               value={f.value}
-                                               data-field-key={f.key}
-                                               onchange={handleFieldChange}></c-pulse-input>
-                            </template>
-                            <template lwc:elseif={f.isCurrency}>
-                                <c-pulse-input label=""
-                                               type="number"
-                                               value={f.value}
-                                               data-field-key={f.key}
-                                               onchange={handleFieldChange}></c-pulse-input>
-                            </template>
-                            <template lwc:elseif={f.isDate}>
-                                <input class="stepper-field-input" type="date"
-                                       data-field-key={f.key}
-                                       value={f.value}
-                                       onchange={handleFieldChange} />
-                            </template>
-                            <template lwc:elseif={f.isDateTime}>
-                                <input class="stepper-field-input" type="datetime-local"
-                                       data-field-key={f.key}
-                                       value={f.value}
-                                       onchange={handleFieldChange} />
-                            </template>
-                            <template lwc:elseif={f.isPicklist}>
-                                <select class="stepper-field-input"
-                                        data-field-key={f.key}
-                                        onchange={handleFieldChange}>
-                                    <option value="">— Select —</option>
-                                    <template for:each={f.picklistOptions} for:item="opt">
-                                        <option key={opt.value}
-                                                value={opt.value}
-                                                selected={opt.selected}>{opt.label}</option>
-                                    </template>
-                                </select>
-                            </template>
-                            <template lwc:elseif={f.isCheckbox}>
-                                <input type="checkbox"
-                                       class="stepper-field-checkbox"
-                                       data-field-key={f.key}
-                                       checked={f.checkedValue}
-                                       onchange={handleFieldCheckboxChange} />
-                            </template>
-                            <template lwc:else>
-                                <c-pulse-input label=""
-                                               value={f.value}
-                                               data-field-key={f.key}
-                                               onchange={handleFieldChange}></c-pulse-input>
-                            </template>
-                        </li>
-                    </template>
-                </ul>
-                <div class="stepper-fields-actions">
-                    <c-pulse-button label="Save fields" variant="primary" size="sm"
-                                    disabled={isSavingFields}
-                                    onclick={handleSaveFields}></c-pulse-button>
-                </div>
-            </c-pulse-card>
-        </template>
-
-        <!-- Phase actions (new unified model) -->
-        <template lwc:if={hasPhaseActions}>
-            <c-pulse-card>
-                <h3 class="stepper-phase-heading">Tasks in this phase</h3>
-                <ul class="stepper-phase-list">
-                    <template for:each={phaseActions} for:item="a">
-                        <li key={a.actionKey} class="stepper-phase-item">
-                            <div class="stepper-phase-item-head">
-                                <div class="stepper-phase-item-title">
-                                    <span class="stepper-phase-label">{a.label}</span>
-                                    <span class="stepper-phase-required">{a.requiredLabel}</span>
-                                </div>
-                                <c-pulse-badge label={a.status} variant={a.statusVariant}></c-pulse-badge>
-                            </div>
-
-                            <template lwc:if={a.blockedReason}>
-                                <p class="stepper-phase-blocked">{a.blockedReason}</p>
-                            </template>
-
-                            <template lwc:if={a.preview}>
-                                <template lwc:if={a.preview.isEmail}>
-                                    <div class="stepper-action-email">
-                                        <div class="stepper-action-email-row">
-                                            <span class="stepper-action-email-label">To</span>
-                                            <span class="stepper-action-email-value">{a.preview.to}</span>
-                                        </div>
-                                        <div class="stepper-action-email-row">
-                                            <span class="stepper-action-email-label">Subject</span>
-                                            <span class="stepper-action-email-value stepper-action-email-subject">{a.preview.subject}</span>
-                                        </div>
-                                        <div class="stepper-action-email-body">{a.preview.body}</div>
-                                    </div>
+        <!-- Journey: every phase as a numbered, collapsible card -->
+        <template lwc:if={hasJourney}>
+            <ol class="journey" role="list">
+                <template for:each={journey} for:item="phase">
+                    <li key={phase.key} class={phase.cardClass}>
+                        <!-- Phase header: number, label, status, chevron -->
+                        <button class="journey-phase-header"
+                                type="button"
+                                aria-label={phase.chevronLabel}
+                                data-phase-key={phase.key}
+                                onclick={handleTogglePhase}>
+                            <span class={phase.numberClass} aria-hidden="true">
+                                <template lwc:if={phase.isCompleted}>
+                                    <span class="journey-phase-check">✓</span>
                                 </template>
-                                <template lwc:elseif={a.preview.isRecord}>
-                                    <div class="stepper-action-record">
-                                        <template lwc:if={a.preview.objectType}>
-                                            <div class="stepper-action-email-row">
-                                                <span class="stepper-action-email-label">Object</span>
-                                                <span class="stepper-action-email-value">{a.preview.objectType}</span>
-                                            </div>
-                                        </template>
-                                        <template lwc:if={a.preview.hasRows}>
-                                            <ul class="stepper-action-record-rows">
-                                                <template for:each={a.preview.rows} for:item="r">
-                                                    <li key={r.key} class="stepper-action-record-row">
-                                                        <span class="stepper-action-record-key">{r.key}</span>
-                                                        <span class="stepper-action-record-value">{r.value}</span>
+                                <template lwc:elseif={phase.isFailed}>
+                                    <span class="journey-phase-check">!</span>
+                                </template>
+                                <template lwc:else>
+                                    {phase.sequence}
+                                </template>
+                            </span>
+                            <div class="journey-phase-head-text">
+                                <span class="journey-phase-label">{phase.label}</span>
+                                <template lwc:if={phase.completedAtText}>
+                                    <span class="journey-phase-subtext">Completed {phase.completedAtText}</span>
+                                </template>
+                            </div>
+                            <span class={phase.statusClass}>{phase.statusLabel}</span>
+                            <span class="journey-phase-chevron" aria-hidden="true">
+                                <template lwc:if={phase.expanded}>▾</template>
+                                <template lwc:else>▸</template>
+                            </span>
+                        </button>
+
+                        <!-- Expanded body -->
+                        <template lwc:if={phase.expanded}>
+                            <div class="journey-phase-body">
+
+                                <!-- Fields grid: different rendering per phase state -->
+                                <template lwc:if={phase.hasFields}>
+                                    <template lwc:if={phase.isCurrent}>
+                                        <!-- Current phase: editable form -->
+                                        <template lwc:if={hasPhaseFields}>
+                                            <h3 class="stepper-phase-heading">Fields for this phase</h3>
+                                            <ul class="stepper-fields-list">
+                                                <template for:each={phaseFields} for:item="f">
+                                                    <li key={f.key} class="stepper-field-item">
+                                                        <div class="stepper-field-label-row">
+                                                            <label class="stepper-field-label" for={f.key}>
+                                                                {f.label}
+                                                            </label>
+                                                            <span class="journey-field-type-pill">{f.typeLabel}</span>
+                                                            <span class="stepper-phase-required">{f.requiredBadge}</span>
+                                                        </div>
+
+                                                        <template lwc:if={f.isText}>
+                                                            <c-pulse-input label=""
+                                                                           value={f.value}
+                                                                           data-field-key={f.key}
+                                                                           onchange={handleFieldChange}></c-pulse-input>
+                                                        </template>
+                                                        <template lwc:elseif={f.isLongText}>
+                                                            <textarea class="stepper-field-textarea"
+                                                                      rows="3"
+                                                                      data-field-key={f.key}
+                                                                      onchange={handleFieldChange}>{f.value}</textarea>
+                                                        </template>
+                                                        <template lwc:elseif={f.isNumber}>
+                                                            <c-pulse-input label=""
+                                                                           type="number"
+                                                                           value={f.value}
+                                                                           data-field-key={f.key}
+                                                                           onchange={handleFieldChange}></c-pulse-input>
+                                                        </template>
+                                                        <template lwc:elseif={f.isCurrency}>
+                                                            <c-pulse-input label=""
+                                                                           type="number"
+                                                                           value={f.value}
+                                                                           data-field-key={f.key}
+                                                                           onchange={handleFieldChange}></c-pulse-input>
+                                                        </template>
+                                                        <template lwc:elseif={f.isDate}>
+                                                            <input class="stepper-field-input" type="date"
+                                                                   data-field-key={f.key}
+                                                                   value={f.value}
+                                                                   onchange={handleFieldChange} />
+                                                        </template>
+                                                        <template lwc:elseif={f.isDateTime}>
+                                                            <input class="stepper-field-input" type="datetime-local"
+                                                                   data-field-key={f.key}
+                                                                   value={f.value}
+                                                                   onchange={handleFieldChange} />
+                                                        </template>
+                                                        <template lwc:elseif={f.isPicklist}>
+                                                            <select class="stepper-field-input"
+                                                                    data-field-key={f.key}
+                                                                    onchange={handleFieldChange}>
+                                                                <option value="">— Select —</option>
+                                                                <template for:each={f.picklistOptions} for:item="opt">
+                                                                    <option key={opt.value}
+                                                                            value={opt.value}
+                                                                            selected={opt.selected}>{opt.label}</option>
+                                                                </template>
+                                                            </select>
+                                                        </template>
+                                                        <template lwc:elseif={f.isCheckbox}>
+                                                            <input type="checkbox"
+                                                                   class="stepper-field-checkbox"
+                                                                   data-field-key={f.key}
+                                                                   checked={f.checkedValue}
+                                                                   onchange={handleFieldCheckboxChange} />
+                                                        </template>
+                                                        <template lwc:else>
+                                                            <c-pulse-input label=""
+                                                                           value={f.value}
+                                                                           data-field-key={f.key}
+                                                                           onchange={handleFieldChange}></c-pulse-input>
+                                                        </template>
                                                     </li>
                                                 </template>
                                             </ul>
+                                            <div class="stepper-fields-actions">
+                                                <c-pulse-button label="Save fields" variant="primary" size="sm"
+                                                                disabled={isSavingFields}
+                                                                onclick={handleSaveFields}></c-pulse-button>
+                                            </div>
                                         </template>
-                                    </div>
-                                </template>
-                                <template lwc:else>
-                                    <pre class="stepper-action-raw">{a.preview.raw}</pre>
-                                </template>
-                            </template>
-
-                            <!-- Refine editor — expanded inline when the
-                                 approver clicks Refine on an AI_Tool_Call. -->
-                            <template lwc:if={a.refining}>
-                                <div class="stepper-refine-editor">
-                                    <template lwc:if={a.isEmailDraft}>
-                                        <label class="stepper-refine-field">
-                                            <span class="stepper-refine-label">To</span>
-                                            <c-pulse-input label=""
-                                                           value={a.draftEmail.to}
-                                                           data-action-id={a.actionId}
-                                                           onchange={handleRefineEmailTo}></c-pulse-input>
-                                        </label>
-                                        <label class="stepper-refine-field">
-                                            <span class="stepper-refine-label">Subject</span>
-                                            <c-pulse-input label=""
-                                                           value={a.draftEmail.subject}
-                                                           data-action-id={a.actionId}
-                                                           onchange={handleRefineEmailSubject}></c-pulse-input>
-                                        </label>
-                                        <label class="stepper-refine-field">
-                                            <span class="stepper-refine-label">Body</span>
-                                            <textarea class="stepper-refine-textarea"
-                                                      rows="6"
-                                                      data-action-id={a.actionId}
-                                                      onchange={handleRefineEmailBody}>{a.draftEmail.body}</textarea>
-                                        </label>
                                     </template>
+                                    <template lwc:else>
+                                        <!-- Completed or upcoming: read-only field preview grid -->
+                                        <ul class="journey-fields-grid">
+                                            <template for:each={phase.fieldPreviews} for:item="fp">
+                                                <li key={fp.key} class="journey-field-preview">
+                                                    <div class="journey-field-preview-head">
+                                                        <span class="journey-field-preview-label">{fp.label}</span>
+                                                        <span class="journey-field-type-pill">{fp.typeLabel}</span>
+                                                    </div>
+                                                    <template lwc:if={fp.hasValue}>
+                                                        <span class="journey-field-preview-value">{fp.value}</span>
+                                                    </template>
+                                                    <template lwc:else>
+                                                        <span class="journey-field-preview-empty">—</span>
+                                                    </template>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                        <template lwc:if={phase.isUpcoming}>
+                                            <p class="journey-phase-subtext">Will be captured in this phase.</p>
+                                        </template>
+                                    </template>
+                                </template>
 
-                                    <template lwc:elseif={a.isRecordDraft}>
-                                        <ul class="stepper-refine-record-rows">
-                                            <template for:each={a.draftRecord.fields} for:item="row" for:index="idx">
-                                                <li key={row.key} class="stepper-refine-record-row">
-                                                    <input class="stepper-field-input"
-                                                           type="text"
-                                                           placeholder="Field API name"
-                                                           data-action-id={a.actionId}
-                                                           data-index={idx}
-                                                           data-which="key"
-                                                           value={row.key}
-                                                           onchange={handleRefineRecordField} />
-                                                    <input class="stepper-field-input"
-                                                           type="text"
-                                                           placeholder="Value"
-                                                           data-action-id={a.actionId}
-                                                           data-index={idx}
-                                                           data-which="value"
-                                                           value={row.value}
-                                                           onchange={handleRefineRecordField} />
+                                <!-- Current phase: actions + signal buttons -->
+                                <template lwc:if={phase.isCurrent}>
+                                    <template lwc:if={hasPhaseActions}>
+                                        <h3 class="stepper-phase-heading">Tasks in this phase</h3>
+                                        <ul class="stepper-phase-list">
+                                            <template for:each={phaseActions} for:item="a">
+                                                <li key={a.actionKey} class="stepper-phase-item">
+                                                    <div class="stepper-phase-item-head">
+                                                        <div class="stepper-phase-item-title">
+                                                            <span class="stepper-phase-label">{a.label}</span>
+                                                            <span class="stepper-phase-required">{a.requiredLabel}</span>
+                                                        </div>
+                                                        <c-pulse-badge label={a.status} variant={a.statusVariant}></c-pulse-badge>
+                                                    </div>
+
+                                                    <template lwc:if={a.blockedReason}>
+                                                        <p class="stepper-phase-blocked">{a.blockedReason}</p>
+                                                    </template>
+
+                                                    <template lwc:if={a.preview}>
+                                                        <template lwc:if={a.preview.isEmail}>
+                                                            <div class="stepper-action-email">
+                                                                <div class="stepper-action-email-row">
+                                                                    <span class="stepper-action-email-label">To</span>
+                                                                    <span class="stepper-action-email-value">{a.preview.to}</span>
+                                                                </div>
+                                                                <div class="stepper-action-email-row">
+                                                                    <span class="stepper-action-email-label">Subject</span>
+                                                                    <span class="stepper-action-email-value stepper-action-email-subject">{a.preview.subject}</span>
+                                                                </div>
+                                                                <div class="stepper-action-email-body">{a.preview.body}</div>
+                                                            </div>
+                                                        </template>
+                                                        <template lwc:elseif={a.preview.isRecord}>
+                                                            <div class="stepper-action-record">
+                                                                <template lwc:if={a.preview.objectType}>
+                                                                    <div class="stepper-action-email-row">
+                                                                        <span class="stepper-action-email-label">Object</span>
+                                                                        <span class="stepper-action-email-value">{a.preview.objectType}</span>
+                                                                    </div>
+                                                                </template>
+                                                                <template lwc:if={a.preview.hasRows}>
+                                                                    <ul class="stepper-action-record-rows">
+                                                                        <template for:each={a.preview.rows} for:item="r">
+                                                                            <li key={r.key} class="stepper-action-record-row">
+                                                                                <span class="stepper-action-record-key">{r.key}</span>
+                                                                                <span class="stepper-action-record-value">{r.value}</span>
+                                                                            </li>
+                                                                        </template>
+                                                                    </ul>
+                                                                </template>
+                                                            </div>
+                                                        </template>
+                                                        <template lwc:else>
+                                                            <pre class="stepper-action-raw">{a.preview.raw}</pre>
+                                                        </template>
+                                                    </template>
+
+                                                    <!-- Refine editor inline -->
+                                                    <template lwc:if={a.refining}>
+                                                        <div class="stepper-refine-editor">
+                                                            <template lwc:if={a.isEmailDraft}>
+                                                                <label class="stepper-refine-field">
+                                                                    <span class="stepper-refine-label">To</span>
+                                                                    <c-pulse-input label=""
+                                                                                   value={a.draftEmail.to}
+                                                                                   data-action-id={a.actionId}
+                                                                                   onchange={handleRefineEmailTo}></c-pulse-input>
+                                                                </label>
+                                                                <label class="stepper-refine-field">
+                                                                    <span class="stepper-refine-label">Subject</span>
+                                                                    <c-pulse-input label=""
+                                                                                   value={a.draftEmail.subject}
+                                                                                   data-action-id={a.actionId}
+                                                                                   onchange={handleRefineEmailSubject}></c-pulse-input>
+                                                                </label>
+                                                                <label class="stepper-refine-field">
+                                                                    <span class="stepper-refine-label">Body</span>
+                                                                    <textarea class="stepper-refine-textarea"
+                                                                              rows="6"
+                                                                              data-action-id={a.actionId}
+                                                                              onchange={handleRefineEmailBody}>{a.draftEmail.body}</textarea>
+                                                                </label>
+                                                            </template>
+
+                                                            <template lwc:elseif={a.isRecordDraft}>
+                                                                <ul class="stepper-refine-record-rows">
+                                                                    <template for:each={a.draftRecord.fields} for:item="row" for:index="idx">
+                                                                        <li key={row.key} class="stepper-refine-record-row">
+                                                                            <input class="stepper-field-input"
+                                                                                   type="text"
+                                                                                   placeholder="Field API name"
+                                                                                   data-action-id={a.actionId}
+                                                                                   data-index={idx}
+                                                                                   data-which="key"
+                                                                                   value={row.key}
+                                                                                   onchange={handleRefineRecordField} />
+                                                                            <input class="stepper-field-input"
+                                                                                   type="text"
+                                                                                   placeholder="Value"
+                                                                                   data-action-id={a.actionId}
+                                                                                   data-index={idx}
+                                                                                   data-which="value"
+                                                                                   value={row.value}
+                                                                                   onchange={handleRefineRecordField} />
+                                                                        </li>
+                                                                    </template>
+                                                                </ul>
+                                                            </template>
+
+                                                            <template lwc:else>
+                                                                <label class="stepper-refine-field">
+                                                                    <span class="stepper-refine-label">Raw JSON</span>
+                                                                    <textarea class="stepper-refine-textarea"
+                                                                              rows="8"
+                                                                              data-action-id={a.actionId}
+                                                                              onchange={handleRefineRaw}>{a.draftRaw}</textarea>
+                                                                </label>
+                                                            </template>
+
+                                                            <div class="stepper-refine-actions">
+                                                                <c-pulse-button label="Cancel" variant="ghost" size="sm"
+                                                                                data-action-id={a.actionId}
+                                                                                onclick={handleRefineCancel}></c-pulse-button>
+                                                                <c-pulse-button label="Approve with edits"
+                                                                                variant="primary" size="sm"
+                                                                                data-action-id={a.actionId}
+                                                                                disabled={a.resolving}
+                                                                                onclick={handleRefineApprove}></c-pulse-button>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+
+                                                    <template lwc:if={a.isPending}>
+                                                        <div class="stepper-phase-actions">
+                                                            <c-pulse-button label="Approve" variant="primary" size="sm"
+                                                                            data-action-id={a.actionId}
+                                                                            disabled={a.resolving}
+                                                                            onclick={handleApproveAction}>
+                                                            </c-pulse-button>
+                                                            <c-pulse-button label="Reject" variant="ghost" size="sm"
+                                                                            data-action-id={a.actionId}
+                                                                            disabled={a.resolving}
+                                                                            onclick={handleRejectAction}>
+                                                            </c-pulse-button>
+                                                            <template lwc:if={a.refineEligible}>
+                                                                <c-pulse-button label="Refine" variant="ghost" size="sm"
+                                                                                data-action-id={a.actionId}
+                                                                                disabled={a.resolving}
+                                                                                onclick={handleRefineOpen}>
+                                                                </c-pulse-button>
+                                                            </template>
+                                                        </div>
+                                                    </template>
                                                 </li>
                                             </template>
                                         </ul>
                                     </template>
 
+                                    <template lwc:if={hasSignals}>
+                                        <div class="stepper-signals">
+                                            <template for:each={signals} for:item="sig">
+                                                <c-pulse-button key={sig.signal}
+                                                                label={sig.label}
+                                                                variant="primary"
+                                                                data-signal={sig.signal}
+                                                                onclick={handleSignalClick}></c-pulse-button>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </template>
+
+                                <!-- Checkpoint trail: dots + arrows (every expanded phase) -->
+                                <template lwc:if={phase.hasCheckpoints}>
+                                    <ol class="journey-checkpoints" role="list">
+                                        <template for:each={phase.checkpointItems} for:item="cp">
+                                            <li key={cp.key} class="journey-checkpoint">
+                                                <span class={cp.dotClass} aria-hidden="true"></span>
+                                                <span class={cp.labelClass}>{cp.label}</span>
+                                                <template lwc:if={cp.showSeparator}>
+                                                    <span class="journey-checkpoint-arrow" aria-hidden="true">→</span>
+                                                </template>
+                                            </li>
+                                        </template>
+                                    </ol>
+                                </template>
+                            </div>
+                        </template>
+                    </li>
+                </template>
+            </ol>
+        </template>
+
+        <!-- Legacy fallback (no journey): render phaseFields + phaseActions
+             + signals at the top level. This keeps older Apex deploys that
+             haven't rolled out allPhases yet fully functional. -->
+        <template lwc:if={hasJourney}></template>
+        <template lwc:else>
+            <template lwc:if={hasPhaseFields}>
+                <c-pulse-card>
+                    <h3 class="stepper-phase-heading">Fields for this phase</h3>
+                    <ul class="stepper-fields-list">
+                        <template for:each={phaseFields} for:item="f">
+                            <li key={f.key} class="stepper-field-item">
+                                <div class="stepper-field-label-row">
+                                    <label class="stepper-field-label" for={f.key}>
+                                        {f.label}
+                                    </label>
+                                    <span class="stepper-phase-required">{f.requiredBadge}</span>
+                                </div>
+
+                                <template lwc:if={f.isText}>
+                                    <c-pulse-input label=""
+                                                   value={f.value}
+                                                   data-field-key={f.key}
+                                                   onchange={handleFieldChange}></c-pulse-input>
+                                </template>
+                                <template lwc:elseif={f.isLongText}>
+                                    <textarea class="stepper-field-textarea"
+                                              rows="3"
+                                              data-field-key={f.key}
+                                              onchange={handleFieldChange}>{f.value}</textarea>
+                                </template>
+                                <template lwc:elseif={f.isNumber}>
+                                    <c-pulse-input label=""
+                                                   type="number"
+                                                   value={f.value}
+                                                   data-field-key={f.key}
+                                                   onchange={handleFieldChange}></c-pulse-input>
+                                </template>
+                                <template lwc:elseif={f.isCurrency}>
+                                    <c-pulse-input label=""
+                                                   type="number"
+                                                   value={f.value}
+                                                   data-field-key={f.key}
+                                                   onchange={handleFieldChange}></c-pulse-input>
+                                </template>
+                                <template lwc:elseif={f.isDate}>
+                                    <input class="stepper-field-input" type="date"
+                                           data-field-key={f.key}
+                                           value={f.value}
+                                           onchange={handleFieldChange} />
+                                </template>
+                                <template lwc:elseif={f.isDateTime}>
+                                    <input class="stepper-field-input" type="datetime-local"
+                                           data-field-key={f.key}
+                                           value={f.value}
+                                           onchange={handleFieldChange} />
+                                </template>
+                                <template lwc:elseif={f.isPicklist}>
+                                    <select class="stepper-field-input"
+                                            data-field-key={f.key}
+                                            onchange={handleFieldChange}>
+                                        <option value="">— Select —</option>
+                                        <template for:each={f.picklistOptions} for:item="opt">
+                                            <option key={opt.value}
+                                                    value={opt.value}
+                                                    selected={opt.selected}>{opt.label}</option>
+                                        </template>
+                                    </select>
+                                </template>
+                                <template lwc:elseif={f.isCheckbox}>
+                                    <input type="checkbox"
+                                           class="stepper-field-checkbox"
+                                           data-field-key={f.key}
+                                           checked={f.checkedValue}
+                                           onchange={handleFieldCheckboxChange} />
+                                </template>
+                                <template lwc:else>
+                                    <c-pulse-input label=""
+                                                   value={f.value}
+                                                   data-field-key={f.key}
+                                                   onchange={handleFieldChange}></c-pulse-input>
+                                </template>
+                            </li>
+                        </template>
+                    </ul>
+                    <div class="stepper-fields-actions">
+                        <c-pulse-button label="Save fields" variant="primary" size="sm"
+                                        disabled={isSavingFields}
+                                        onclick={handleSaveFields}></c-pulse-button>
+                    </div>
+                </c-pulse-card>
+            </template>
+
+            <template lwc:if={hasPhaseActions}>
+                <c-pulse-card>
+                    <h3 class="stepper-phase-heading">Tasks in this phase</h3>
+                    <ul class="stepper-phase-list">
+                        <template for:each={phaseActions} for:item="a">
+                            <li key={a.actionKey} class="stepper-phase-item">
+                                <div class="stepper-phase-item-head">
+                                    <div class="stepper-phase-item-title">
+                                        <span class="stepper-phase-label">{a.label}</span>
+                                        <span class="stepper-phase-required">{a.requiredLabel}</span>
+                                    </div>
+                                    <c-pulse-badge label={a.status} variant={a.statusVariant}></c-pulse-badge>
+                                </div>
+
+                                <template lwc:if={a.blockedReason}>
+                                    <p class="stepper-phase-blocked">{a.blockedReason}</p>
+                                </template>
+
+                                <template lwc:if={a.preview}>
+                                    <template lwc:if={a.preview.isEmail}>
+                                        <div class="stepper-action-email">
+                                            <div class="stepper-action-email-row">
+                                                <span class="stepper-action-email-label">To</span>
+                                                <span class="stepper-action-email-value">{a.preview.to}</span>
+                                            </div>
+                                            <div class="stepper-action-email-row">
+                                                <span class="stepper-action-email-label">Subject</span>
+                                                <span class="stepper-action-email-value stepper-action-email-subject">{a.preview.subject}</span>
+                                            </div>
+                                            <div class="stepper-action-email-body">{a.preview.body}</div>
+                                        </div>
+                                    </template>
+                                    <template lwc:elseif={a.preview.isRecord}>
+                                        <div class="stepper-action-record">
+                                            <template lwc:if={a.preview.objectType}>
+                                                <div class="stepper-action-email-row">
+                                                    <span class="stepper-action-email-label">Object</span>
+                                                    <span class="stepper-action-email-value">{a.preview.objectType}</span>
+                                                </div>
+                                            </template>
+                                            <template lwc:if={a.preview.hasRows}>
+                                                <ul class="stepper-action-record-rows">
+                                                    <template for:each={a.preview.rows} for:item="r">
+                                                        <li key={r.key} class="stepper-action-record-row">
+                                                            <span class="stepper-action-record-key">{r.key}</span>
+                                                            <span class="stepper-action-record-value">{r.value}</span>
+                                                        </li>
+                                                    </template>
+                                                </ul>
+                                            </template>
+                                        </div>
+                                    </template>
                                     <template lwc:else>
-                                        <label class="stepper-refine-field">
-                                            <span class="stepper-refine-label">Raw JSON</span>
-                                            <textarea class="stepper-refine-textarea"
-                                                      rows="8"
-                                                      data-action-id={a.actionId}
-                                                      onchange={handleRefineRaw}>{a.draftRaw}</textarea>
-                                        </label>
+                                        <pre class="stepper-action-raw">{a.preview.raw}</pre>
                                     </template>
+                                </template>
 
-                                    <div class="stepper-refine-actions">
-                                        <c-pulse-button label="Cancel" variant="ghost" size="sm"
-                                                        data-action-id={a.actionId}
-                                                        onclick={handleRefineCancel}></c-pulse-button>
-                                        <c-pulse-button label="Approve with edits"
-                                                        variant="primary" size="sm"
-                                                        data-action-id={a.actionId}
-                                                        disabled={a.resolving}
-                                                        onclick={handleRefineApprove}></c-pulse-button>
+                                <template lwc:if={a.refining}>
+                                    <div class="stepper-refine-editor">
+                                        <template lwc:if={a.isEmailDraft}>
+                                            <label class="stepper-refine-field">
+                                                <span class="stepper-refine-label">To</span>
+                                                <c-pulse-input label=""
+                                                               value={a.draftEmail.to}
+                                                               data-action-id={a.actionId}
+                                                               onchange={handleRefineEmailTo}></c-pulse-input>
+                                            </label>
+                                            <label class="stepper-refine-field">
+                                                <span class="stepper-refine-label">Subject</span>
+                                                <c-pulse-input label=""
+                                                               value={a.draftEmail.subject}
+                                                               data-action-id={a.actionId}
+                                                               onchange={handleRefineEmailSubject}></c-pulse-input>
+                                            </label>
+                                            <label class="stepper-refine-field">
+                                                <span class="stepper-refine-label">Body</span>
+                                                <textarea class="stepper-refine-textarea"
+                                                          rows="6"
+                                                          data-action-id={a.actionId}
+                                                          onchange={handleRefineEmailBody}>{a.draftEmail.body}</textarea>
+                                            </label>
+                                        </template>
+
+                                        <template lwc:elseif={a.isRecordDraft}>
+                                            <ul class="stepper-refine-record-rows">
+                                                <template for:each={a.draftRecord.fields} for:item="row" for:index="idx">
+                                                    <li key={row.key} class="stepper-refine-record-row">
+                                                        <input class="stepper-field-input"
+                                                               type="text"
+                                                               placeholder="Field API name"
+                                                               data-action-id={a.actionId}
+                                                               data-index={idx}
+                                                               data-which="key"
+                                                               value={row.key}
+                                                               onchange={handleRefineRecordField} />
+                                                        <input class="stepper-field-input"
+                                                               type="text"
+                                                               placeholder="Value"
+                                                               data-action-id={a.actionId}
+                                                               data-index={idx}
+                                                               data-which="value"
+                                                               value={row.value}
+                                                               onchange={handleRefineRecordField} />
+                                                    </li>
+                                                </template>
+                                            </ul>
+                                        </template>
+
+                                        <template lwc:else>
+                                            <label class="stepper-refine-field">
+                                                <span class="stepper-refine-label">Raw JSON</span>
+                                                <textarea class="stepper-refine-textarea"
+                                                          rows="8"
+                                                          data-action-id={a.actionId}
+                                                          onchange={handleRefineRaw}>{a.draftRaw}</textarea>
+                                            </label>
+                                        </template>
+
+                                        <div class="stepper-refine-actions">
+                                            <c-pulse-button label="Cancel" variant="ghost" size="sm"
+                                                            data-action-id={a.actionId}
+                                                            onclick={handleRefineCancel}></c-pulse-button>
+                                            <c-pulse-button label="Approve with edits"
+                                                            variant="primary" size="sm"
+                                                            data-action-id={a.actionId}
+                                                            disabled={a.resolving}
+                                                            onclick={handleRefineApprove}></c-pulse-button>
+                                        </div>
                                     </div>
-                                </div>
-                            </template>
+                                </template>
 
-                            <template lwc:if={a.isPending}>
-                                <div class="stepper-phase-actions">
-                                    <c-pulse-button label="Approve" variant="primary" size="sm"
-                                                    data-action-id={a.actionId}
-                                                    disabled={a.resolving}
-                                                    onclick={handleApproveAction}>
-                                    </c-pulse-button>
-                                    <c-pulse-button label="Reject" variant="ghost" size="sm"
-                                                    data-action-id={a.actionId}
-                                                    disabled={a.resolving}
-                                                    onclick={handleRejectAction}>
-                                    </c-pulse-button>
-                                    <template lwc:if={a.refineEligible}>
-                                        <c-pulse-button label="Refine" variant="ghost" size="sm"
+                                <template lwc:if={a.isPending}>
+                                    <div class="stepper-phase-actions">
+                                        <c-pulse-button label="Approve" variant="primary" size="sm"
                                                         data-action-id={a.actionId}
                                                         disabled={a.resolving}
-                                                        onclick={handleRefineOpen}>
+                                                        onclick={handleApproveAction}>
                                         </c-pulse-button>
-                                    </template>
-                                </div>
-                            </template>
-                        </li>
-                    </template>
-                </ul>
-            </c-pulse-card>
-        </template>
-
-        <!-- Signals row: advance-this-phase buttons -->
-        <template lwc:if={hasSignals}>
-            <div class="stepper-signals">
-                <template for:each={signals} for:item="sig">
-                    <c-pulse-button key={sig.signal}
-                                    label={sig.label}
-                                    variant="primary"
-                                    data-signal={sig.signal}
-                                    onclick={handleSignalClick}></c-pulse-button>
-                </template>
-            </div>
-        </template>
-
-        <!-- Timeline -->
-        <template lwc:if={hasHistory}>
-            <div class="stepper-timeline">
-                <h3 class="stepper-timeline-heading">Step history</h3>
-                <template lwc:if={isTimelineCollapsible}>
-                    <button class="stepper-timeline-toggle" onclick={handleToggleTimeline}>
-                        {timelineToggleLabel}
-                    </button>
-                </template>
-                <ul class="stepper-timeline-list" role="list">
-                    <template for:each={historySteps} for:item="step">
-                        <li key={step.stepResultId} class="stepper-timeline-item" role="listitem">
-                            <c-pulse-card>
-                                <div class="stepper-step">
-                                    <div class="stepper-step-header">
-                                        <span class="stepper-step-label">{step.stateLabel}</span>
-                                        <c-pulse-badge label={step.outcome}
-                                                       variant={_outcomeVariant}></c-pulse-badge>
-                                    </div>
-                                    <div class="stepper-step-meta">
-                                        <span class="stepper-step-actor">{step.actorType}</span>
-                                        <template lwc:if={step.signal}>
-                                            <span class="stepper-step-signal">→ {step.signal}</span>
+                                        <c-pulse-button label="Reject" variant="ghost" size="sm"
+                                                        data-action-id={a.actionId}
+                                                        disabled={a.resolving}
+                                                        onclick={handleRejectAction}>
+                                        </c-pulse-button>
+                                        <template lwc:if={a.refineEligible}>
+                                            <c-pulse-button label="Refine" variant="ghost" size="sm"
+                                                            data-action-id={a.actionId}
+                                                            disabled={a.resolving}
+                                                            onclick={handleRefineOpen}>
+                                            </c-pulse-button>
                                         </template>
                                     </div>
-                                </div>
-                            </c-pulse-card>
-                        </li>
+                                </template>
+                            </li>
+                        </template>
+                    </ul>
+                </c-pulse-card>
+            </template>
+
+            <template lwc:if={hasSignals}>
+                <div class="stepper-signals">
+                    <template for:each={signals} for:item="sig">
+                        <c-pulse-button key={sig.signal}
+                                        label={sig.label}
+                                        variant="primary"
+                                        data-signal={sig.signal}
+                                        onclick={handleSignalClick}></c-pulse-button>
                     </template>
-                </ul>
+                </div>
+            </template>
+        </template>
+
+        <!-- Activity: step history. Collapsible when the journey is
+             present; always inline for legacy (journey-less) instances so
+             back-compat consumers see the timeline without a click. -->
+        <template lwc:if={hasHistory}>
+            <div class="stepper-timeline">
+                <template lwc:if={hasJourney}>
+                    <button class="stepper-timeline-toggle"
+                            type="button"
+                            onclick={handleToggleActivity}>
+                        {activityToggleLabel}
+                    </button>
+                </template>
+                <template lwc:if={activityOrLegacyExpanded}>
+                    <h3 class="stepper-timeline-heading">Step history</h3>
+                    <template lwc:if={isTimelineCollapsible}>
+                        <button class="stepper-timeline-toggle" onclick={handleToggleTimeline}>
+                            {timelineToggleLabel}
+                        </button>
+                    </template>
+                    <ul class="stepper-timeline-list" role="list">
+                        <template for:each={historySteps} for:item="step">
+                            <li key={step.stepResultId} class="stepper-timeline-item" role="listitem">
+                                <c-pulse-card>
+                                    <div class="stepper-step">
+                                        <div class="stepper-step-header">
+                                            <span class="stepper-step-label">{step.stateLabel}</span>
+                                            <c-pulse-badge label={step.outcome}
+                                                           variant="gray"></c-pulse-badge>
+                                        </div>
+                                        <div class="stepper-step-meta">
+                                            <span class="stepper-step-actor">{step.actorType}</span>
+                                            <template lwc:if={step.signal}>
+                                                <span class="stepper-step-signal">→ {step.signal}</span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </c-pulse-card>
+                            </li>
+                        </template>
+                    </ul>
+                </template>
             </div>
         </template>
 
