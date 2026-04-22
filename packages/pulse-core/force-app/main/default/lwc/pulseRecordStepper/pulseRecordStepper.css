@@ -319,3 +319,118 @@
     max-height: 280px;
     overflow: auto;
 }
+
+/* ── Refine inline editor ───────────────────── */
+.stepper-refine-editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-3, 12px);
+    padding: var(--pulse-space-3, 12px);
+    background: var(--pulse-off-white, #f9fafb);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-md, 8px);
+}
+
+.stepper-refine-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-1, 4px);
+}
+
+.stepper-refine-label {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-caption, 12px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-slate-dark, #334155);
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+.stepper-refine-textarea {
+    font-family: var(--pulse-font-mono, monospace);
+    font-size: var(--pulse-text-small, 13px);
+    padding: var(--pulse-space-2, 8px);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-sm, 6px);
+    background: var(--pulse-white, #ffffff);
+    color: var(--pulse-dark, #111827);
+    resize: vertical;
+}
+
+.stepper-refine-record-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.stepper-refine-record-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.stepper-refine-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--pulse-space-3, 12px);
+}
+
+/* ── Phase fields form ──────────────────────── */
+.stepper-fields-list {
+    list-style: none;
+    margin: 0 0 var(--pulse-space-4, 16px) 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-3, 12px);
+}
+
+.stepper-field-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-1, 4px);
+}
+
+.stepper-field-label-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.stepper-field-label {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-small, 13px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-slate-dark, #334155);
+}
+
+.stepper-field-input,
+.stepper-field-textarea {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-small, 13px);
+    padding: var(--pulse-space-2, 8px);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-sm, 6px);
+    background: var(--pulse-white, #ffffff);
+    color: var(--pulse-dark, #111827);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.stepper-field-textarea {
+    resize: vertical;
+}
+
+.stepper-field-checkbox {
+    width: 18px;
+    height: 18px;
+}
+
+.stepper-fields-actions {
+    display: flex;
+    justify-content: flex-end;
+}
