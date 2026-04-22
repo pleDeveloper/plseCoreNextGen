@@ -63,6 +63,10 @@ LANES_WAVE7=(
   "wave7-library|wave7-pulse-library|prompts/wave7-pulse-library.txt|wave7: Pulse Library distribution — signed bundles + trust list + rollback"
 )
 
+LANES_WAVE8=(
+  "wave8-agentic|wave8-agentic-loop|prompts/wave8-agentic-loop.txt|wave8: agentic loop — inbound email + turn trigger + AI-driven workflow state"
+)
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -549,6 +553,21 @@ wave7() {
   say "Wave 7 lane completed."
 }
 
+wave8() {
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/wave8-agentic.log"
+
+  for lane in "${LANES_WAVE8[@]}"; do
+    setup_wave3_lane_inline "$lane"
+    IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    say "Follow log with: ./scripts/orchestrate-claude.sh logs wave8-agentic"
+    run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
+  done
+
+  say "Wave 8 lane completed."
+}
+
 logs() {
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
@@ -712,6 +731,7 @@ main() {
     wave5) wave5 ;;
     wave6) wave6 ;;
     wave7) wave7 ;;
+    wave8) wave8 ;;
     merge-wave1) merge_wave1 ;;
     merge-wave2) merge_wave2 ;;
     validate) validate ;;

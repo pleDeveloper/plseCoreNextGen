@@ -1,0 +1,212 @@
+You are executing Wave 8 (Agentic Loop Wiring) for Pulse Core Next. Single-lane session on branch `wave8-agentic-loop` off `main`.
+
+Closes the full AI-driven loop the product promises: a user emails the prospect (or a Recall bot joins a call), the transcript lands as `Conversation_Turn__c` rows, an agent automatically wakes up, reads the conversation, and proposes the next action (draft a reply email asking for missing info, or advance the workflow). The HITL approver sees the proposal in the Action Hub, approves, and the action executes.
+
+# Canonical references (read first)
+- `docs/pulse-nextgen-architecture-review-and-build-plan.md` v4.1 §4.7 (AI orchestrator), §4.9 (Conversation Hub), §4.8 (SLA hooks — same TransitionHook pattern we'll reuse)
+- `docs/product-overview.md` — the "five surfaces" + AI flow narrative
+- `docs/demo-real-estate-leasing.md` — the demo we're completing
+- Existing building blocks (use as-is, do NOT rewrite):
+  - `packages/pulse-core/force-app/main/default/classes/PulseAgentRunner.cls` — has `public static RunResult run(Id instanceId)` — the single-instance entry point.
+  - `packages/pulse-core/force-app/main/default/classes/WorkflowContract.cls` — `State.toolConfig` already carries `toolKey` / `hitlPolicy` / `parameters`.
+  - `packages/pulse-tools-core/force-app/main/default/classes/PulseEmailTool.cls` — the `send_email` tool implementation.
+  - `packages/pulse-conversations-core/force-app/main/default/classes/ConversationIngestionService.cls` — bulk ingestion entry point.
+  - `packages/pulse-conversations-core/force-app/main/default/objects/Conversation_Turn__c/` — the record the trigger fires on.
+
+# Goal
+Five deliverables:
+
+1. `ConversationTurnAgentTrigger` (Apex trigger on `Conversation_Turn__c` after insert) + `PulseAgentInvokerQueueable` that asynchronously runs `PulseAgentRunner.run(instanceId)` whenever a new turn lands on a conversation linked to an active workflow instance whose current state has a `toolConfig`.
+
+2. `PulseInboundEmailHandler` (Apex `Messaging.InboundEmailHandler`) that accepts inbound email and creates `Conversation__c` + `Conversation_Turn__c` records. Routes to a specific Opportunity/Workflow_Instance via a parseable identifier in the subject line (`[Pulse:<instanceId>]`) or by matching the sender's email against existing Contact records on an Opportunity.
+
+3. Update the seeded Real Estate Leasing workflow (in `scripts/seed-real-estate-demo.apex`) to add an `intake_qualification` state with a `toolConfig` pointing to `send_email` and a system prompt that tells the LLM to draft a follow-up asking for missing qualifying info (headcount, move-in date, credit qualification).
+
+4. Integration test class `PulseAgenticLoopTest` that:
+   - Seeds an instance at `intake_qualification` state
+   - Inserts a `Conversation_Turn__c` via DML
+   - Asserts the Queueable was enqueued (AsyncApexJob count)
+   - Mocks the AI provider to return a `send_email` tool call
+   - Confirms a `Workflow_Action__c` row with `Status='Pending'` was created
+   - Approves it via `HitlService.approve()` and confirms the email-send tool fired
+
+5. `docs/agentic-loop.md` — short narrative explaining the flow, how to configure inbound email routing, how to test locally without a real LLM (mock pattern).
+
+All artifacts in `packages/pulse-core/` except the inbound email handler which belongs in Core (it drives the conversation pipeline; conversations-core consumes it).
+
+# Scope details
+
+## 1. ConversationTurnAgentTrigger + Queueable
+
+Path: `packages/pulse-core/force-app/main/default/triggers/ConversationTurnAgentTrigger.trigger`
+
+```apex
+trigger ConversationTurnAgentTrigger on Conversation_Turn__c (after insert) {
+    // Collect conversation ids → find their linked workflow instances.
+    Set<Id> conversationIds = new Set<Id>();
+    for (Conversation_Turn__c t : Trigger.new) {
+        if (t.Conversation__c != null) conversationIds.add(t.Conversation__c);
+    }
+    if (conversationIds.isEmpty()) return;
+
+    Map<Id, Id> convToInstance = new Map<Id, Id>();
+    for (Conversation__c c : [
+        SELECT Id, Workflow_Instance__c FROM Conversation__c
+        WHERE Id IN :conversationIds AND Workflow_Instance__c != null
+    ]) {
+        convToInstance.put(c.Id, c.Workflow_Instance__c);
+    }
+    if (convToInstance.isEmpty()) return;
+
+    Set<Id> instanceIds = new Set<Id>(convToInstance.values());
+
+    // Only wake the agent for instances whose current state has a toolConfig
+    // (i.e., the state is AI-driven, not human-only).
+    Set<Id> aiEligibleInstanceIds = PulseAgentInvoker.filterAiDrivenInstances(instanceIds);
+    if (aiEligibleInstanceIds.isEmpty()) return;
+
+    for (Id instId : aiEligibleInstanceIds) {
+        System.enqueueJob(new PulseAgentInvokerQueueable(instId));
+    }
+}
+```
+
+`PulseAgentInvoker` is a new helper class (`packages/pulse-core/force-app/main/default/classes/PulseAgentInvoker.cls`) with:
+
+```apex
+public with sharing class PulseAgentInvoker {
+    @TestVisible private static Boolean enqueueSuppressed = false;
+
+    public static Set<Id> filterAiDrivenInstances(Set<Id> instanceIds) {
+        // Load each instance's pinned contract, parse, look up the State for
+        // Current_State__c, return only ids whose state has a non-null
+        // toolConfig with a non-blank toolKey.
+    }
+}
+
+public with sharing class PulseAgentInvokerQueueable implements Queueable, Database.AllowsCallouts {
+    private Id instanceId;
+    public PulseAgentInvokerQueueable(Id instanceId) { this.instanceId = instanceId; }
+    public void execute(QueueableContext ctx) {
+        PulseAgentRunner.RunResult result = PulseAgentRunner.run(instanceId);
+        // Log via Workflow_Event__c for observability. Do not throw — the
+        // queueable's job is to best-effort attempt the agent; failures
+        // surface in the returned RunResult and the event log.
+    }
+}
+```
+
+Trigger must be bulk-safe — the `filterAiDrivenInstances` call + enqueue loop both scale to 200 records per trigger invocation without hitting governor limits (parse the contract once per unique definition id, not per instance).
+
+### Tests
+`ConversationTurnAgentTriggerTest`:
+- Insert a turn on a conversation linked to an AI-driven instance → assert one Queueable enqueued (count via `Test.getEnqueuedJobs()` or AsyncApexJob query in stopTest).
+- Insert a turn linked to a human-driven instance (no toolConfig on current state) → assert NO Queueable enqueued.
+- Bulk insert 50 turns across 10 instances → assert exactly 10 Queueables (one per unique AI-eligible instance, not per turn).
+- Turn with null Conversation__c → no Queueable, no NPE.
+
+## 2. PulseInboundEmailHandler
+
+Path: `packages/pulse-core/force-app/main/default/classes/PulseInboundEmailHandler.cls`
+
+```apex
+global with sharing class PulseInboundEmailHandler implements Messaging.InboundEmailHandler {
+
+    global Messaging.InboundEmailResult handleInboundEmail(
+        Messaging.InboundEmail email, Messaging.InboundEnvelope env
+    ) {
+        Messaging.InboundEmailResult result = new Messaging.InboundEmailResult();
+
+        // Routing: if the subject contains "[Pulse:<instanceId>]", use that.
+        // Otherwise try to match email.fromAddress to a Contact whose Opportunity
+        // has an active Workflow_Instance__c. If both fail, still ingest but
+        // leave Workflow_Instance__c = null (will route to the Conversation Hub
+        // unattached).
+
+        Id instanceId = PulseEmailRouter.extractInstanceId(email.subject);
+        if (instanceId == null) {
+            instanceId = PulseEmailRouter.routeByContactEmail(email.fromAddress);
+        }
+
+        // Build a ConversationInput (see ConversationIngestionService for shape)
+        ConversationIngestionService.ConversationInput input =
+            PulseEmailRouter.buildConversationInput(email, instanceId);
+
+        ConversationIngestionService.ingest(
+            new List<ConversationIngestionService.ConversationInput>{ input }
+        );
+
+        result.success = true;
+        return result;
+    }
+}
+```
+
+`PulseEmailRouter` helper:
+- `extractInstanceId(String subject)` — regex match `\[Pulse:(a0[0-9a-zA-Z]{13,15})\]` — returns the captured Id or null.
+- `routeByContactEmail(String fromAddress)` — SOQL: find Contact with Email = fromAddress, join to OpportunityContactRole, join to Workflow_Instance__c where Parent_Record_Id__c = Opportunity.Id AND Status = 'Active'. Return the most recent match or null.
+- `buildConversationInput(email, instanceId)` — normalizes the email into ConversationInput (set medium='Email', source_adapter='inbound_email', external_source_id=email.messageId, parent=the resolved instance's parent if known). Turn shape: role='Customer', speaker=email.fromName || email.fromAddress, content=email.plainTextBody (or htmlBody stripped).
+
+### Tests
+`PulseInboundEmailHandlerTest`:
+- Email with "[Pulse:<id>]" subject → conversation linked to that instance.
+- Email from known Contact on active Opportunity → auto-routed.
+- Email from unknown sender → conversation created with null Workflow_Instance__c.
+- Subject without Pulse tag + unknown sender → unattached conversation, no errors.
+
+## 3. Seed script update
+
+Modify `scripts/seed-real-estate-demo.apex` to:
+- Add a new state `intake_qualification` **before** `credit_review` in the contract (redo the state chain so transitions make sense: `intake → tour_scheduled → application_submitted → intake_qualification → credit_review → lease_drafted → signed`).
+- The `intake_qualification` state has:
+  - `type: "ai_driven"`
+  - `toolConfig: { "toolKey": "send_email", "hitlPolicy": "Approval_Required", "parameters": { "systemPrompt": "<the system prompt text>" } }`
+  - One transition: `signal="qualified", to="credit_review"` (the agent's advance after enough info gathered) and `signal="disqualified", to="declined"`.
+- Update the seeded `Workflow_Instance__c.Current_State__c` to `'intake_qualification'` (so the demo starts in the AI state, not `credit_review`).
+- Add a seeded `Workflow_Tool_Registration__mdt.customMetadata` entry for `send_email` if one isn't already there — check `packages/pulse-core/force-app/main/default/customMetadata/` and the existing CMDT file structure.
+
+## 4. Integration test
+
+`PulseAgenticLoopTest` — combines conversation-turn insert + agent runner + HITL:
+- Use `PulseAiFacade.providerOverride` (add if not already present) to inject a mock provider that returns a fixed `send_email` tool call.
+- Insert an AI-driven instance at `intake_qualification`.
+- Insert a Conversation + Turn.
+- `Test.startTest() / Test.stopTest()` to force the Queueable to execute synchronously.
+- Assert: `Workflow_Action__c` pending approval created, with `Tool_Key__c = 'send_email'` and `Request_JSON__c` containing the proposed email body.
+- Call `HitlService.approve(actionId)`.
+- Assert the action moves to `Status='Executed'` and — since we're in test context — the email tool's mocked execute succeeds.
+
+## 5. Documentation
+
+`docs/agentic-loop.md` (≤150 lines):
+- What this loop does (narrative).
+- Configuration: how to set up the inbound email address in Salesforce (Email Services → New Email Service pointing to PulseInboundEmailHandler), how to write the "[Pulse:<id>]" subject tag or wire up contact-based routing.
+- How to test without real LLM (mock the provider via `PulseAiFacade.providerOverride`).
+- How Recall.ai integrates: its transcripts land as `Conversation_Turn__c` via `RecallAdapter.normalizePayload()` + `ConversationIngestionService.ingest()` — the trigger then fires the same agent path automatically.
+
+# Discipline
+- Bulk-safe trigger (200-record safe).
+- Callout-aware Queueable with `Database.AllowsCallouts`.
+- `global` where extensions need to hook (`PulseInboundEmailHandler` is `global` so users can subclass or reuse; `PulseEmailRouter` helper stays `public`; trigger helpers `public`).
+- Brand tokens / no hardcoded hex (n/a — no new LWCs in this wave).
+- Anti-buzzword copy in commit messages and docs.
+- `./scripts/check-global-discipline.sh` must pass.
+
+# Out of scope
+- No new LWCs (the existing `pulseActionHub` surfaces the pending email approvals; `pulseConversationHub` shows the conversation that triggered the agent).
+- No email-signature verification for Recall webhooks (still deferred per `docs/recall-integration-setup.md`).
+- No auto-advance of workflow state from within the agent runner (it can propose advance via a dedicated tool call in a future wave, but don't add that tool here — focus on `send_email`).
+- No per-user HITL routing (approvals go to the current owner; real owner-routing is a later wave).
+
+# Validation gate
+1. `sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages --ignore-conflicts --json` → 0 errors.
+2. `./scripts/check-global-discipline.sh` → OK.
+3. `sf apex run test -o pulse-core-next-dev --test-level RunLocalTests --wait 30` → ≥12 new tests added (trigger + handler + loop + router), 100% pass rate held.
+4. The updated seed script `sf apex run -o pulse-core-next-dev -f scripts/seed-real-estate-demo.apex` runs cleanly and re-seeds the instance at `intake_qualification`.
+
+# Commit
+```
+git add -A && git commit -m "wave8: agentic loop — inbound email + turn trigger + AI-driven workflow state"
+```
+
+Do not push. Orchestrator handles merge; reviewer inspects.
