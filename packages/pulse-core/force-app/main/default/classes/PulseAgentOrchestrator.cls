@@ -126,8 +126,12 @@ public with sharing class PulseAgentOrchestrator {
             } else {
                 markDecisionResolved(d, 'Approved', null);
             }
-            // Re-kick the agent loop
-            return advance(instanceId);
+            // Re-kick the agent loop in a fresh transaction so the
+            // approval DML above doesn't block the Anthropic callout.
+            enqueueAdvance(instanceId);
+            r.success = true;
+            r.status = 'Queued';
+            return r;
         } catch (Exception e) {
             r.success = false;
             r.error = 'Approve failed: ' + e.getMessage();
@@ -152,7 +156,11 @@ public with sharing class PulseAgentOrchestrator {
                 'reason' => reason
             };
             markDecisionResolved(d, 'Rejected', JSON.serialize(responseMap));
-            return advance(d.Workflow_Instance__c);
+            // Deferred re-kick — see approveDecision for rationale.
+            enqueueAdvance(d.Workflow_Instance__c);
+            r.success = true;
+            r.status = 'Queued';
+            return r;
         } catch (Exception e) {
             r.success = false;
             r.error = 'Reject failed: ' + e.getMessage();
@@ -178,13 +186,33 @@ public with sharing class PulseAgentOrchestrator {
                 mergeIntoContext(d.Workflow_Instance__c, fieldKey, respMap.get('value'));
             }
             markDecisionResolved(d, 'Answered', responseJson);
-            return advance(d.Workflow_Instance__c);
+            // Deferred re-kick — see approveDecision for rationale.
+            enqueueAdvance(d.Workflow_Instance__c);
+            r.success = true;
+            r.status = 'Queued';
+            return r;
         } catch (Exception e) {
             r.success = false;
             r.error = 'Answer failed: ' + e.getMessage();
             return r;
         }
     }
+
+    /**
+     * Queue PulseAgentOrchestrator.advance(instanceId) to run in a fresh
+     * transaction. Required because approveDecision / rejectDecision /
+     * answerQuestion all do DML before wanting to kick another AI turn,
+     * and Salesforce forbids callouts after uncommitted DML. Tests can
+     * skip enqueue by setting `suppressEnqueueForTest = true`.
+     */
+    private static void enqueueAdvance(Id instanceId) {
+        if (instanceId == null) return;
+        if (suppressEnqueueForTest) return;
+        if (Test.isRunningTest()) return; // tests invoke advance synchronously via responseForTest
+        System.enqueueJob(new PulseAgentAdvanceQueueable(instanceId));
+    }
+
+    @TestVisible private static Boolean suppressEnqueueForTest = false;
 
     public static Agent_Thread__c getOrCreateThread(Id instanceId) {
         return getOrCreateThreadInternal(instanceId, loadInstance(instanceId));
@@ -409,12 +437,26 @@ public with sharing class PulseAgentOrchestrator {
         String sp = 'You are "' + persona + '", a workflow-driving AI agent for Pulse Core Next.'
             + '\nYou operate a Salesforce-native workflow by choosing ONE tool per turn:'
             + '\n- propose_action: propose a concrete tool call (e.g. send_email, update_record).'
-            + '\n- ask_user: ask the user for a field value or open-ended input.'
+            + '\n- ask_user: ask the internal Pulse admin for a field value they already know.'
             + '\n- advance_phase: request the workflow move to the next phase.'
             + '\n- observe: record a brief observation when no action is appropriate.'
-            + '\n\nGuidelines:'
-            + '\n- Be decisive but deferential. Always include a 1-3 sentence rationale.'
-            + '\n- Prefer ask_user when you need parent-record info you do not have yet.'
+            + '\n\nGrounding rules (READ CAREFULLY):'
+            + '\n- Before concluding any field is "missing", SCAN `context.conversations[*].turns[*].content` '
+            + 'for that fact. Client emails often mention desired move-in dates, square-footage requirements, '
+            + 'headcount, budget, etc. inline in the prose — extract them from there first.'
+            + '\n- If the context already contains the answer (in `context` or in any conversation turn), '
+            + 'propose_action with toolKey=update_record to set the field — do NOT ask anyone.'
+            + '\n- If the fact is NOT in the conversation and is something the client would know '
+            + '(move-in date, square-footage, headcount, budget, required amenities), propose_action '
+            + 'with toolKey=send_email drafting a concise, warm follow-up to the client asking for it. '
+            + 'Attach the question to an existing email thread when one exists (use participants from '
+            + '`context.conversations`).'
+            + '\n- Use ask_user ONLY when the fact is something only the internal team can answer '
+            + '(tour host assignment, internal credit policy, reviewer identity) — not for questions '
+            + 'you can put to the client.'
+            + '\n\nOperational rules:'
+            + '\n- Be decisive but deferential. Always include a 1-3 sentence rationale that cites '
+            + 'which conversation turn or context field you relied on.'
             + '\n- Never call the same tool twice with identical args without new input.'
             + '\n- All side-effecting tool calls are gated by human approval unless autonomy allows.'
             + '\n\nWorkflow system prompt:\n' + (String.isBlank(userPrompt) ? '(none provided)' : userPrompt);
@@ -493,6 +535,63 @@ public with sharing class PulseAgentOrchestrator {
             });
         }
         m.put('pendingActions', pendList);
+
+        // Conversation history — the agent should read prior emails/chat
+        // messages on this record before concluding information is missing.
+        // Links via Workflow_Instance__c (direct) or Parent_Record_Id__c
+        // (when the conversation was attached to the record but not yet
+        // bound to this specific instance).
+        List<Id> convIds = new List<Id>();
+        for (Conversation__c c : [
+            SELECT Id FROM Conversation__c
+            WHERE Workflow_Instance__c = :inst.Id
+               OR Parent_Record_Id__c = :inst.Parent_Record_Id__c
+            ORDER BY CreatedDate DESC
+            LIMIT 5
+        ]) { convIds.add(c.Id); }
+        List<Map<String, Object>> convList = new List<Map<String, Object>>();
+        if (!convIds.isEmpty()) {
+            Map<Id, List<Map<String, Object>>> turnsByConv = new Map<Id, List<Map<String, Object>>>();
+            for (Conversation_Turn__c t : [
+                SELECT Id, Conversation__c, Role__c, Speaker__c,
+                       Content__c, Timestamp__c, Turn_Index__c
+                FROM Conversation_Turn__c
+                WHERE Conversation__c IN :convIds
+                ORDER BY Turn_Index__c ASC
+                LIMIT 40
+            ]) {
+                if (!turnsByConv.containsKey(t.Conversation__c)) {
+                    turnsByConv.put(t.Conversation__c, new List<Map<String, Object>>());
+                }
+                // Cap per-turn content at 2000 chars to keep the prompt sane.
+                String body = t.Content__c == null ? '' : t.Content__c;
+                if (body.length() > 2000) body = body.substring(0, 2000) + '…';
+                turnsByConv.get(t.Conversation__c).add(new Map<String, Object>{
+                    'role' => t.Role__c,
+                    'speaker' => t.Speaker__c,
+                    'timestamp' => t.Timestamp__c,
+                    'content' => body
+                });
+            }
+            for (Conversation__c c : [
+                SELECT Id, Subject__c, Summary__c, Medium__c, Source_Adapter__c,
+                       Participants__c, CreatedDate
+                FROM Conversation__c
+                WHERE Id IN :convIds
+                ORDER BY CreatedDate DESC
+            ]) {
+                convList.add(new Map<String, Object>{
+                    'id' => c.Id,
+                    'subject' => c.Subject__c,
+                    'medium' => c.Medium__c,
+                    'sourceAdapter' => c.Source_Adapter__c,
+                    'participants' => c.Participants__c,
+                    'summary' => c.Summary__c,
+                    'turns' => turnsByConv.get(c.Id)
+                });
+            }
+        }
+        m.put('conversations', convList);
 
         // Last 10 decisions (by createdDate desc, reversed to chrono)
         List<Agent_Decision__c> last = [
