@@ -53,12 +53,14 @@ private class PulseConversationHubControllerTest {
     }
 
     private static void setupProjectionOverride() {
+        // Description is LongTextArea on Account; Site is a standard Text(80).
+        // Field_Type__c must match so type-coercion succeeds.
         ProjectionWriteService.projectionOverride = new List<Workflow_Projection__mdt>{
             new Workflow_Projection__mdt(
                 Field_Key__c = 'contact_name',
                 Target_Object__c = 'Account',
                 Target_Field__c = 'Description',
-                Field_Type__c = 'Text',
+                Field_Type__c = 'LongTextArea',
                 Workflow_Key__c = 'test_wf',
                 Write_Precedence__c = 1,
                 Active__c = true
@@ -66,7 +68,7 @@ private class PulseConversationHubControllerTest {
             new Workflow_Projection__mdt(
                 Field_Key__c = 'company',
                 Target_Object__c = 'Account',
-                Target_Field__c = 'Site',
+                Target_Field__c = 'Phone',
                 Field_Type__c = 'Text',
                 Workflow_Key__c = 'test_wf',
                 Write_Precedence__c = 1,
@@ -132,9 +134,21 @@ private class PulseConversationHubControllerTest {
 
     @IsTest
     static void getConversationsForInstance_scopesCorrectly() {
-        Workflow_Instance__c inst = new Workflow_Instance__c(
+        Workflow_Definition__c def = new Workflow_Definition__c(
+            Name = 'Test WF',
             Workflow_Key__c = 'test_wf',
-            Status__c = 'Active'
+            Version__c = 1,
+            Status__c = 'Published',
+            Definition_JSON__c = '{"schema":"pulse.workflow.v1","workflowKey":"test_wf","version":1,"subjectKinds":["Account"],"states":[{"key":"s1","label":"S1","type":"form","fields":[],"transitions":[]}]}'
+        );
+        insert def;
+
+        Workflow_Instance__c inst = new Workflow_Instance__c(
+            Workflow_Definition__c = def.Id,
+            Current_State__c = 's1',
+            Status__c = 'Active',
+            Pinned_Version__c = 1,
+            Started_Date__c = Datetime.now()
         );
         insert inst;
 
@@ -187,9 +201,10 @@ private class PulseConversationHubControllerTest {
             );
         Test.stopTest();
 
-        System.assertEquals(true, result.success, 'Should succeed');
-        System.assertEquals(2, result.fieldsProjected, 'Should project 2 fields');
-        System.assertEquals(0, result.errors.size(), 'Should have no errors');
+        System.assertEquals(true, result.success, 'Should succeed. errors=' + result.errors);
+        System.assertEquals(2, result.fieldsProjected,
+            'Should project 2 fields. errors=' + result.errors + ' fieldsProjected=' + result.fieldsProjected);
+        System.assertEquals(0, result.errors.size(), 'Should have no errors: ' + result.errors);
 
         Conversation_Extract__c updated = [
             SELECT Status__c, Reviewed_By__c, Reviewed_Date__c
@@ -384,8 +399,10 @@ private class PulseConversationHubControllerTest {
         try {
             PulseConversationHubController.requestReextraction(conv.Id);
         } catch (AuraHandledException e) {
+            // AuraHandledException.getMessage() returns 'Script-thrown exception'
+            // in test context (Apex runtime quirk) — we can only verify the type,
+            // not the message. The message is preserved for LWC consumers at runtime.
             threw = true;
-            System.assert(e.getMessage().contains('no turns'));
         }
         Test.stopTest();
 
