@@ -22,8 +22,26 @@ function nextRowId() {
     return `cb_${rowSeq}`;
 }
 
-function freshRule() {
-    return { rowId: nextRowId(), field: '', op: 'EQUALS', value: '' };
+const RULE_TYPE_FIELD         = 'field';
+const RULE_TYPE_ACTION_STATUS = 'action_status';
+
+function freshRule(ruleType) {
+    const rt = ruleType || RULE_TYPE_FIELD;
+    if (rt === RULE_TYPE_ACTION_STATUS) {
+        return {
+            rowId: nextRowId(),
+            ruleType: rt,
+            action: '',
+            statusEquals: ''
+        };
+    }
+    return {
+        rowId: nextRowId(),
+        ruleType: RULE_TYPE_FIELD,
+        field: '',
+        op: 'EQUALS',
+        value: ''
+    };
 }
 
 function isValueless(op) {
@@ -43,6 +61,14 @@ function isValueless(op) {
  *                         point-in-time evaluations (entry/exit/custom
  *                         progression) where change-aware operators don't
  *                         apply.
+ *   @api actionOptions  — optional Array<{key,label}> of sibling actions.
+ *                         When non-empty, each rule row exposes a
+ *                         rule-type dropdown (Field / Action status), and
+ *                         Action-status rows serialize as
+ *                           { type: 'action_status', action, statusEquals }
+ *                         matching PulseWorkflowTriggerEvaluator's typed
+ *                         rule shape. Empty/undefined leaves the classic
+ *                         field-only UI intact.
  *
  * Events:
  *   change — detail: { tree: { logic, rules } }
@@ -53,10 +79,19 @@ export default class PulseConditionBuilder extends LightningElement {
 
     @track _logic = 'AND';
     @track _rules = [freshRule()];
+    @track _actionOptions = [];
 
     _targetObject = '';
     _fields = [];
     _hydratedFrom = null;
+
+    @api
+    get actionOptions() {
+        return this._actionOptions;
+    }
+    set actionOptions(value) {
+        this._actionOptions = Array.isArray(value) ? value : [];
+    }
 
     @api
     get conditionTree() {
@@ -99,22 +134,49 @@ export default class PulseConditionBuilder extends LightningElement {
                 rules = [
                     {
                         rowId: nextRowId(),
+                        ruleType: RULE_TYPE_FIELD,
                         field: tree.field,
                         op: tree.op,
                         value: tree.value != null ? String(tree.value) : ''
+                    }
+                ];
+            } else if (tree.type === RULE_TYPE_ACTION_STATUS) {
+                rules = [
+                    {
+                        rowId: nextRowId(),
+                        ruleType: RULE_TYPE_ACTION_STATUS,
+                        action: tree.action || '',
+                        statusEquals:
+                            tree.statusEquals != null
+                                ? String(tree.statusEquals)
+                                : ''
                     }
                 ];
             } else {
                 logic = (tree.logic || 'AND').toUpperCase();
                 const rawRules = Array.isArray(tree.rules) ? tree.rules : [];
                 rules = rawRules
-                    .filter((r) => r && r.field)
-                    .map((r) => ({
-                        rowId: nextRowId(),
-                        field: r.field || '',
-                        op: r.op || 'EQUALS',
-                        value: r.value != null ? String(r.value) : ''
-                    }));
+                    .filter((r) => r && (r.field || r.type === RULE_TYPE_ACTION_STATUS))
+                    .map((r) => {
+                        if (r.type === RULE_TYPE_ACTION_STATUS) {
+                            return {
+                                rowId: nextRowId(),
+                                ruleType: RULE_TYPE_ACTION_STATUS,
+                                action: r.action || '',
+                                statusEquals:
+                                    r.statusEquals != null
+                                        ? String(r.statusEquals)
+                                        : ''
+                            };
+                        }
+                        return {
+                            rowId: nextRowId(),
+                            ruleType: RULE_TYPE_FIELD,
+                            field: r.field || '',
+                            op: r.op || 'EQUALS',
+                            value: r.value != null ? String(r.value) : ''
+                        };
+                    });
             }
         }
         if (rules.length === 0) rules = [freshRule()];
@@ -126,8 +188,23 @@ export default class PulseConditionBuilder extends LightningElement {
         return {
             logic: this._logic,
             rules: this._rules
-                .filter((r) => r.field || isValueless(r.op))
+                .filter((r) => {
+                    if (r.ruleType === RULE_TYPE_ACTION_STATUS) {
+                        return !!r.action;
+                    }
+                    return r.field || isValueless(r.op);
+                })
                 .map((r) => {
+                    if (r.ruleType === RULE_TYPE_ACTION_STATUS) {
+                        const out = {
+                            type: RULE_TYPE_ACTION_STATUS,
+                            action: r.action
+                        };
+                        if (r.statusEquals != null && r.statusEquals !== '') {
+                            out.statusEquals = r.statusEquals;
+                        }
+                        return out;
+                    }
                     const out = { field: r.field, op: r.op };
                     if (!isValueless(r.op)) out.value = this._coerceValue(r.value);
                     return out;
@@ -175,17 +252,45 @@ export default class PulseConditionBuilder extends LightningElement {
         return this._rules.length > 1;
     }
 
+    get hasActionOptions() {
+        return this._actionOptions && this._actionOptions.length > 0;
+    }
+
+    get _ruleTypeOptions() {
+        return [
+            { label: 'Field', value: RULE_TYPE_FIELD },
+            { label: 'Action status', value: RULE_TYPE_ACTION_STATUS }
+        ];
+    }
+
     get decoratedRules() {
         const fieldByName = new Map(
             this._fields.map((f) => [f.apiName, f])
         );
         const opOpts = this._opOptions;
+        const showRuleTypeSelector = this.hasActionOptions;
+        const ruleTypeOpts = this._ruleTypeOptions;
         return this._rules.map((r) => {
-            const meta = fieldByName.get(r.field);
+            const ruleType = r.ruleType || RULE_TYPE_FIELD;
+            const isActionStatus = ruleType === RULE_TYPE_ACTION_STATUS;
+            const meta = isActionStatus ? null : fieldByName.get(r.field);
             const isPicklist = meta && meta.fieldType === 'PICKLIST';
-            const hideValue = isValueless(r.op);
+            const hideValue = !isActionStatus && isValueless(r.op);
             return {
                 ...r,
+                isActionStatus,
+                isFieldRule: !isActionStatus,
+                showRuleTypeSelector,
+                ruleTypeOptions: ruleTypeOpts.map((opt) => ({
+                    ...opt,
+                    selected: opt.value === ruleType
+                })),
+                actionEmpty: !r.action,
+                actionOptions: (this._actionOptions || []).map((a) => ({
+                    label: a.label || a.key || '',
+                    value: a.key || a.value || '',
+                    selected: (a.key || a.value) === r.action
+                })),
                 isPicklist,
                 hideValue,
                 fieldEmpty: !r.field,
@@ -244,6 +349,42 @@ export default class PulseConditionBuilder extends LightningElement {
     handleRuleValueChange(event) {
         this._patchRule(event, {
             value: event.detail?.value ?? event.target.value
+        });
+    }
+
+    handleRuleTypeChange(event) {
+        const ruleRowId = event.currentTarget.dataset.ruleRowId;
+        const nextType = event.detail?.value ?? event.target.value;
+        this._rules = this._rules.map((r) => {
+            if (r.rowId !== ruleRowId) return r;
+            if (nextType === RULE_TYPE_ACTION_STATUS) {
+                return {
+                    rowId: r.rowId,
+                    ruleType: RULE_TYPE_ACTION_STATUS,
+                    action: '',
+                    statusEquals: ''
+                };
+            }
+            return {
+                rowId: r.rowId,
+                ruleType: RULE_TYPE_FIELD,
+                field: '',
+                op: 'EQUALS',
+                value: ''
+            };
+        });
+        this._emitChange();
+    }
+
+    handleRuleActionChange(event) {
+        this._patchRule(event, {
+            action: event.detail?.value ?? event.target.value
+        });
+    }
+
+    handleRuleStatusEqualsChange(event) {
+        this._patchRule(event, {
+            statusEquals: event.detail?.value ?? event.target.value
         });
     }
 

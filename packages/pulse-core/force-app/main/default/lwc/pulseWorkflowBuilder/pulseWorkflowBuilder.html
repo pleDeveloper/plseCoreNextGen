@@ -209,6 +209,23 @@
 
                 <!-- Right panel (inspector) -->
                 <div class="builder-right">
+                    <template lwc:if={hasActionSelected}>
+                        <div class="builder-action-inspector">
+                            <div class="builder-inspector-header">
+                                <h3 class="builder-panel-title">Action: {selectedAction.label}</h3>
+                                <c-pulse-button label="Close" variant="ghost" size="sm"
+                                                onclick={handleCloseActionInspector}>
+                                </c-pulse-button>
+                            </div>
+                            <c-pulse-action-status-editor
+                                statuses={selectedActionStatuses}
+                                initial-status-key={selectedActionInitialStatusKey}
+                                target-object={phaseSettingsTargetObject}
+                                workflow-actions={siblingActionsForSelected}
+                                onchange={handleActionStatusesChange}>
+                            </c-pulse-action-status-editor>
+                        </div>
+                    </template>
                     <template lwc:if={hasFieldSelected}>
                         <c-pulse-field-editor
                             state-key={selectedStateKey}
@@ -258,6 +275,29 @@
                                     </ul>
                                 </template>
                             </div>
+
+                            <!-- Actions list -->
+                            <template lwc:if={selectedState.hasActions}>
+                                <div class="builder-section">
+                                    <div class="builder-section-header">
+                                        <h4 class="builder-section-title">Actions</h4>
+                                    </div>
+                                    <ul class="builder-action-list">
+                                        <template for:each={selectedState.actions} for:item="a">
+                                            <li key={a.key}
+                                                class="builder-action-item"
+                                                data-action-key={a.key}
+                                                onclick={handleSelectAction}>
+                                                <span class="builder-action-label">{a.label}</span>
+                                                <span class="builder-action-type">{a.actionType}</span>
+                                                <template lwc:if={a.statusCount}>
+                                                    <c-pulse-badge label="Status machine" variant="purple"></c-pulse-badge>
+                                                </template>
+                                            </li>
+                                        </template>
+                                    </ul>
+                                </div>
+                            </template>
 
                             <!-- Transitions list -->
                             <div class="builder-section">

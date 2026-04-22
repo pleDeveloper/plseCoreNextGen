@@ -14,40 +14,11 @@
         <ul class="cb-rules">
             <template for:each={decoratedRules} for:item="r">
                 <li key={r.rowId} class="cb-rule-row">
-                    <select class="cb-select cb-rule-field"
-                            data-rule-row-id={r.rowId}
-                            onchange={handleRuleFieldChange}>
-                        <option value="" selected={r.fieldEmpty}>— field —</option>
-                        <template for:each={r.fieldOptions} for:item="opt">
-                            <option key={opt.value}
-                                    value={opt.value}
-                                    selected={opt.selected}>
-                                {opt.label}
-                            </option>
-                        </template>
-                    </select>
-
-                    <select class="cb-select cb-rule-op"
-                            data-rule-row-id={r.rowId}
-                            onchange={handleRuleOpChange}>
-                        <template for:each={r.opOptions} for:item="opt">
-                            <option key={opt.value}
-                                    value={opt.value}
-                                    selected={opt.selected}>
-                                {opt.label}
-                            </option>
-                        </template>
-                    </select>
-
-                    <template lwc:if={r.hideValue}>
-                        <div class="cb-rule-value-placeholder">—</div>
-                    </template>
-                    <template lwc:elseif={r.isPicklist}>
-                        <select class="cb-select"
+                    <template lwc:if={r.showRuleTypeSelector}>
+                        <select class="cb-select cb-rule-type"
                                 data-rule-row-id={r.rowId}
-                                onchange={handleRuleValueChange}>
-                            <option value="" selected={r.valueEmpty}>— value —</option>
-                            <template for:each={r.picklistOptions} for:item="opt">
+                                onchange={handleRuleTypeChange}>
+                            <template for:each={r.ruleTypeOptions} for:item="opt">
                                 <option key={opt.value}
                                         value={opt.value}
                                         selected={opt.selected}>
@@ -56,12 +27,78 @@
                             </template>
                         </select>
                     </template>
-                    <template lwc:else>
-                        <c-pulse-input value={r.value}
-                                       placeholder="Value"
+
+                    <template lwc:if={r.isActionStatus}>
+                        <select class="cb-select cb-rule-action"
+                                data-rule-row-id={r.rowId}
+                                onchange={handleRuleActionChange}>
+                            <option value="" selected={r.actionEmpty}>— action —</option>
+                            <template for:each={r.actionOptions} for:item="opt">
+                                <option key={opt.value}
+                                        value={opt.value}
+                                        selected={opt.selected}>
+                                    {opt.label}
+                                </option>
+                            </template>
+                        </select>
+                        <div class="cb-rule-op-static">is</div>
+                        <c-pulse-input value={r.statusEquals}
+                                       placeholder="Status key (e.g. Sent)"
                                        data-rule-row-id={r.rowId}
-                                       onchange={handleRuleValueChange}>
+                                       onchange={handleRuleStatusEqualsChange}>
                         </c-pulse-input>
+                    </template>
+
+                    <template lwc:if={r.isFieldRule}>
+                        <select class="cb-select cb-rule-field"
+                                data-rule-row-id={r.rowId}
+                                onchange={handleRuleFieldChange}>
+                            <option value="" selected={r.fieldEmpty}>— field —</option>
+                            <template for:each={r.fieldOptions} for:item="opt">
+                                <option key={opt.value}
+                                        value={opt.value}
+                                        selected={opt.selected}>
+                                    {opt.label}
+                                </option>
+                            </template>
+                        </select>
+
+                        <select class="cb-select cb-rule-op"
+                                data-rule-row-id={r.rowId}
+                                onchange={handleRuleOpChange}>
+                            <template for:each={r.opOptions} for:item="opt">
+                                <option key={opt.value}
+                                        value={opt.value}
+                                        selected={opt.selected}>
+                                    {opt.label}
+                                </option>
+                            </template>
+                        </select>
+
+                        <template lwc:if={r.hideValue}>
+                            <div class="cb-rule-value-placeholder">—</div>
+                        </template>
+                        <template lwc:elseif={r.isPicklist}>
+                            <select class="cb-select"
+                                    data-rule-row-id={r.rowId}
+                                    onchange={handleRuleValueChange}>
+                                <option value="" selected={r.valueEmpty}>— value —</option>
+                                <template for:each={r.picklistOptions} for:item="opt">
+                                    <option key={opt.value}
+                                            value={opt.value}
+                                            selected={opt.selected}>
+                                        {opt.label}
+                                    </option>
+                                </template>
+                            </select>
+                        </template>
+                        <template lwc:else>
+                            <c-pulse-input value={r.value}
+                                           placeholder="Value"
+                                           data-rule-row-id={r.rowId}
+                                           onchange={handleRuleValueChange}>
+                            </c-pulse-input>
+                        </template>
                     </template>
 
                     <button class="cb-rule-delete"

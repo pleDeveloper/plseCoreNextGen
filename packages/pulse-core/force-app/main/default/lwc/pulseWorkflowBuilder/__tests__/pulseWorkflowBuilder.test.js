@@ -47,6 +47,12 @@ jest.mock(
 );
 
 jest.mock(
+    '@salesforce/apex/PulseActionStatusTemplateController.listTemplates',
+    () => ({ default: jest.fn(() => Promise.resolve([])) }),
+    { virtual: true }
+);
+
+jest.mock(
     '@salesforce/apex/PulseWorkflowBuilderController.loadWorkflow',
     () => ({
         default: jest.fn(() =>
@@ -340,6 +346,63 @@ describe('c-pulse-workflow-builder', () => {
         const intake = state.workflow.states.find((s) => s.key === 'intake');
         expect(intake.progression.mode).toBe('field_change');
         expect(state.ui.dirty).toBe(true);
+    });
+
+    it('mounts the action status editor when an action is selected', async () => {
+        const el = createComponent();
+        dispatch({
+            type: 'SET_WORKFLOW_META',
+            workflowKey: 'test_wf',
+            subjectKinds: ['Account']
+        });
+        dispatch({
+            type: 'ADD_STATE',
+            stateKey: 'phase1',
+            label: 'Phase 1'
+        });
+        // Seed the phase with an action + statuses via LOAD_WORKFLOW so the
+        // builder has an action to pick (ADD_STATE doesn't create actions).
+        dispatch({
+            type: 'LOAD_WORKFLOW',
+            workflow: {
+                schema: 'pulse.workflow.v1',
+                workflowKey: 'test_wf',
+                name: 'test',
+                version: 1,
+                subjectKinds: ['Account'],
+                states: [
+                    {
+                        key: 'phase1',
+                        label: 'Phase 1',
+                        type: 'ai_driven',
+                        fields: [],
+                        transitions: [],
+                        actions: [
+                            {
+                                key: 'send_followup_email',
+                                label: 'Send follow-up email',
+                                type: 'ai_tool',
+                                statuses: [
+                                    { key: 'Drafting', label: 'Drafting', order: 0, category: 'open', isInitial: true }
+                                ],
+                                initialStatusKey: 'Drafting'
+                            }
+                        ]
+                    }
+                ]
+            }
+        });
+        dispatch({ type: 'SELECT_STATE', stateKey: 'phase1' });
+        await flushPromises();
+
+        // Click the action list item to select the action.
+        const actionItem = el.shadowRoot.querySelector('.builder-action-item');
+        expect(actionItem).not.toBeNull();
+        actionItem.click();
+        await flushPromises();
+
+        const editor = el.shadowRoot.querySelector('c-pulse-action-status-editor');
+        expect(editor).not.toBeNull();
     });
 
     it('shows dirty indicator when store is dirty', async () => {

@@ -107,6 +107,10 @@ export default class PulseWorkflowBuilder extends LightningElement {
         return this.ui.selectedFieldKey;
     }
 
+    get selectedActionKey() {
+        return this.ui.selectedActionKey;
+    }
+
     get isCreating() {
         return !this.workflowKey;
     }
@@ -200,7 +204,11 @@ export default class PulseWorkflowBuilder extends LightningElement {
     }
 
     get hasStateSelectedNoField() {
-        return !!this.selectedStateKey && !this.selectedFieldKey;
+        return (
+            !!this.selectedStateKey &&
+            !this.selectedFieldKey &&
+            !this.selectedActionKey
+        );
     }
 
     get noSelection() {
@@ -216,9 +224,15 @@ export default class PulseWorkflowBuilder extends LightningElement {
             ...s,
             hasFields: s.fields && s.fields.length > 0,
             hasTransitions: s.transitions && s.transitions.length > 0,
+            hasActions: s.actions && s.actions.length > 0,
             fields: (s.fields || []).map((f) => ({
                 ...f,
                 projected: f.projection && f.projection.enabled
+            })),
+            actions: (s.actions || []).map((a) => ({
+                ...a,
+                selected: a.key === this.selectedActionKey,
+                statusCount: (a.statuses || []).length
             })),
             transitions: (s.transitions || []).map((t, i) => ({
                 ...t,
@@ -226,6 +240,42 @@ export default class PulseWorkflowBuilder extends LightningElement {
                 compositeKey: `${t.signal}_${t.to}_${i}`
             }))
         };
+    }
+
+    // ── Action inspector (status editor) ──────────────────────────
+
+    get hasActionSelected() {
+        return !!this.selectedStateKey && !!this.selectedActionKey;
+    }
+
+    get selectedAction() {
+        if (!this.selectedStateKey || !this.selectedActionKey) return null;
+        const s = this.states.find((st) => st.key === this.selectedStateKey);
+        if (!s) return null;
+        return (s.actions || []).find((a) => a.key === this.selectedActionKey) || null;
+    }
+
+    get selectedActionStatuses() {
+        const a = this.selectedAction;
+        return (a && a.statuses) || [];
+    }
+
+    get selectedActionInitialStatusKey() {
+        const a = this.selectedAction;
+        return (a && a.initialStatusKey) || '';
+    }
+
+    /**
+     * Sibling-action options for the action-status rule type inside each
+     * status's entryConditions — we exclude the selected action itself to
+     * prevent a row referencing its own status machine.
+     */
+    get siblingActionsForSelected() {
+        const s = this.states.find((st) => st.key === this.selectedStateKey);
+        if (!s || !s.actions) return [];
+        return s.actions
+            .filter((a) => a.key !== this.selectedActionKey)
+            .map((a) => ({ key: a.key, label: a.label || a.key }));
     }
 
     // ── Phase settings (entry/exit/progression/status rules) ──────
@@ -699,6 +749,38 @@ export default class PulseWorkflowBuilder extends LightningElement {
             type: 'REMOVE_TRANSITION',
             stateKey: this.selectedStateKey,
             transitionIndex: idx
+        });
+    }
+
+    // ── Action handlers ───────────────────────────────────────────
+
+    handleSelectAction(event) {
+        const actionKey = event.currentTarget.dataset.actionKey;
+        if (!actionKey) return;
+        dispatch({
+            type: 'SELECT_ACTION',
+            stateKey: this.selectedStateKey,
+            actionKey
+        });
+    }
+
+    handleCloseActionInspector() {
+        // Clear action selection but preserve state selection.
+        dispatch({
+            type: 'SELECT_STATE',
+            stateKey: this.selectedStateKey
+        });
+    }
+
+    handleActionStatusesChange(event) {
+        if (!this.selectedStateKey || !this.selectedActionKey) return;
+        const detail = event.detail || {};
+        dispatch({
+            type: 'UPDATE_ACTION_STATUSES',
+            stateKey: this.selectedStateKey,
+            actionKey: this.selectedActionKey,
+            statuses: detail.statuses || [],
+            initialStatusKey: detail.initialStatusKey || ''
         });
     }
 

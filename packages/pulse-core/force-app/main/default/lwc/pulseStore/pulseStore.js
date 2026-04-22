@@ -21,6 +21,7 @@ const INITIAL_WORKFLOW = {
 const INITIAL_UI = {
     selectedStateKey: null,
     selectedFieldKey: null,
+    selectedActionKey: null,
     selectedTransitionIndex: null,
     dirty: false,
     publishing: false,
@@ -404,6 +405,75 @@ function reduce(cur, action) {
                 ui: { ...cur.ui, dirty: true }
             };
 
+        // ── Action status machine ─────────────────────────────────
+        // action.statuses is the full list of StatusDef-shaped objects
+        // for the target action; the reducer replaces the current list
+        // wholesale (parent owns the state). action.initialStatusKey is
+        // optional — pass it alongside to keep store + contract in sync.
+        case 'UPDATE_ACTION_STATUSES':
+            return {
+                ...cur,
+                workflow: {
+                    ...cur.workflow,
+                    states: cur.workflow.states.map((s) => {
+                        if (s.key !== action.stateKey) return s;
+                        return {
+                            ...s,
+                            actions: (s.actions || []).map((a) =>
+                                a.key === action.actionKey
+                                    ? {
+                                          ...a,
+                                          statuses: action.statuses || [],
+                                          initialStatusKey:
+                                              action.initialStatusKey !==
+                                              undefined
+                                                  ? action.initialStatusKey
+                                                  : a.initialStatusKey
+                                      }
+                                    : a
+                            )
+                        };
+                    })
+                },
+                ui: { ...cur.ui, dirty: true }
+            };
+
+        case 'UPDATE_ACTION_INITIAL_STATUS':
+            return {
+                ...cur,
+                workflow: {
+                    ...cur.workflow,
+                    states: cur.workflow.states.map((s) => {
+                        if (s.key !== action.stateKey) return s;
+                        return {
+                            ...s,
+                            actions: (s.actions || []).map((a) =>
+                                a.key === action.actionKey
+                                    ? {
+                                          ...a,
+                                          initialStatusKey:
+                                              action.initialStatusKey || ''
+                                      }
+                                    : a
+                            )
+                        };
+                    })
+                },
+                ui: { ...cur.ui, dirty: true }
+            };
+
+        case 'SELECT_ACTION':
+            return {
+                ...cur,
+                ui: {
+                    ...cur.ui,
+                    selectedStateKey: action.stateKey,
+                    selectedActionKey: action.actionKey,
+                    selectedFieldKey: null,
+                    selectedTransitionIndex: null
+                }
+            };
+
         case 'LOAD_WORKFLOW':
             return {
                 ...cur,
@@ -449,6 +519,7 @@ function reduce(cur, action) {
                     ...cur.ui,
                     selectedStateKey: action.stateKey,
                     selectedFieldKey: null,
+                    selectedActionKey: null,
                     selectedTransitionIndex: null
                 }
             };
@@ -460,6 +531,7 @@ function reduce(cur, action) {
                     ...cur.ui,
                     selectedStateKey: action.stateKey,
                     selectedFieldKey: action.fieldKey,
+                    selectedActionKey: null,
                     selectedTransitionIndex: null
                 }
             };
@@ -471,6 +543,7 @@ function reduce(cur, action) {
                     ...cur.ui,
                     selectedStateKey: action.stateKey,
                     selectedFieldKey: null,
+                    selectedActionKey: null,
                     selectedTransitionIndex: action.transitionIndex
                 }
             };

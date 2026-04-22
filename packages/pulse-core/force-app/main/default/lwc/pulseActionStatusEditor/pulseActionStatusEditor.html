@@ -1,0 +1,170 @@
+<template>
+    <div class="ase-shell">
+        <div class="ase-header">
+            <h4 class="ase-title">Status machine</h4>
+            <c-pulse-button label="Import template"
+                            variant="ghost"
+                            size="sm"
+                            onclick={handleOpenPicker}>
+            </c-pulse-button>
+        </div>
+
+        <template lwc:if={hasRows}>
+            <ul class="ase-status-list">
+                <template for:each={decoratedRows} for:item="r">
+                    <li key={r.rowId} class="ase-status-row">
+                        <div class="ase-row-top">
+                            <span class="ase-row-order">{r.position}</span>
+
+                            <div class="ase-reorder">
+                                <button class="ase-reorder-btn"
+                                        title="Move up"
+                                        disabled={r.moveUpDisabled}
+                                        data-row-id={r.rowId}
+                                        onclick={handleMoveUp}>
+                                    ▲
+                                </button>
+                                <button class="ase-reorder-btn"
+                                        title="Move down"
+                                        disabled={r.moveDownDisabled}
+                                        data-row-id={r.rowId}
+                                        onclick={handleMoveDown}>
+                                    ▼
+                                </button>
+                            </div>
+
+                            <c-pulse-input
+                                label="Label"
+                                value={r.label}
+                                placeholder="e.g. Sent"
+                                data-row-id={r.rowId}
+                                onchange={handleLabelChange}>
+                            </c-pulse-input>
+
+                            <c-pulse-input
+                                label="Key"
+                                value={r.key}
+                                placeholder="e.g. Sent"
+                                data-row-id={r.rowId}
+                                onchange={handleKeyChange}>
+                            </c-pulse-input>
+
+                            <label class="ase-category-label">
+                                <span class="ase-category-label-text">Category</span>
+                                <select class="ase-category-select"
+                                        data-row-id={r.rowId}
+                                        onchange={handleCategoryChange}>
+                                    <template for:each={r.categoryOptions} for:item="opt">
+                                        <option key={opt.value}
+                                                value={opt.value}
+                                                selected={opt.selected}>
+                                            {opt.label}
+                                        </option>
+                                    </template>
+                                </select>
+                            </label>
+
+                            <label class="ase-initial-label" title="Initial status">
+                                <input type="radio"
+                                       name="ase-initial"
+                                       checked={r.isInitial}
+                                       data-row-id={r.rowId}
+                                       onchange={handleSelectInitial}/>
+                                <span class="ase-initial-text">Initial</span>
+                            </label>
+
+                            <template lwc:if={r.canRemove}>
+                                <button class="ase-remove-btn"
+                                        title="Remove status"
+                                        data-row-id={r.rowId}
+                                        onclick={handleRemoveRow}>
+                                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                </button>
+                            </template>
+                        </div>
+
+                        <div class="ase-row-conditions">
+                            <span class="ase-row-conditions-label">Entry conditions</span>
+                            <c-pulse-condition-builder
+                                condition-tree={r.entryConditions}
+                                target-object={targetObject}
+                                action-options={workflowActions}
+                                logic-label="Enter when"
+                                hide-change-ops
+                                data-row-id={r.rowId}
+                                onchange={handleEntryConditionsChange}>
+                            </c-pulse-condition-builder>
+                        </div>
+                    </li>
+                </template>
+            </ul>
+        </template>
+
+        <c-pulse-button label="+ Add status"
+                        variant="ghost"
+                        size="sm"
+                        onclick={handleAddStatus}>
+        </c-pulse-button>
+
+        <!-- Template picker (inline, modal-styled) -->
+        <template lwc:if={showPicker}>
+            <div class="ase-picker-backdrop" onclick={handleClosePicker}></div>
+            <div class="ase-picker-dialog" role="dialog" aria-label="Import status template">
+                <div class="ase-picker-header">
+                    <h4 class="ase-picker-title">Import status template</h4>
+                    <button class="ase-picker-close"
+                            aria-label="Close"
+                            onclick={handleClosePicker}>
+                        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                            <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="ase-picker-body">
+                    <template lwc:if={pickerLoading}>
+                        <div class="ase-picker-loading">Loading templates…</div>
+                    </template>
+                    <template lwc:if={pickerError}>
+                        <div class="ase-picker-error">{pickerError}</div>
+                    </template>
+                    <template lwc:if={hasTemplates}>
+                        <ul class="ase-template-list">
+                            <template for:each={templateOptions} for:item="t">
+                                <li key={t.templateKey}
+                                    class="ase-template-item"
+                                    data-template-key={t.templateKey}
+                                    onclick={handlePickTemplate}>
+                                    <div class="ase-template-name">{t.displayName}</div>
+                                    <div class="ase-template-desc">{t.description}</div>
+                                </li>
+                            </template>
+                        </ul>
+                    </template>
+
+                    <template lwc:if={showImportConfirm}>
+                        <div class="ase-import-confirm">
+                            <p>
+                                Importing <strong>{confirmTemplateName}</strong> will
+                                replace your current status list. Continue?
+                            </p>
+                            <div class="ase-import-confirm-actions">
+                                <c-pulse-button label="Cancel"
+                                                variant="ghost"
+                                                size="sm"
+                                                onclick={handleCancelImport}>
+                                </c-pulse-button>
+                                <c-pulse-button label="Replace"
+                                                variant="primary"
+                                                size="sm"
+                                                onclick={handleConfirmImport}>
+                                </c-pulse-button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

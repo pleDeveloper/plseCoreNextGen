@@ -83,6 +83,13 @@
     font-size: var(--pulse-text-small, 13px);
 }
 
+.cb-rule-op-static {
+    padding: var(--pulse-space-2, 8px) var(--pulse-space-3, 12px);
+    color: var(--pulse-slate, #64748b);
+    font-size: var(--pulse-text-small, 13px);
+    text-align: center;
+}
+
 .cb-rule-delete {
     background: transparent;
     border: 1px solid transparent;
