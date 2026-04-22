@@ -1,0 +1,175 @@
+You are executing Wave 3c (End-User Runtime Surfaces) for the Pulse Core Next project. Single-lane session on branch `wave3c-runtime-surfaces` off `main`. This wave closes the Phase 0B vertical slice per v4.1 §5: admin-authored workflows become runnable end-to-end on a Salesforce record page.
+
+# Canonical references (read FIRST)
+- `docs/pulse-nextgen-architecture-review-and-build-plan.md` v4.1:
+  - §4.1 Product Surfaces — end-user runtime is standard record-page LWCs (NOT the SPA)
+  - §4.7 AI + HITL — Workflow_Action__c is the approval record
+  - §6 Chat 17 (Record Stepper) and Chat 19 (Action Hub)
+- `docs/brand-kit/README.md` — loader pattern, tokens
+- Inspect the Wave 3a primitives and Wave 3b canvas so you understand the established patterns:
+  - `packages/pulse-core/force-app/main/default/lwc/pulseBrandTokens/pulseBrandTokens.js` (loader)
+  - The six primitives (pulseButton / pulseInput / pulseBadge / pulseCard / pulseToggle / pulseModal)
+  - `packages/pulse-core/force-app/main/default/classes/WorkflowRuntime.cls` (advance API)
+  - `packages/pulse-core/force-app/main/default/classes/HitlService.cls` (approval API)
+
+# Goal
+Ship two record-page LWCs + one Apex runtime controller so a non-admin user can:
+1. See the current workflow state + available signals on a record they own.
+2. Click a signal → runtime advances the workflow → the UI updates with new state + step history.
+3. See pending HITL approvals surfaced on the record.
+4. Approve / reject a pending action → HitlService resolves it → agent runner continues.
+
+All three artifacts live in `packages/pulse-core/` since they're core runtime surfaces, not extension points.
+
+## 1. PulseRuntimeController (Apex)
+Path: `packages/pulse-core/force-app/main/default/classes/PulseRuntimeController.cls`
+
+`global with sharing class PulseRuntimeController` with these `@AuraEnabled` methods:
+
+- `@AuraEnabled(cacheable=true) public static InstanceView getInstanceForRecord(Id recordId)` — finds the active `Workflow_Instance__c` where `Subject_Record_Id__c = recordId`, loads its contract, returns a DTO:
+
+  ```
+  global class InstanceView {
+    @AuraEnabled public Id       instanceId;
+    @AuraEnabled public String   workflowKey;
+    @AuraEnabled public String   workflowName;
+    @AuraEnabled public String   currentStateKey;
+    @AuraEnabled public String   currentStateLabel;
+    @AuraEnabled public String   currentStateType;  // 'form' | 'approval' | 'terminal' | etc.
+    @AuraEnabled public String   status;            // 'Active' | 'Completed' | ...
+    @AuraEnabled public List<SignalView> availableSignals;
+    @AuraEnabled public List<StepView>   history;
+    @AuraEnabled public Integer  pendingActionCount;
+  }
+  global class SignalView {
+    @AuraEnabled public String signal;
+    @AuraEnabled public String targetStateKey;
+    @AuraEnabled public String targetStateLabel;
+  }
+  global class StepView {
+    @AuraEnabled public Id       stepResultId;
+    @AuraEnabled public String   stateKey;
+    @AuraEnabled public String   stateLabel;
+    @AuraEnabled public String   signal;
+    @AuraEnabled public String   outcome;
+    @AuraEnabled public String   actorType;
+    @AuraEnabled public Id       actorUserId;
+    @AuraEnabled public Datetime startedAt;
+    @AuraEnabled public Datetime completedAt;
+  }
+  ```
+  Returns `null` if no active instance. Handles instance not linked to any record gracefully.
+
+- `@AuraEnabled public static AdvanceView advanceInstance(Id instanceId, String signal, String payloadJson, String idempotencyKey)` — wraps `WorkflowRuntime.advance` for a single request. Returns:
+
+  ```
+  global class AdvanceView {
+    @AuraEnabled public Boolean success;
+    @AuraEnabled public Boolean idempotent;
+    @AuraEnabled public String  error;
+    @AuraEnabled public String  fromStateKey;
+    @AuraEnabled public String  toStateKey;
+    @AuraEnabled public InstanceView refreshed;  // pre-fetched post-advance view for the UI to swap in
+  }
+  ```
+  Use a single DML transaction — the WorkflowRuntime already commits its own stepResult/event/instance update DML; this controller should NOT re-insert those.
+
+- `@AuraEnabled(cacheable=true) public static List<ActionView> getPendingActions(Id instanceId)` — returns `Workflow_Action__c` rows with `Status__c = 'Pending'` on the given instance. Each `ActionView`:
+
+  ```
+  global class ActionView {
+    @AuraEnabled public Id       actionId;
+    @AuraEnabled public String   toolKey;
+    @AuraEnabled public String   hitlPolicy;
+    @AuraEnabled public String   requestJson;      // the proposed tool call
+    @AuraEnabled public Datetime requestedDate;
+    @AuraEnabled public String   requestedByName;  // owner's name for display
+  }
+  ```
+
+- `@AuraEnabled public static ActionResolveResult resolveAction(Id actionId, String decision, String notes)` — `decision` ∈ {'Approve', 'Reject'}. Calls `HitlService.approve()` or `HitlService.reject()` accordingly. Returns:
+
+  ```
+  global class ActionResolveResult {
+    @AuraEnabled public Boolean success;
+    @AuraEnabled public String  resultStatus;  // 'Executed' | 'Rejected' | 'Failed'
+    @AuraEnabled public String  message;
+  }
+  ```
+
+Test class `PulseRuntimeControllerTest` with ≥90% coverage of each method, happy-path + error branches (no instance, bad signal, bad action id, already-resolved action). Create test data via helper methods (insertDef / insertInstance / insertAction) following the same style as WorkflowRuntimeTest.
+
+## 2. pulseRecordStepper LWC
+Path: `packages/pulse-core/force-app/main/default/lwc/pulseRecordStepper/`
+
+Standard LWC for record pages. `pulseRecordStepper.js-meta.xml`:
+- `isExposed = true`
+- `targets = lightning__RecordPage`
+- `masterLabel = 'Pulse Workflow Stepper'`
+- `description = 'Shows the active Pulse workflow state and available signals for the current record.'`
+
+JS module contract:
+- Wire `@api recordId` (provided automatically on record pages).
+- On `connectedCallback()`: `loadPulseBrandTokens(this)` + call `getInstanceForRecord({ recordId })` via `@wire`. Handle loading state, no-instance state ("No active workflow for this record"), and error state.
+- Render:
+  - **Header card** (pulseCard): workflow name + current state as a gradient pill. Show pending-action count as a magenta badge if > 0.
+  - **Signals row**: one `<c-pulse-button variant="primary">` per available signal. Click → open a small modal with a payload textarea (optional) → submit calls `advanceInstance`. On success, refresh the wire (use `refreshApex`).
+  - **Timeline**: list of completed steps (pulseCard each) with actor, timestamps, outcome. Use `pulseBadge` for outcome status. Collapsed by default if >5 steps, expandable.
+
+HTML / CSS / tests standard shape. Tests must cover:
+- No-instance render (empty state).
+- Active instance render with 2 signals + 3 history steps.
+- Click a signal → modal opens → submit → advanceInstance called with correct args.
+- Error state from advance renders as a dismissible pulseBadge error.
+
+## 3. pulseActionHub LWC
+Path: `packages/pulse-core/force-app/main/default/lwc/pulseActionHub/`
+
+Record-page LWC for HITL approvals. `pulseActionHub.js-meta.xml`:
+- `isExposed = true`
+- `targets = lightning__RecordPage, lightning__AppPage`
+- `masterLabel = 'Pulse Action Hub'`
+
+JS module contract:
+- `@api recordId` (record-page context) OR `@api instanceId` (app-page override).
+- On `connectedCallback()`: load tokens + fetch instance (via `getInstanceForRecord` if recordId mode) then fetch pending actions (via `getPendingActions`).
+- Render:
+  - Heading: "Approvals awaiting you" + count badge.
+  - Empty state: "No pending approvals for this workflow."
+  - For each pending action: a pulseCard with:
+    - Tool key + HITL policy badge
+    - Request JSON pretty-printed in a `<pre>` block with monospace tokens
+    - Timestamp + requester name
+    - Two pulseButtons: "Approve" (variant=primary) and "Reject" (variant=ghost)
+    - Optional pulseInput for notes
+  - On Approve/Reject click → call `resolveAction` → toast via browser `alert()` fallback (no lightning-toast since we're avoiding SLDS base components) → refreshApex.
+
+Tests cover: empty state, pending action render, approve click fires correct args, reject click fires correct args, error response renders error state.
+
+# Integration with Admin Studio (optional in this wave)
+Add a new nav item "Action Hub" to `pulseAdminStudio.html` that renders `<c-pulse-action-hub instance-id="..."></c-pulse-action-hub>` for the currently-selected workflow instance. (A full instance-picker is a later wave; for now a placeholder that just wires the component is fine.)
+
+# Brand discipline
+- Every new LWC calls `loadPulseBrandTokens(this)` in connectedCallback.
+- No hardcoded hex outside `var(--pulse-*, #fallback)` patterns.
+- No lightning-input / lightning-button / lightning-icon / other SLDS base components. Use Pulse primitives only.
+- Sentence case for headings. Anti-buzzword UI copy ("Advance" not "Unlock progress", "Approve" not "Empower decision").
+
+# Out of scope
+- Do not modify WorkflowRuntime, HitlService, or any existing Apex class beyond adding the new PulseRuntimeController + test.
+- Do not build the Conversation Hub (deferred to a later wave).
+- Do not touch extension packages.
+- Do not add routing libraries.
+- Do not wire real-time subscriptions (platform-event CDC for instance updates) — lightweight wire refresh on interaction is enough.
+
+# Validation gate
+1. `sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages/pulse-core --ignore-conflicts` → Succeeded 0 errors.
+2. `sf apex run test -o pulse-core-next-dev --test-level RunLocalTests --wait 30` → keeps 100% pass rate; PulseRuntimeControllerTest adds ≥6 tests all green.
+3. `npx sfdx-lwc-jest --skipApiVersionCheck` → all LWC tests green.
+
+# Commit
+```
+git add -A && git commit -m "wave3c: record stepper + action hub + runtime controller"
+```
+
+Do not push. Orchestrator merges; reviewer will inspect before signing off.

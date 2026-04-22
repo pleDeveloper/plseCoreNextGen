@@ -43,6 +43,10 @@ LANES_WAVE3B=(
   "wave3b-builder|wave3b-workflow-builder|prompts/wave3b-workflow-builder.txt|wave3b: workflow builder canvas with live projection preview"
 )
 
+LANES_WAVE3C=(
+  "wave3c-runtime|wave3c-runtime-surfaces|prompts/wave3c-runtime-surfaces.txt|wave3c: record stepper + action hub + runtime controller"
+)
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -454,6 +458,21 @@ wave3b() {
   say "Wave 3b lane completed."
 }
 
+wave3c() {
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/wave3c-runtime.log"
+
+  for lane in "${LANES_WAVE3C[@]}"; do
+    setup_wave3_lane_inline "$lane"
+    IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    say "Follow log with: ./scripts/orchestrate-claude.sh logs wave3c-runtime"
+    run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
+  done
+
+  say "Wave 3c lane completed."
+}
+
 logs() {
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
@@ -612,6 +631,7 @@ main() {
     wave2b-split) wave2b_split ;;
     wave3a) wave3a ;;
     wave3b) wave3b ;;
+    wave3c) wave3c ;;
     merge-wave1) merge_wave1 ;;
     merge-wave2) merge_wave2 ;;
     validate) validate ;;
