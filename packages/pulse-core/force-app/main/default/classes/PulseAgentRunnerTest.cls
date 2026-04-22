@@ -185,9 +185,11 @@ private class PulseAgentRunnerTest {
 
     @IsTest
     static void testRunWithToolNotFound() {
-        PulseAiFacade.setProviderForTest(new MockProvider('autonomous_tool'));
+        // Use a tool key that's guaranteed absent from the tool registry
+        // (the shipped CMDT registry includes update_record, send_email,
+        // external_api — so we can't rely on those being missing).
+        PulseAiFacade.setProviderForTest(new MockProvider('missing_tool'));
         PulseToolRegistry.clearForTest();
-        // Do not register 'update_record' — it should produce TOOL_NOT_FOUND
 
         Test.startTest();
         PulseAgentRunner.RunResult result = PulseAgentRunner.run(getInstanceId());
@@ -258,6 +260,15 @@ private class PulseAgentRunnerTest {
                 tc.id = 'toolu_001';
                 tc.toolKey = 'update_record';
                 tc.inputJson = '{"recordId":"001000000000001","objectType":"Account","fields":{"Name":"Test"}}';
+                resp.toolCalls.add(tc);
+            } else if (scenario == 'missing_tool') {
+                // Tool key that's definitely not in the shipped tool registry,
+                // used to assert TOOL_NOT_FOUND emission.
+                resp.text = 'I will call a tool that does not exist.';
+                PulseAiModels.ToolCall tc = new PulseAiModels.ToolCall();
+                tc.id = 'toolu_missing';
+                tc.toolKey = 'definitely_not_a_real_tool';
+                tc.inputJson = '{}';
                 resp.toolCalls.add(tc);
             } else if (scenario == 'approval_tool') {
                 resp.text = 'I will send an email.';

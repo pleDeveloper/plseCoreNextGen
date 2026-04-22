@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Phase_Key__c</fullName>
+    <label>Phase Key</label>
+    <description>State/phase key this action belongs to (e.g. intake_qualification). The action only exists while the instance is at this phase.</description>
+    <length>80</length>
+    <type>Text</type>
+</CustomField>

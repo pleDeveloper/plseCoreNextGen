@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Required_For_Phase__c</fullName>
+    <label>Required For Phase</label>
+    <description>If true, the phase cannot advance until this action reaches a successful terminal state (Executed). Optional actions do not block phase advancement.</description>
+    <defaultValue>true</defaultValue>
+    <type>Checkbox</type>
+</CustomField>

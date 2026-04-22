@@ -54,11 +54,13 @@ String contractJson =
         '"fields":[],' +
         '"transitions":[{"signal":"qualify","to":"intake_qualification"},{"signal":"decline","to":"declined"}]},' +
       '{"key":"intake_qualification","label":"Intake Qualification","type":"ai_driven",' +
-        '"toolConfig":{"toolKey":"send_email","hitlPolicy":"Approval_Required",' +
-        '"parameters":{"systemPrompt":"You are a leasing qualification assistant for Pulse Core Next. ' +
-        'Review the conversation history and the applicant context. Draft a follow-up email to the prospect ' +
-        'asking for any missing qualifying information: headcount, desired move-in date, and credit qualification ' +
-        'documentation. Be professional and concise. Use the send_email tool."}},' +
+        '"advancement":"manual_decision",' +
+        '"actions":[' +
+          '{"key":"send_followup_email","label":"Send follow-up email","type":"ai_tool",' +
+            '"required":true,"dependsOn":[],"sequence":0,' +
+            '"config":{"toolKey":"send_email","hitlPolicy":"Approval_Required",' +
+            '"parameters":{"systemPrompt":"You are a leasing qualification assistant for Pulse Core Next. Review the conversation history and the applicant context. Draft a follow-up email to the prospect asking for any missing qualifying information: headcount, desired move-in date, and credit qualification documentation. Be professional and concise. Use the send_email tool."}}}' +
+        '],' +
         '"transitions":[{"signal":"qualified","to":"credit_review"},{"signal":"disqualified","to":"declined"}]},' +
       '{"key":"credit_review","label":"Credit Review","type":"approval",' +
         '"fields":[' +
@@ -348,19 +350,43 @@ if (extractCount == 0) {
 // ------------------------------------------------------------
 // 6. Pending HITL action (AI proposed a follow-up email at intake_qualification)
 // ------------------------------------------------------------
-Integer pendingActions = [
-    SELECT COUNT() FROM plse__Workflow_Action__c
+// Upsert the pending action keyed on (phase_key, action_key) — the
+// WorkflowInstanceActionTrigger may have already instantiated a skeleton
+// row; we populate it with the demo email payload.
+List<plse__Workflow_Action__c> existingActions = [
+    SELECT Id, plse__Status__c, plse__Action_Key__c
+    FROM plse__Workflow_Action__c
     WHERE plse__Workflow_Instance__c = :inst.Id
-      AND plse__Status__c = 'Pending'
+      AND plse__Phase_Key__c = 'intake_qualification'
+      AND plse__Action_Key__c = 'send_followup_email'
+    LIMIT 1
 ];
-if (pendingActions == 0) {
+String demoEmailJson = '{"toAddress":"jordan@abproperties.com","subject":"Additional information needed for your lease application","body":"Hi Jordan — thank you for your interest in the Lexington Ave space. To move forward with qualification, we need a few more details:\\n\\n1. Expected headcount\\n2. Desired move-in date\\n3. Credit qualification documentation\\n\\nPlease reply at your earliest convenience.\\n\\nBest regards,\\nLeasing Team"}';
+if (!existingActions.isEmpty()) {
+    plse__Workflow_Action__c a = existingActions[0];
+    a.plse__Request_JSON__c      = demoEmailJson;
+    a.plse__Label__c             = 'Send follow-up email';
+    a.plse__Tool_Key__c          = 'send_email';
+    a.plse__HITL_Policy__c       = 'Approval_Required';
+    a.plse__Required_For_Phase__c = true;
+    if (a.plse__Status__c != 'Executed' && a.plse__Status__c != 'Rejected') {
+        a.plse__Status__c = 'Pending';
+    }
+    update a;
+    System.debug('### Updated existing Workflow_Action__c: ' + a.Id);
+} else {
     insert new plse__Workflow_Action__c(
         plse__Workflow_Instance__c = inst.Id,
-        plse__Tool_Key__c = 'send_email',
-        plse__Action_Type__c = 'AI_Tool_Call',
-        plse__HITL_Policy__c = 'Approval_Required',
-        plse__Status__c = 'Pending',
-        plse__Request_JSON__c = '{"toAddress":"jordan@abproperties.com","subject":"Additional information needed for your lease application","body":"Hi Jordan — thank you for your interest in the Lexington Ave space. To move forward with qualification, we need a few more details:\\n\\n1. Expected headcount\\n2. Desired move-in date\\n3. Credit qualification documentation\\n\\nPlease reply at your earliest convenience.\\n\\nBest regards,\\nLeasing Team"}'
+        plse__Action_Key__c       = 'send_followup_email',
+        plse__Phase_Key__c        = 'intake_qualification',
+        plse__Label__c            = 'Send follow-up email',
+        plse__Tool_Key__c         = 'send_email',
+        plse__Action_Type__c      = 'AI_Tool_Call',
+        plse__HITL_Policy__c      = 'Approval_Required',
+        plse__Status__c           = 'Pending',
+        plse__Required_For_Phase__c = true,
+        plse__Sequence__c         = 0,
+        plse__Request_JSON__c     = demoEmailJson
     );
     System.debug('### Created pending Workflow_Action__c');
 }

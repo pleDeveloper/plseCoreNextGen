@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Depends_On_Actions__c</fullName>
+    <label>Depends On Actions</label>
+    <description>JSON array of action_key strings that must reach a terminal state before this action instantiates. Empty/null means no dependencies.</description>
+    <length>4000</length>
+    <type>LongTextArea</type>
+    <visibleLines>3</visibleLines>
+</CustomField>

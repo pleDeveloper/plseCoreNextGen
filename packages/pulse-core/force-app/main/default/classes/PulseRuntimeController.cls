@@ -18,6 +18,29 @@ global with sharing class PulseRuntimeController {
         @AuraEnabled public List<SignalView> availableSignals;
         @AuraEnabled public List<StepView>   history;
         @AuraEnabled public Integer  pendingActionCount;
+        // ── Phase/actions model (new) ──────────────────────────────
+        @AuraEnabled public List<PhaseActionView> phaseActions;
+        @AuraEnabled public String   phaseAdvancement;   // 'auto' | 'manual_decision'
+        @AuraEnabled public Boolean  phaseComplete;
+    }
+
+    global class PhaseActionView {
+        @AuraEnabled public Id       actionId;
+        @AuraEnabled public String   actionKey;
+        @AuraEnabled public String   phaseKey;
+        @AuraEnabled public String   label;
+        @AuraEnabled public String   actionType;       // AI_Tool_Call | Approval | Task
+        @AuraEnabled public String   toolKey;
+        @AuraEnabled public String   hitlPolicy;
+        @AuraEnabled public String   requestJson;
+        @AuraEnabled public String   status;           // Pending | Executed | Rejected | Failed | Cancelled
+        @AuraEnabled public Boolean  required;
+        @AuraEnabled public Boolean  blocked;          // deps not yet complete
+        @AuraEnabled public List<String> dependsOn;
+        @AuraEnabled public Integer  sequence;
+        @AuraEnabled public Datetime requestedDate;
+        @AuraEnabled public String   requestedByName;
+        @AuraEnabled public Datetime resolvedDate;
     }
 
     global class SignalView {
@@ -295,6 +318,96 @@ global with sharing class PulseRuntimeController {
               AND Status__c = 'Pending'
         ];
 
+        // Phase + actions for the current state
+        view.phaseActions = buildPhaseActions(inst, wf);
+        WorkflowContract.State curStateForAdv = wf != null ? wf.getState(inst.Current_State__c) : null;
+        view.phaseAdvancement = curStateForAdv != null ? curStateForAdv.effectiveAdvancement() : null;
+        view.phaseComplete    = PulseActionInstantiationService.phaseComplete(inst.Id);
+
         return view;
+    }
+
+    private static List<PhaseActionView> buildPhaseActions(
+        Workflow_Instance__c inst,
+        WorkflowContract.Workflow wf
+    ) {
+        List<PhaseActionView> out = new List<PhaseActionView>();
+        if (inst == null || String.isBlank(inst.Current_State__c)) return out;
+
+        WorkflowContract.State phase = wf != null ? wf.getState(inst.Current_State__c) : null;
+        if (phase == null || phase.actions == null || phase.actions.isEmpty()) return out;
+
+        // Load all action rows for this phase (any status) so the UI can
+        // show completed + pending + rejected side by side.
+        Map<String, Workflow_Action__c> rowByKey = new Map<String, Workflow_Action__c>();
+        for (Workflow_Action__c a : [
+            SELECT Id, Action_Key__c, Phase_Key__c, Label__c, Action_Type__c,
+                   Tool_Key__c, HITL_Policy__c, Request_JSON__c, Status__c,
+                   Required_For_Phase__c, Sequence__c, Depends_On_Actions__c,
+                   CreatedDate, Resolved_Date__c, CreatedBy.Name
+            FROM Workflow_Action__c
+            WHERE Workflow_Instance__c = :inst.Id
+              AND Phase_Key__c = :inst.Current_State__c
+              AND Action_Key__c != null
+        ]) {
+            rowByKey.put(a.Action_Key__c, a);
+        }
+
+        // Build view in contract-defined order so deterministic UI.
+        Set<String> terminalSuccess = new Set<String>{ 'Executed' };
+        for (WorkflowContract.ActionDef def : phase.actions) {
+            PhaseActionView v = new PhaseActionView();
+            v.actionKey  = def.key;
+            v.phaseKey   = phase.key;
+            v.label      = def.label != null ? def.label : def.key;
+            v.required   = def.required != false;
+            v.dependsOn  = def.dependsOn != null ? def.dependsOn : new List<String>();
+            v.sequence   = def.sequence;
+
+            Workflow_Action__c row = rowByKey.get(def.key);
+            if (row != null) {
+                v.actionId       = row.Id;
+                v.actionType     = row.Action_Type__c;
+                v.toolKey        = row.Tool_Key__c;
+                v.hitlPolicy     = row.HITL_Policy__c;
+                v.requestJson    = row.Request_JSON__c;
+                v.status         = row.Status__c;
+                v.requestedDate  = row.CreatedDate;
+                v.requestedByName= row.CreatedBy != null ? row.CreatedBy.Name : null;
+                v.resolvedDate   = row.Resolved_Date__c;
+                v.blocked        = false;
+            } else {
+                // Row doesn't exist yet: determine whether it's blocked
+                // on dependencies, or simply hasn't been instantiated.
+                v.status      = 'Blocked';
+                v.actionType  = actionTypeFromContractType(def.actionType);
+                v.blocked     = true;
+                // If deps ARE satisfied but row is missing, that means
+                // instantiation should have happened — flag as "Ready"
+                // so the UI shows it meaningfully.
+                Boolean allDepsMet = true;
+                if (def.dependsOn != null) {
+                    for (String depKey : def.dependsOn) {
+                        Workflow_Action__c depRow = rowByKey.get(depKey);
+                        if (depRow == null || !terminalSuccess.contains(depRow.Status__c)) {
+                            allDepsMet = false;
+                            break;
+                        }
+                    }
+                }
+                if (allDepsMet) {
+                    v.status  = 'Ready';
+                    v.blocked = false;
+                }
+            }
+            out.add(v);
+        }
+        return out;
+    }
+
+    private static String actionTypeFromContractType(String contractType) {
+        if (contractType == 'ai_tool')  return 'AI_Tool_Call';
+        if (contractType == 'approval') return 'Approval';
+        return 'Task';
     }
 }

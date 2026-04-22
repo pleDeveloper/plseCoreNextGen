@@ -282,19 +282,38 @@ for (Integer i = 0; i < names.size(); i++) {
         System.debug('### Created Conversation + 3 turns for: ' + oppName);
     }
 
-    Integer pending = [
-        SELECT COUNT() FROM plse__Workflow_Action__c
+    List<plse__Workflow_Action__c> existingAct = [
+        SELECT Id, plse__Status__c
+        FROM plse__Workflow_Action__c
         WHERE plse__Workflow_Instance__c = :inst.Id
-          AND plse__Status__c = 'Pending'
+          AND plse__Phase_Key__c = 'intake_qualification'
+          AND plse__Action_Key__c = 'send_followup_email'
+        LIMIT 1
     ];
-    if (pending == 0) {
+    if (!existingAct.isEmpty()) {
+        plse__Workflow_Action__c a = existingAct[0];
+        a.plse__Request_JSON__c       = requests[i];
+        a.plse__Label__c              = 'Send follow-up email';
+        a.plse__Tool_Key__c           = 'send_email';
+        a.plse__HITL_Policy__c        = 'Approval_Required';
+        a.plse__Required_For_Phase__c = true;
+        if (a.plse__Status__c != 'Executed' && a.plse__Status__c != 'Rejected') {
+            a.plse__Status__c = 'Pending';
+        }
+        update a;
+    } else {
         insert new plse__Workflow_Action__c(
             plse__Workflow_Instance__c = inst.Id,
-            plse__Tool_Key__c = 'send_email',
-            plse__Action_Type__c = 'AI_Tool_Call',
-            plse__HITL_Policy__c = 'Approval_Required',
-            plse__Status__c = 'Pending',
-            plse__Request_JSON__c = requests[i]
+            plse__Action_Key__c        = 'send_followup_email',
+            plse__Phase_Key__c         = 'intake_qualification',
+            plse__Label__c             = 'Send follow-up email',
+            plse__Tool_Key__c          = 'send_email',
+            plse__Action_Type__c       = 'AI_Tool_Call',
+            plse__HITL_Policy__c       = 'Approval_Required',
+            plse__Status__c            = 'Pending',
+            plse__Required_For_Phase__c = true,
+            plse__Sequence__c          = 0,
+            plse__Request_JSON__c      = requests[i]
         );
         System.debug('### Created pending HITL action for: ' + oppName);
     }

@@ -41,6 +41,16 @@ public with sharing class WorkflowContract {
         public ToolConfig toolConfig;
         public UiConfig uiConfig;
 
+        // ── New in phase/actions model ─────────────────────────────
+        // If actions is non-empty, the state is a "phase" with one or
+        // more actions inside it. 'advancement' controls what happens
+        // when all required actions complete: 'auto' fires the first
+        // transition; 'manual_decision' requires the user to pick an
+        // outcome. 'manual_decision' is the default when multiple
+        // transitions exist and advancement is unset (backward compat).
+        public List<ActionDef> actions;
+        public String advancement;   // 'auto' | 'manual_decision'
+
         public Transition getTransition(String signal) {
             if (transitions != null) {
                 for (Transition t : transitions) {
@@ -51,6 +61,35 @@ public with sharing class WorkflowContract {
             }
             return null;
         }
+
+        public ActionDef getAction(String actionKey) {
+            if (actions != null) {
+                for (ActionDef a : actions) {
+                    if (a.key == actionKey) return a;
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Effective advancement mode: explicit 'advancement' wins; else
+         * 'auto' if 0-1 transitions, 'manual_decision' if multiple.
+         */
+        public String effectiveAdvancement() {
+            if (String.isNotBlank(advancement)) return advancement;
+            Integer transCount = transitions == null ? 0 : transitions.size();
+            return transCount > 1 ? 'manual_decision' : 'auto';
+        }
+    }
+
+    public class ActionDef {
+        public String key;
+        public String label;
+        public String actionType;        // 'ai_tool' | 'approval' | 'form' | 'auto' | 'wait'
+        public Boolean required;         // default true — blocks phase advancement
+        public List<String> dependsOn;   // action keys that must terminate before this instantiates
+        public Map<String, Object> config; // type-specific (toolKey, hitlPolicy, etc.)
+        public Integer sequence;         // display order
     }
 
     public class FieldDef {
@@ -162,6 +201,35 @@ public with sharing class WorkflowContract {
                 }
             }
         }
+
+        // Validate actions within each phase: unique keys + resolvable deps.
+        for (State s : wf.states) {
+            if (s.actions == null || s.actions.isEmpty()) continue;
+            Set<String> actionKeys = new Set<String>();
+            for (ActionDef a : s.actions) {
+                if (String.isBlank(a.key)) {
+                    errors.add('Action in state "' + s.key + '" has blank key');
+                    continue;
+                }
+                if (!actionKeys.add(a.key)) {
+                    errors.add('Duplicate action key in state "' + s.key + '": ' + a.key);
+                }
+                if (String.isBlank(a.actionType)) {
+                    errors.add('Action "' + a.key + '" in state "' + s.key + '" has blank type');
+                }
+            }
+            for (ActionDef a : s.actions) {
+                if (a.dependsOn == null) continue;
+                for (String dep : a.dependsOn) {
+                    if (!actionKeys.contains(dep)) {
+                        errors.add('Action "' + a.key + '" in state "' + s.key + '" depends on unknown action: ' + dep);
+                    }
+                    if (dep == a.key) {
+                        errors.add('Action "' + a.key + '" in state "' + s.key + '" depends on itself');
+                    }
+                }
+            }
+        }
         return errors;
     }
 
@@ -228,7 +296,53 @@ public with sharing class WorkflowContract {
         if (uiObj instanceof Map<String, Object>) {
             s.uiConfig = mapUiConfig((Map<String, Object>) uiObj);
         }
+        // Phase/actions additions
+        s.advancement = (String) raw.get('advancement');
+        Object actionsObj = raw.get('actions');
+        if (actionsObj instanceof List<Object>) {
+            s.actions = new List<ActionDef>();
+            Integer idx = 0;
+            for (Object aObj : (List<Object>) actionsObj) {
+                if (aObj instanceof Map<String, Object>) {
+                    ActionDef ad = mapActionDef((Map<String, Object>) aObj);
+                    if (ad.sequence == null) ad.sequence = idx;
+                    s.actions.add(ad);
+                }
+                idx++;
+            }
+        }
+        // Backward compatibility: states with toolConfig but no explicit
+        // actions[] stay under the legacy PulseAgentRunner path (the agent
+        // creates Workflow_Action__c rows via HitlService.createApproval).
+        // We do NOT synthesize actions here — that would cause double
+        // instantiation when the agent runs.
         return s;
+    }
+
+    private static ActionDef mapActionDef(Map<String, Object> raw) {
+        ActionDef a = new ActionDef();
+        a.key        = (String) raw.get('key');
+        a.label      = (String) raw.get('label');
+        a.actionType = (String) raw.get('type');
+        a.required   = raw.get('required') != false; // default true when unset
+        Object depsObj = raw.get('dependsOn');
+        a.dependsOn = new List<String>();
+        if (depsObj instanceof List<Object>) {
+            for (Object d : (List<Object>) depsObj) {
+                a.dependsOn.add(String.valueOf(d));
+            }
+        }
+        Object configObj = raw.get('config');
+        if (configObj instanceof Map<String, Object>) {
+            a.config = (Map<String, Object>) configObj;
+        }
+        Object seqObj = raw.get('sequence');
+        if (seqObj instanceof Decimal) {
+            a.sequence = ((Decimal) seqObj).intValue();
+        } else if (seqObj instanceof Integer) {
+            a.sequence = (Integer) seqObj;
+        }
+        return a;
     }
 
     private static FieldDef mapFieldDef(Map<String, Object> raw) {

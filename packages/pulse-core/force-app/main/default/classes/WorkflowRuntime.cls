@@ -65,9 +65,10 @@ public with sharing class WorkflowRuntime {
             return new List<AdvanceResult>();
         }
 
-        // Auto-register dwell-time hook once per transaction
+        // Auto-register dwell-time hook + phase-action hook once per transaction
         if (!stageDwellRegistered) {
             StageDwellHook.register();
+            PhaseActionHook.register();
             stageDwellRegistered = true;
         }
 

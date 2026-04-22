@@ -47,7 +47,94 @@
             </div>
         </template>
 
-        <!-- Signals row -->
+        <!-- Action error -->
+        <template lwc:if={hasActionError}>
+            <div class="stepper-advance-error">
+                <c-pulse-badge label={actionError} variant="error"></c-pulse-badge>
+                <c-pulse-button label="Dismiss" variant="ghost" size="sm"
+                                onclick={handleDismissActionError}></c-pulse-button>
+            </div>
+        </template>
+
+        <!-- Phase actions (new unified model) -->
+        <template lwc:if={hasPhaseActions}>
+            <c-pulse-card>
+                <h3 class="stepper-phase-heading">Tasks in this phase</h3>
+                <ul class="stepper-phase-list">
+                    <template for:each={phaseActions} for:item="a">
+                        <li key={a.actionKey} class="stepper-phase-item">
+                            <div class="stepper-phase-item-head">
+                                <div class="stepper-phase-item-title">
+                                    <span class="stepper-phase-label">{a.label}</span>
+                                    <span class="stepper-phase-required">{a.requiredLabel}</span>
+                                </div>
+                                <c-pulse-badge label={a.status} variant={a.statusVariant}></c-pulse-badge>
+                            </div>
+
+                            <template lwc:if={a.blockedReason}>
+                                <p class="stepper-phase-blocked">{a.blockedReason}</p>
+                            </template>
+
+                            <template lwc:if={a.preview}>
+                                <template lwc:if={a.preview.isEmail}>
+                                    <div class="stepper-action-email">
+                                        <div class="stepper-action-email-row">
+                                            <span class="stepper-action-email-label">To</span>
+                                            <span class="stepper-action-email-value">{a.preview.to}</span>
+                                        </div>
+                                        <div class="stepper-action-email-row">
+                                            <span class="stepper-action-email-label">Subject</span>
+                                            <span class="stepper-action-email-value stepper-action-email-subject">{a.preview.subject}</span>
+                                        </div>
+                                        <div class="stepper-action-email-body">{a.preview.body}</div>
+                                    </div>
+                                </template>
+                                <template lwc:elseif={a.preview.isRecord}>
+                                    <div class="stepper-action-record">
+                                        <template lwc:if={a.preview.objectType}>
+                                            <div class="stepper-action-email-row">
+                                                <span class="stepper-action-email-label">Object</span>
+                                                <span class="stepper-action-email-value">{a.preview.objectType}</span>
+                                            </div>
+                                        </template>
+                                        <template lwc:if={a.preview.hasRows}>
+                                            <ul class="stepper-action-record-rows">
+                                                <template for:each={a.preview.rows} for:item="r">
+                                                    <li key={r.key} class="stepper-action-record-row">
+                                                        <span class="stepper-action-record-key">{r.key}</span>
+                                                        <span class="stepper-action-record-value">{r.value}</span>
+                                                    </li>
+                                                </template>
+                                            </ul>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template lwc:else>
+                                    <pre class="stepper-action-raw">{a.preview.raw}</pre>
+                                </template>
+                            </template>
+
+                            <template lwc:if={a.isPending}>
+                                <div class="stepper-phase-actions">
+                                    <c-pulse-button label="Approve" variant="primary" size="sm"
+                                                    data-action-id={a.actionId}
+                                                    disabled={a.resolving}
+                                                    onclick={handleApproveAction}>
+                                    </c-pulse-button>
+                                    <c-pulse-button label="Reject" variant="ghost" size="sm"
+                                                    data-action-id={a.actionId}
+                                                    disabled={a.resolving}
+                                                    onclick={handleRejectAction}>
+                                    </c-pulse-button>
+                                </div>
+                            </template>
+                        </li>
+                    </template>
+                </ul>
+            </c-pulse-card>
+        </template>
+
+        <!-- Signals row: advance-this-phase buttons -->
         <template lwc:if={hasSignals}>
             <div class="stepper-signals">
                 <template for:each={signals} for:item="sig">

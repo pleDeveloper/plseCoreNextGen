@@ -9,6 +9,12 @@ jest.mock(
     { virtual: true }
 );
 
+jest.mock(
+    '@salesforce/apex/PulseRuntimeController.resolveAction',
+    () => ({ default: jest.fn(() => Promise.resolve({ success: true, message: 'ok' })) }),
+    { virtual: true }
+);
+
 const MOCK_INSTANCE = {
     instanceId: 'a0Fxx0000000001',
     workflowKey: 'test_wf',
