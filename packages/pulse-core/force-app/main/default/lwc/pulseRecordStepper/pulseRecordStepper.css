@@ -1,0 +1,151 @@
+:host {
+    display: block;
+}
+
+.stepper-loading,
+.stepper-empty {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-body, 14px);
+    color: var(--pulse-slate, #64748b);
+    padding: var(--pulse-space-4, 16px);
+    text-align: center;
+}
+
+/* ── Header ─────────────────────────────────── */
+.stepper-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-3, 12px);
+}
+
+.stepper-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--pulse-space-3, 12px);
+}
+
+.stepper-workflow-name {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-h3, 18px);
+    font-weight: var(--pulse-weight-bold, 700);
+    color: var(--pulse-dark, #0f172a);
+    margin: 0;
+    line-height: var(--pulse-lh-heading, 1.25);
+}
+
+.stepper-current-state {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-3, 12px);
+}
+
+.stepper-state-pill {
+    display: inline-block;
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-small, 13px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-white, #fff);
+    background: var(--pulse-gradient, linear-gradient(135deg, #D946EF, #7B2FF2));
+    padding: var(--pulse-space-1, 4px) var(--pulse-space-4, 16px);
+    border-radius: var(--pulse-radius-pill, 9999px);
+}
+
+/* ── Advance error ──────────────────────────── */
+.stepper-advance-error {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-3, 12px);
+    margin-top: var(--pulse-space-3, 12px);
+}
+
+/* ── Signals ────────────────────────────────── */
+.stepper-signals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--pulse-space-3, 12px);
+    margin-top: var(--pulse-space-4, 16px);
+}
+
+/* ── Timeline ───────────────────────────────── */
+.stepper-timeline {
+    margin-top: var(--pulse-space-6, 24px);
+}
+
+.stepper-timeline-heading {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-small, 13px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-slate-dark, #334155);
+    margin: 0 0 var(--pulse-space-3, 12px) 0;
+    text-transform: none;
+}
+
+.stepper-timeline-toggle {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-caption, 12px);
+    color: var(--pulse-purple, #7B2FF2);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: var(--pulse-space-3, 12px);
+}
+
+.stepper-timeline-toggle:hover {
+    text-decoration: underline;
+}
+
+.stepper-timeline-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.stepper-step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-1, 4px);
+}
+
+.stepper-step-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.stepper-step-label {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-small, 13px);
+    font-weight: var(--pulse-weight-medium, 500);
+    color: var(--pulse-dark, #0f172a);
+}
+
+.stepper-step-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-2, 8px);
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-caption, 12px);
+    color: var(--pulse-slate, #64748b);
+}
+
+.stepper-step-signal {
+    color: var(--pulse-purple, #7B2FF2);
+}
+
+/* ── Modal body ─────────────────────────────── */
+.stepper-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-4, 16px);
+}
+
+.stepper-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--pulse-space-3, 12px);
+}

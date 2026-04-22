@@ -1,0 +1,117 @@
+<template>
+    <!-- Loading state -->
+    <template lwc:if={isLoading}>
+        <c-pulse-card>
+            <p class="stepper-loading">Loading workflow…</p>
+        </c-pulse-card>
+    </template>
+
+    <!-- Error state -->
+    <template lwc:elseif={hasError}>
+        <c-pulse-card>
+            <c-pulse-badge label={error} variant="error"></c-pulse-badge>
+        </c-pulse-card>
+    </template>
+
+    <!-- No instance -->
+    <template lwc:elseif={noInstance}>
+        <c-pulse-card>
+            <p class="stepper-empty">No active workflow for this record.</p>
+        </c-pulse-card>
+    </template>
+
+    <!-- Active instance -->
+    <template lwc:else>
+        <!-- Header card -->
+        <c-pulse-card elevated>
+            <div class="stepper-header">
+                <div class="stepper-header-top">
+                    <h2 class="stepper-workflow-name">{instance.workflowName}</h2>
+                    <template lwc:if={hasPendingActions}>
+                        <c-pulse-badge label={pendingActionLabel} variant="magenta"></c-pulse-badge>
+                    </template>
+                </div>
+                <div class="stepper-current-state">
+                    <span class="stepper-state-pill">{instance.currentStateLabel}</span>
+                    <c-pulse-badge label={instance.status} variant="purple"></c-pulse-badge>
+                </div>
+            </div>
+        </c-pulse-card>
+
+        <!-- Advance error -->
+        <template lwc:if={hasAdvanceError}>
+            <div class="stepper-advance-error">
+                <c-pulse-badge label={advanceError} variant="error"></c-pulse-badge>
+                <c-pulse-button label="Dismiss" variant="ghost" size="sm"
+                                onclick={handleDismissError}></c-pulse-button>
+            </div>
+        </template>
+
+        <!-- Signals row -->
+        <template lwc:if={hasSignals}>
+            <div class="stepper-signals">
+                <template for:each={signals} for:item="sig">
+                    <c-pulse-button key={sig.signal}
+                                    label={sig.label}
+                                    variant="primary"
+                                    data-signal={sig.signal}
+                                    onclick={handleSignalClick}></c-pulse-button>
+                </template>
+            </div>
+        </template>
+
+        <!-- Timeline -->
+        <template lwc:if={hasHistory}>
+            <div class="stepper-timeline">
+                <h3 class="stepper-timeline-heading">Step history</h3>
+                <template lwc:if={isTimelineCollapsible}>
+                    <button class="stepper-timeline-toggle" onclick={handleToggleTimeline}>
+                        {timelineToggleLabel}
+                    </button>
+                </template>
+                <ul class="stepper-timeline-list" role="list">
+                    <template for:each={historySteps} for:item="step">
+                        <li key={step.stepResultId} class="stepper-timeline-item" role="listitem">
+                            <c-pulse-card>
+                                <div class="stepper-step">
+                                    <div class="stepper-step-header">
+                                        <span class="stepper-step-label">{step.stateLabel}</span>
+                                        <c-pulse-badge label={step.outcome}
+                                                       variant={_outcomeVariant}></c-pulse-badge>
+                                    </div>
+                                    <div class="stepper-step-meta">
+                                        <span class="stepper-step-actor">{step.actorType}</span>
+                                        <template lwc:if={step.signal}>
+                                            <span class="stepper-step-signal">→ {step.signal}</span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </c-pulse-card>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+        </template>
+
+        <!-- Advance modal -->
+        <c-pulse-modal open={showModal}
+                       title={modalTitle}
+                       size="sm"
+                       dismissible
+                       onclose={handleModalClose}>
+            <div class="stepper-modal-body">
+                <c-pulse-input label="Payload (optional)"
+                               placeholder={payloadPlaceholder}
+                               value={payloadText}
+                               onchange={handlePayloadChange}></c-pulse-input>
+                <div class="stepper-modal-actions">
+                    <c-pulse-button label="Cancel" variant="ghost"
+                                    onclick={handleModalClose}></c-pulse-button>
+                    <c-pulse-button label="Advance" variant="primary"
+                                    disabled={isAdvancing}
+                                    onclick={handleAdvanceSubmit}></c-pulse-button>
+                </div>
+            </div>
+        </c-pulse-modal>
+    </template>
+</template>

@@ -1,0 +1,96 @@
+:host {
+    display: block;
+}
+
+.hub-loading,
+.hub-empty {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-body, 14px);
+    color: var(--pulse-slate, #64748b);
+    padding: var(--pulse-space-4, 16px);
+    text-align: center;
+}
+
+/* ── Heading ────────────────────────────────── */
+.hub-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-4, 16px);
+}
+
+.hub-heading-row {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-3, 12px);
+}
+
+.hub-heading {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-h3, 18px);
+    font-weight: var(--pulse-weight-bold, 700);
+    color: var(--pulse-dark, #0f172a);
+    margin: 0;
+    line-height: var(--pulse-lh-heading, 1.25);
+}
+
+/* ── Resolve error ──────────────────────────── */
+.hub-resolve-error {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-3, 12px);
+}
+
+/* ── Action list ────────────────────────────── */
+.hub-action-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-4, 16px);
+}
+
+.hub-action-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--pulse-space-3, 12px);
+}
+
+.hub-tool-key {
+    font-family: var(--pulse-font-mono, monospace);
+    font-size: var(--pulse-text-small, 13px);
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-dark, #0f172a);
+}
+
+.hub-request-json {
+    font-family: var(--pulse-font-mono, monospace);
+    font-size: var(--pulse-text-caption, 12px);
+    color: var(--pulse-slate-dark, #334155);
+    background: var(--pulse-off-white, #f8fafc);
+    border: 1px solid var(--pulse-border, #e2e8f0);
+    border-radius: var(--pulse-radius-md, 8px);
+    padding: var(--pulse-space-3, 12px);
+    margin: 0 0 var(--pulse-space-3, 12px) 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: auto;
+    max-height: 200px;
+}
+
+.hub-action-meta {
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-caption, 12px);
+    color: var(--pulse-slate, #64748b);
+    margin-bottom: var(--pulse-space-3, 12px);
+}
+
+.hub-notes-row {
+    margin-bottom: var(--pulse-space-3, 12px);
+}
+
+.hub-action-buttons {
+    display: flex;
+    gap: var(--pulse-space-3, 12px);
+}

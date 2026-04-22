@@ -46,6 +46,12 @@
                     <c-pulse-workflow-builder></c-pulse-workflow-builder>
                 </template>
                 <template lwc:else>
+                    <template lwc:if={isActionHub}>
+                        <div class="studio-action-hub-wrap">
+                            <c-pulse-action-hub></c-pulse-action-hub>
+                        </div>
+                    </template>
+                    <template lwc:else>
                     <div class="pulse-card studio-placeholder-card">
                         <div class="pulse-card-icon studio-placeholder-icon">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -58,6 +64,7 @@
                         <p class="studio-placeholder-desc">{panelDescription}</p>
                         <span class="pulse-badge pulse-badge-purple">Coming in wave 3c+</span>
                     </div>
+                    </template>
                 </template>
             </main>
         </div>
