@@ -13,6 +13,7 @@ EXTENSION_DIRS=(
   "$ROOT_DIR/packages/pulse-ai-anthropic/force-app/main/default/classes"
   "$ROOT_DIR/packages/pulse-tools-core/force-app/main/default/classes"
   "$ROOT_DIR/packages/pulse-conversations-recall/force-app/main/default/classes"
+  "$ROOT_DIR/packages/pulse-conversations-core/force-app/main/default/classes"
 )
 
 errors=0

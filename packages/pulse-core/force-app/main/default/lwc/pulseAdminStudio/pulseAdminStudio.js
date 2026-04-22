@@ -27,6 +27,12 @@ const NAV_ITEMS = [
         icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
     },
     {
+        key: 'conversations',
+        label: 'Conversations',
+        description: 'Review AI-extracted facts from conversations and accept or reject them.',
+        icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
+    },
+    {
         key: 'library',
         label: 'Library',
         description: 'Browse published workflow definitions, templates, and reusable step patterns.',
@@ -75,6 +81,10 @@ export default class PulseAdminStudio extends LightningElement {
 
     get isActionHub() {
         return this.activeNav === 'action-hub';
+    }
+
+    get isConversations() {
+        return this.activeNav === 'conversations';
     }
 
     handleNavClick(event) {

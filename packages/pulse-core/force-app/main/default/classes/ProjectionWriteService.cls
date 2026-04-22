@@ -12,30 +12,30 @@
  *  - Shared fields respect Write_Precedence__c (lower number wins).
  *  - Every write (success or failure) emits a Workflow_Event__c audit row.
  */
-public with sharing class ProjectionWriteService {
+global with sharing class ProjectionWriteService {
 
     // ── Inner types ─────────────────────────────────────────────────────
 
     /**
      * Caller-provided request: one per parent record that needs projected values.
      */
-    public class ProjectionRequest {
-        public Id   parentRecordId;
-        public String parentObjectType;
-        public String workflowKey;
-        public Id   workflowInstanceId;
+    global class ProjectionRequest {
+        @AuraEnabled global Id   parentRecordId;
+        @AuraEnabled global String parentObjectType;
+        @AuraEnabled global String workflowKey;
+        @AuraEnabled global Id   workflowInstanceId;
         /** field-key → string-serialised value from step result */
-        public Map<String, String> fieldValues;
+        @AuraEnabled global Map<String, String> fieldValues;
     }
 
     /**
      * Per-field outcome returned to caller and written to audit.
      */
-    public class ProjectionResult {
-        public String  fieldKey;
-        public String  targetField;
-        public Boolean success;
-        public String  message;
+    global class ProjectionResult {
+        @AuraEnabled global String  fieldKey;
+        @AuraEnabled global String  targetField;
+        @AuraEnabled global Boolean success;
+        @AuraEnabled global String  message;
     }
 
     // ── Testability seam ────────────────────────────────────────────────
@@ -50,7 +50,7 @@ public with sharing class ProjectionWriteService {
      * field mappings, validates, writes, and audits.
      * @return flat list of per-field results across all requests
      */
-    public static List<ProjectionResult> project(List<ProjectionRequest> requests) {
+    global static List<ProjectionResult> project(List<ProjectionRequest> requests) {
         if (requests == null || requests.isEmpty()) {
             return new List<ProjectionResult>();
         }
@@ -419,5 +419,5 @@ public with sharing class ProjectionWriteService {
     }
 
     /** Thrown when value cannot be coerced to target field type. */
-    public class TypeException extends Exception {}
+    global class TypeException extends Exception {}
 }

@@ -4,7 +4,10 @@ module.exports = {
     ...jestConfig,
     modulePathIgnorePatterns: ['<rootDir>/.localdevserver'],
     moduleNameMapper: {
-        /* LWC modules across all package directories */
+        /* LWC modules — conversation-core package (checked before the catch-all) */
+        '^c/pulseConversationHub$':
+            '<rootDir>/packages/pulse-conversations-core/force-app/main/default/lwc/pulseConversationHub/pulseConversationHub',
+        /* LWC modules — core package (catch-all) */
         '^c/(.+)$':
             '<rootDir>/packages/pulse-core/force-app/main/default/lwc/$1/$1',
         /* Static resource mocks */

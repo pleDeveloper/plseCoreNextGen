@@ -51,6 +51,11 @@
                             <c-pulse-action-hub></c-pulse-action-hub>
                         </div>
                     </template>
+                    <template lwc:elseif={isConversations}>
+                        <div class="studio-conversations-wrap">
+                            <c-pulse-conversation-hub></c-pulse-conversation-hub>
+                        </div>
+                    </template>
                     <template lwc:else>
                     <div class="pulse-card studio-placeholder-card">
                         <div class="pulse-card-icon studio-placeholder-icon">
