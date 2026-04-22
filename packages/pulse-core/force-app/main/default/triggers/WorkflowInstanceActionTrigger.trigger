@@ -17,5 +17,15 @@ trigger WorkflowInstanceActionTrigger on Workflow_Instance__c (after insert) {
                 'WorkflowInstanceActionTrigger: instantiation failed for ' + inst.Id +
                 ': ' + e.getMessage());
         }
+        // Run the status engine so actions whose entryConditions already
+        // pass land on the correct status_key on first creation, not only
+        // after a follow-up transition. Additive to initial-key seeding.
+        try {
+            PulseActionStatusEngine.reevaluate(inst.Id);
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR,
+                'WorkflowInstanceActionTrigger: status reevaluate failed for ' + inst.Id +
+                ': ' + e.getMessage());
+        }
     }
 }

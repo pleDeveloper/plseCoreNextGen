@@ -158,6 +158,34 @@ global with sharing class PulseWorkflowStarter {
                         'PulseWorkflowStarter: stage progression check failed: ' +
                         e.getMessage());
                 }
+                // Action status machine reevaluation: parent-field changes
+                // may flip `field`/`field_changed` entryConditions on
+                // declared action statuses. Reevaluate each active instance
+                // attached to the changed parent records.
+                try {
+                    Set<Id> affectedInstanceIds = new Set<Id>();
+                    for (Workflow_Instance__c wi : [
+                        SELECT Id FROM Workflow_Instance__c
+                        WHERE Parent_Record_Id__c IN :changedIds
+                          AND Parent_Object_Type__c = :sObjectType
+                          AND Status__c = 'Active'
+                    ]) {
+                        affectedInstanceIds.add(wi.Id);
+                    }
+                    for (Id iid : affectedInstanceIds) {
+                        try {
+                            PulseActionStatusEngine.reevaluate(iid);
+                        } catch (Exception reEvalErr) {
+                            System.debug(LoggingLevel.ERROR,
+                                'PulseWorkflowStarter: status reevaluate failed for ' +
+                                iid + ': ' + reEvalErr.getMessage());
+                        }
+                    }
+                } catch (Exception e) {
+                    System.debug(LoggingLevel.ERROR,
+                        'PulseWorkflowStarter: status reevaluate batch failed: ' +
+                        e.getMessage());
+                }
             }
         }
     }

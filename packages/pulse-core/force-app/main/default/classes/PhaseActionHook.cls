@@ -43,6 +43,16 @@ public with sharing class PhaseActionHook implements WorkflowRuntime.TransitionH
                     'PhaseActionHook: agent kick failed for ' + ctx.instanceId +
                     ': ' + e.getMessage());
             }
+            // Action status machine: reevaluate entryConditions for every
+            // action on the instance after instantiation + agent kick so
+            // newly-created rows land on their resolved initial status.
+            try {
+                PulseActionStatusEngine.reevaluate(ctx.instanceId);
+            } catch (Exception e) {
+                System.debug(LoggingLevel.ERROR,
+                    'PhaseActionHook: status reevaluate failed for ' + ctx.instanceId +
+                    ': ' + e.getMessage());
+            }
         }
     }
 
