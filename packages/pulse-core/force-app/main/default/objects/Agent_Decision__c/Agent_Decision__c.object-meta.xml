@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Agent Decision</label>
+    <pluralLabel>Agent Decisions</pluralLabel>
+    <nameField>
+        <label>Decision Number</label>
+        <displayFormat>AD-{00000}</displayFormat>
+        <type>AutoNumber</type>
+    </nameField>
+    <deploymentStatus>Deployed</deploymentStatus>
+    <sharingModel>ControlledByParent</sharingModel>
+    <description>Each decision the agent made: proposal, question, phase transition, observation, or error.</description>
+</CustomObject>

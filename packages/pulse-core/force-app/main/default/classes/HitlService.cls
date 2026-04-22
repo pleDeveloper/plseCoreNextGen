@@ -136,6 +136,17 @@ public with sharing class HitlService {
             }
         }
 
+        // Agent Mode: if any Agent_Decision__c points at this action, re-kick
+        // the orchestrator so the agent continues the loop.
+        if (result.success) {
+            try {
+                PulseAgentOrchestrator.onActionResolved(action.Id);
+            } catch (Exception e) {
+                System.debug(LoggingLevel.ERROR,
+                    'HitlService: agent kick-on-resolve failed: ' + e.getMessage());
+            }
+        }
+
         return result;
     }
 

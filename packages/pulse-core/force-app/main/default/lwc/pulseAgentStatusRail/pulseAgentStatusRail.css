@@ -1,0 +1,139 @@
+.agent-rail {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-3, 12px);
+    padding: var(--pulse-space-3, 12px) var(--pulse-space-4, 16px);
+    background: var(--pulse-surface, #fff);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-lg, 12px);
+    box-shadow: var(--pulse-shadow-sm, 0 1px 2px rgba(16, 24, 40, .06));
+    margin-bottom: var(--pulse-space-3, 12px);
+}
+
+.agent-avatar {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #D946EF 0%, #7B2FF2 100%);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-family: "Poppins", system-ui, sans-serif;
+    flex-shrink: 0;
+}
+
+.agent-initial {
+    position: relative;
+    z-index: 1;
+}
+
+.agent-sparkle {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 9px;
+    opacity: .85;
+    color: #fff;
+}
+
+.agent-avatar-working {
+    animation: agentPulse 1600ms ease-in-out infinite;
+}
+
+@keyframes agentPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(217, 70, 239, .45); }
+    50%      { box-shadow: 0 0 0 8px rgba(217, 70, 239, 0); }
+}
+
+.agent-rail-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.agent-rail-top {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.agent-persona {
+    font-weight: 600;
+    font-family: "Poppins", system-ui, sans-serif;
+    color: var(--pulse-text-strong, #111827);
+}
+
+.agent-rail-sub {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-2, 8px);
+}
+
+.agent-autonomy-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: linear-gradient(135deg, rgba(217, 70, 239, 0.08), rgba(123, 47, 242, 0.08));
+    border: 1px solid rgba(123, 47, 242, 0.2);
+    color: #7B2FF2;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: "Poppins", system-ui, sans-serif;
+}
+
+.agent-autonomy-pill:hover {
+    background: linear-gradient(135deg, rgba(217, 70, 239, 0.16), rgba(123, 47, 242, 0.16));
+}
+
+.agent-chevron {
+    font-size: 10px;
+}
+
+.agent-autonomy-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    list-style: none;
+    padding: 4px 0;
+    background: #fff;
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-md, 8px);
+    box-shadow: var(--pulse-shadow-md, 0 4px 12px rgba(16, 24, 40, .1));
+    z-index: 10;
+    min-width: 220px;
+}
+
+.agent-autonomy-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: "Poppins", system-ui, sans-serif;
+}
+
+.agent-autonomy-option:hover {
+    background: var(--pulse-surface-hover, #f3f4f6);
+}
+
+.agent-rail-actions {
+    margin-left: auto;
+}
+
+.agent-rail-error {
+    color: var(--pulse-error, #dc2626);
+    font-size: 12px;
+    margin-top: 4px;
+}

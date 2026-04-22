@@ -34,6 +34,35 @@ public with sharing class PhaseActionHook implements WorkflowRuntime.TransitionH
                     'PhaseActionHook: instantiation failed for ' + ctx.instanceId +
                     ': ' + e.getMessage());
             }
+            // Agent Mode: if the entered phase has agent config, kick the
+            // orchestrator so the agent proposes the first decision.
+            try {
+                kickAgentIfEnabled(ctx.instanceId);
+            } catch (Exception e) {
+                System.debug(LoggingLevel.ERROR,
+                    'PhaseActionHook: agent kick failed for ' + ctx.instanceId +
+                    ': ' + e.getMessage());
+            }
         }
+    }
+
+    private static void kickAgentIfEnabled(Id instanceId) {
+        List<Workflow_Instance__c> rows = [
+            SELECT Id, Current_State__c,
+                   Workflow_Definition__r.Definition_JSON__c
+            FROM Workflow_Instance__c
+            WHERE Id = :instanceId LIMIT 1
+        ];
+        if (rows.isEmpty()) return;
+        WorkflowContract.Workflow wf;
+        try {
+            wf = WorkflowContract.parse(rows[0].Workflow_Definition__r.Definition_JSON__c);
+        } catch (Exception e) {
+            return;
+        }
+        if (wf == null) return;
+        Map<String, Object> cfg = wf.agentConfigForPhase(rows[0].Current_State__c);
+        if (cfg == null) return;
+        PulseAgentOrchestrator.advance(instanceId);
     }
 }
