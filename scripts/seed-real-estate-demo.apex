@@ -11,7 +11,7 @@
 // What this creates:
 //   - Workflow_Definition__c (Workflow_Key = 'real_estate_leasing_v1')
 //   - Opportunity (Name = 'Downtown Law Firm — 8,500 sqft lease')
-//   - Workflow_Instance__c at state 'credit_review'
+//   - Workflow_Instance__c at state 'intake_qualification'
 //   - 3 completed Workflow_Step_Result__c history rows
 //   - 3 Stage_Dwell__c rows (so the SLA heatmap has data)
 //   - 1 Conversation__c with 3 Conversation_Turn__c rows (tenant inquiry)
@@ -52,7 +52,14 @@ String contractJson =
         '"transitions":[{"signal":"submit_application","to":"application_submitted"},{"signal":"no_show","to":"declined"}]},' +
       '{"key":"application_submitted","label":"Application Submitted","type":"approval",' +
         '"fields":[],' +
-        '"transitions":[{"signal":"send_to_credit","to":"credit_review"},{"signal":"decline","to":"declined"}]},' +
+        '"transitions":[{"signal":"qualify","to":"intake_qualification"},{"signal":"decline","to":"declined"}]},' +
+      '{"key":"intake_qualification","label":"Intake Qualification","type":"ai_driven",' +
+        '"toolConfig":{"toolKey":"send_email","hitlPolicy":"Approval_Required",' +
+        '"parameters":{"systemPrompt":"You are a leasing qualification assistant for Pulse Core Next. ' +
+        'Review the conversation history and the applicant context. Draft a follow-up email to the prospect ' +
+        'asking for any missing qualifying information: headcount, desired move-in date, and credit qualification ' +
+        'documentation. Be professional and concise. Use the send_email tool."}},' +
+        '"transitions":[{"signal":"qualified","to":"credit_review"},{"signal":"disqualified","to":"declined"}]},' +
       '{"key":"credit_review","label":"Credit Review","type":"approval",' +
         '"fields":[' +
           '{"key":"credit_score","label":"Credit Score","type":"Number","required":true,"projection":{"enabled":true,"scope":"WorkflowScoped"}},' +
@@ -132,7 +139,7 @@ if (!existingInsts.isEmpty()) {
 } else {
     inst = new plse__Workflow_Instance__c(
         plse__Workflow_Definition__c = def.Id,
-        plse__Current_State__c = 'credit_review',
+        plse__Current_State__c = 'intake_qualification',
         plse__Status__c = 'Active',
         plse__Pinned_Version__c = 1,
         plse__Started_Date__c = Datetime.now().addDays(-5),
@@ -184,7 +191,7 @@ if (existingSteps == 0) {
         new plse__Workflow_Step_Result__c(
             plse__Workflow_Instance__c = inst.Id,
             plse__State_Key__c = 'application_submitted',
-            plse__Signal__c = 'send_to_credit',
+            plse__Signal__c = 'qualify',
             plse__Outcome__c = 'Completed',
             plse__Actor_Type__c = 'Human',
             plse__Actor_User__c = UserInfo.getUserId(),
@@ -236,21 +243,21 @@ if (existingSteps == 0) {
             plse__Entered_At__c = t2,
             plse__Exited_At__c = now.addHours(-12),
             plse__Duration_Seconds__c = Math.round((now.addHours(-12).getTime() - t2.getTime()) / 1000.0),
-            plse__Next_State_Key__c = 'credit_review',
-            plse__Signal__c = 'send_to_credit',
+            plse__Next_State_Key__c = 'intake_qualification',
+            plse__Signal__c = 'qualify',
             plse__Actor_Type__c = 'Human'
         ),
         new plse__Stage_Dwell__c(
             plse__Workflow_Instance__c = inst.Id,
             plse__Workflow_Key__c = WORKFLOW_KEY,
             plse__Subject_Kind__c = 'Opportunity',
-            plse__State_Key__c = 'credit_review',
-            plse__State_Label__c = 'Credit Review',
-            plse__State_Type__c = 'approval',
+            plse__State_Key__c = 'intake_qualification',
+            plse__State_Label__c = 'Intake Qualification',
+            plse__State_Type__c = 'ai_driven',
             plse__Entered_At__c = now.addHours(-12),
             plse__Exited_At__c = null,
             plse__Duration_Seconds__c = null,
-            plse__Actor_Type__c = 'Human'
+            plse__Actor_Type__c = 'AI'
         )
     };
     insert dwells;
@@ -333,7 +340,7 @@ if (extractCount == 0) {
 }
 
 // ------------------------------------------------------------
-// 6. Pending HITL action (AI proposed a credit-report fetch)
+// 6. Pending HITL action (AI proposed a follow-up email at intake_qualification)
 // ------------------------------------------------------------
 Integer pendingActions = [
     SELECT COUNT() FROM plse__Workflow_Action__c
@@ -343,10 +350,11 @@ Integer pendingActions = [
 if (pendingActions == 0) {
     insert new plse__Workflow_Action__c(
         plse__Workflow_Instance__c = inst.Id,
-        plse__Tool_Key__c = 'external_api',
+        plse__Tool_Key__c = 'send_email',
+        plse__Action_Type__c = 'AI_Tool_Call',
         plse__HITL_Policy__c = 'Approval_Required',
         plse__Status__c = 'Pending',
-        plse__Request_JSON__c = '{"endpoint":"callout:Credit_Bureau/credit-report","method":"POST","body":{"applicant_name":"AB Properties","ssn":"***-**-****"}}'
+        plse__Request_JSON__c = '{"toAddress":"jordan@abproperties.com","subject":"Additional information needed for your lease application","body":"Hi Jordan — thank you for your interest in the Lexington Ave space. To move forward with qualification, we need a few more details:\\n\\n1. Expected headcount\\n2. Desired move-in date\\n3. Credit qualification documentation\\n\\nPlease reply at your earliest convenience.\\n\\nBest regards,\\nLeasing Team"}'
     );
     System.debug('### Created pending Workflow_Action__c');
 }
