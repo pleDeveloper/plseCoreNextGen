@@ -44,10 +44,80 @@
                         <li key={action.actionId} class="hub-action-item" role="listitem">
                             <c-pulse-card elevated>
                                 <div class="hub-action-header">
-                                    <span class="hub-tool-key">{action.toolKey}</span>
+                                    <span class="hub-tool-label">{action.toolLabel}</span>
                                     <c-pulse-badge label={action.hitlPolicy} variant="purple"></c-pulse-badge>
                                 </div>
-                                <pre class="hub-request-json">{action.formattedRequest}</pre>
+
+                                <!-- Email preview -->
+                                <template lwc:if={action.preview.isEmail}>
+                                    <div class="hub-email-preview">
+                                        <div class="hub-email-row">
+                                            <span class="hub-email-label">To</span>
+                                            <span class="hub-email-value">{action.preview.to}</span>
+                                        </div>
+                                        <div class="hub-email-row">
+                                            <span class="hub-email-label">Subject</span>
+                                            <span class="hub-email-value hub-email-subject">{action.preview.subject}</span>
+                                        </div>
+                                        <div class="hub-email-body-wrap">
+                                            <span class="hub-email-label">Body</span>
+                                            <div class="hub-email-body">{action.preview.body}</div>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <!-- Record update preview -->
+                                <template lwc:elseif={action.preview.isRecord}>
+                                    <div class="hub-record-preview">
+                                        <div class="hub-record-row">
+                                            <span class="hub-record-label">Object</span>
+                                            <span class="hub-record-value">{action.preview.objectType}</span>
+                                        </div>
+                                        <div class="hub-record-row">
+                                            <span class="hub-record-label">Record</span>
+                                            <span class="hub-record-value">{action.preview.recordId}</span>
+                                        </div>
+                                        <template lwc:if={action.preview.hasRows}>
+                                            <div class="hub-record-fields-heading">Fields to update</div>
+                                            <ul class="hub-record-fields" role="list">
+                                                <template for:each={action.preview.rows} for:item="row">
+                                                    <li key={row.key} class="hub-record-field-row" role="listitem">
+                                                        <span class="hub-record-field-name">{row.field}</span>
+                                                        <span class="hub-record-field-value">{row.value}</span>
+                                                    </li>
+                                                </template>
+                                            </ul>
+                                        </template>
+                                    </div>
+                                </template>
+
+                                <!-- External API call preview -->
+                                <template lwc:elseif={action.preview.isApi}>
+                                    <div class="hub-api-preview">
+                                        <div class="hub-api-row">
+                                            <c-pulse-badge label={action.preview.method} variant="purple"></c-pulse-badge>
+                                            <span class="hub-api-endpoint">{action.preview.endpoint}</span>
+                                        </div>
+                                        <template lwc:if={action.preview.hasBody}>
+                                            <div class="hub-api-body-heading">Request body</div>
+                                            <pre class="hub-api-body">{action.preview.bodyPreview}</pre>
+                                        </template>
+                                    </div>
+                                </template>
+
+                                <!-- Generic fallback -->
+                                <template lwc:else>
+                                    <template lwc:if={action.preview.hasRows}>
+                                        <ul class="hub-record-fields" role="list">
+                                            <template for:each={action.preview.rows} for:item="row">
+                                                <li key={row.key} class="hub-record-field-row" role="listitem">
+                                                    <span class="hub-record-field-name">{row.field}</span>
+                                                    <span class="hub-record-field-value">{row.value}</span>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </template>
+                                </template>
                                 <div class="hub-action-meta">
                                     <template lwc:if={action.requestedByName}>
                                         <span class="hub-requester">Requested by {action.requestedByName}</span>

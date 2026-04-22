@@ -74,12 +74,19 @@ describe('c-pulse-action-hub', () => {
         const items = el.shadowRoot.querySelectorAll('.hub-action-item');
         expect(items.length).toBe(2);
 
-        const toolKeys = el.shadowRoot.querySelectorAll('.hub-tool-key');
-        expect(toolKeys[0].textContent).toBe('send_email');
-        expect(toolKeys[1].textContent).toBe('update_record');
+        const toolLabels = el.shadowRoot.querySelectorAll('.hub-tool-label');
+        expect(toolLabels[0].textContent).toBe('Send email');
+        expect(toolLabels[1].textContent).toBe('Update record');
 
-        const jsonBlocks = el.shadowRoot.querySelectorAll('.hub-request-json');
-        expect(jsonBlocks[0].textContent).toContain('"toAddress"');
+        // send_email action renders the email preview (not raw JSON)
+        const emailPreviews = el.shadowRoot.querySelectorAll('.hub-email-preview');
+        expect(emailPreviews.length).toBe(1);
+        const toValue = emailPreviews[0].querySelector('.hub-email-value');
+        expect(toValue.textContent).toContain('@');  // toAddress rendered
+
+        // update_record action renders the record preview
+        const recordPreviews = el.shadowRoot.querySelectorAll('.hub-record-preview');
+        expect(recordPreviews.length).toBe(1);
     });
 
     it('calls resolveAction with Approve on approve click', async () => {

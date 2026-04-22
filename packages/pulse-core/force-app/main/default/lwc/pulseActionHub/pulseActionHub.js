@@ -71,12 +71,17 @@ export default class PulseActionHub extends LightningElement {
     }
 
     get actionCards() {
-        return this.actions.map((a) => ({
-            ...a,
-            formattedRequest: this._formatJson(a.requestJson),
-            notes: this.notesByActionId[a.actionId] || '',
-            isResolving: this.resolvingActionId === a.actionId,
-        }));
+        return this.actions.map((a) => {
+            const parsed = this._parseJson(a.requestJson);
+            const preview = this._buildPreview(a.toolKey, parsed);
+            return {
+                ...a,
+                preview,
+                toolLabel: this._toolLabel(a.toolKey),
+                notes: this.notesByActionId[a.actionId] || '',
+                isResolving: this.resolvingActionId === a.actionId,
+            };
+        });
     }
 
     // ─── Handlers ───────────────────────────────────────────────
@@ -131,6 +136,11 @@ export default class PulseActionHub extends LightningElement {
         }
     }
 
+    _parseJson(jsonStr) {
+        if (!jsonStr) return {};
+        try { return JSON.parse(jsonStr); } catch { return {}; }
+    }
+
     _formatJson(jsonStr) {
         if (!jsonStr) return '';
         try {
@@ -138,5 +148,64 @@ export default class PulseActionHub extends LightningElement {
         } catch {
             return jsonStr;
         }
+    }
+
+    _toolLabel(toolKey) {
+        const map = {
+            send_email: 'Send email',
+            update_record: 'Update record',
+            external_api: 'External API call',
+        };
+        return map[toolKey] || toolKey;
+    }
+
+    /**
+     * Returns a structured preview object the template renders via
+     * lwc:if on preview.kind. Never throws — unknown tool keys fall
+     * through to a generic key/value view.
+     */
+    _buildPreview(toolKey, req) {
+        if (toolKey === 'send_email') {
+            return {
+                kind: 'email',
+                isEmail: true,
+                to: req.toAddress || req.to || '(recipient missing)',
+                subject: req.subject || '(no subject)',
+                body: req.body || req.htmlBody || '',
+            };
+        }
+        if (toolKey === 'update_record') {
+            const fields = req.fields || {};
+            const rows = Object.keys(fields).map((k) => ({
+                key: k,
+                field: k,
+                value: String(fields[k]),
+            }));
+            return {
+                kind: 'record',
+                isRecord: true,
+                objectType: req.objectType || '(unknown object)',
+                recordId: req.recordId || '(no record id)',
+                rows,
+                hasRows: rows.length > 0,
+            };
+        }
+        if (toolKey === 'external_api') {
+            return {
+                kind: 'api',
+                isApi: true,
+                method: (req.method || 'POST').toUpperCase(),
+                endpoint: req.endpoint || '(no endpoint)',
+                bodyPreview: req.body ? JSON.stringify(req.body, null, 2) : '',
+                hasBody: req.body != null,
+            };
+        }
+        // Fallback: render parsed keys as rows
+        const rows = Object.keys(req).map((k) => ({
+            key: k,
+            field: k,
+            value: typeof req[k] === 'object' ? JSON.stringify(req[k]) : String(req[k]),
+        }));
+        return { kind: 'generic', isGeneric: true, rows, hasRows: rows.length > 0 };
     }
 }
