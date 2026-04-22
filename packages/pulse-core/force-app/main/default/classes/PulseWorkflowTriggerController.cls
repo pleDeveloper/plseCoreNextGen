@@ -27,7 +27,9 @@ global with sharing class PulseWorkflowTriggerController {
         @AuraEnabled public Id      recordId;
         @AuraEnabled public String  triggerName;              // canonical Apex trigger on target
         @AuraEnabled public Boolean apexTriggerAlreadyExisted;
+        @AuraEnabled public Boolean apexTriggerProvisioned;   // true if callout succeeded or trigger already present
         @AuraEnabled public String  provisioningMessage;
+        @AuraEnabled public String  warning;                  // non-fatal problem (e.g. NC missing)
         @AuraEnabled public String  error;
     }
 
@@ -100,18 +102,19 @@ global with sharing class PulseWorkflowTriggerController {
 
         // Provision the Apex trigger on the target object BEFORE DML so we
         // don't hit the "DML before callout" governor on first provision.
-        // If this fails the admin's save is aborted — which is desirable,
-        // otherwise the Workflow_Trigger__c row would exist with no Apex
-        // trigger on the target to fire it.
+        // If provisioning fails (e.g. the Pulse_Self_Org_Tooling Named
+        // Credential isn't configured in this org), we still save the
+        // Workflow_Trigger__c row — the admin can manually create the
+        // Apex trigger afterwards, and losing their form work is worse UX.
+        // The result carries a warning so the LWC can surface it.
         PulseTriggerProvisioningService.ProvisionResult pr =
             PulseTriggerProvisioningService.ensureTriggerFor(payload.targetObject);
         out.triggerName               = pr.triggerName;
         out.apexTriggerAlreadyExisted = pr.alreadyExisted == true;
+        out.apexTriggerProvisioned    = pr.success;
         out.provisioningMessage       = pr.message;
         if (!pr.success) {
-            out.success = false;
-            out.error   = pr.message;
-            return out;
+            out.warning = pr.message;
         }
 
         Workflow_Trigger__c rec;
@@ -140,7 +143,8 @@ global with sharing class PulseWorkflowTriggerController {
             insert rec;
         }
         out.recordId = rec.Id;
-        out.success  = true;
+        // Save succeeded even if provisioning warned; the UI shows the warning.
+        out.success = true;
         return out;
     }
 

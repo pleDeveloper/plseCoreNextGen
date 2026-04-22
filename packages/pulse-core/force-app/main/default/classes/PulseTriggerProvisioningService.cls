@@ -81,20 +81,36 @@ global with sharing class PulseTriggerProvisioningService {
         payload.put('ApiVersion',      62.0);
         payload.put('Status',          'Active');
 
-        HttpResponse res = invokeToolingApi(
-            'POST',
-            '/services/data/' + API_VERSION + '/tooling/sobjects/ApexTrigger/',
-            JSON.serialize(payload)
-        );
+        try {
+            HttpResponse res = invokeToolingApi(
+                'POST',
+                '/services/data/' + API_VERSION + '/tooling/sobjects/ApexTrigger/',
+                JSON.serialize(payload)
+            );
 
-        Integer code = res.getStatusCode();
-        if (code >= 200 && code < 300) {
-            result.success        = true;
-            result.alreadyExisted = false;
-            result.message        = 'Created ' + result.triggerName;
-        } else {
+            Integer code = res.getStatusCode();
+            if (code >= 200 && code < 300) {
+                result.success        = true;
+                result.alreadyExisted = false;
+                result.message        = 'Created ' + result.triggerName;
+            } else {
+                result.success = false;
+                result.message = 'Tooling API ' + code + ': ' + res.getBody();
+            }
+        } catch (System.CalloutException ce) {
+            // Common cause: Named Credential 'Pulse_Self_Org_Tooling' isn't
+            // configured in this org. We don't want that to block the admin
+            // from saving the trigger definition — the Workflow_Trigger__c
+            // row itself is still useful data, and the admin can wire up
+            // the Apex trigger later (manually or after setting up the NC).
             result.success = false;
-            result.message = 'Tooling API ' + code + ': ' + res.getBody();
+            result.message = 'Could not auto-provision the Apex trigger (' + ce.getMessage() +
+                '). Set up the Pulse_Self_Org_Tooling Named Credential, ' +
+                'or create an Apex trigger named ' + result.triggerName +
+                ' on ' + sObjectApiName + ' that calls plse.PulseWorkflowStarter.handle.';
+        } catch (Exception e) {
+            result.success = false;
+            result.message = 'Provisioning failed: ' + e.getMessage();
         }
         return result;
     }

@@ -52,6 +52,16 @@
     font-size: var(--pulse-text-small, 13px);
 }
 
+.trigger-warning-banner {
+    padding: var(--pulse-space-3, 12px) var(--pulse-space-4, 16px);
+    background: #fffbeb;
+    color: #92400e;
+    border: 1px solid #fde68a;
+    border-radius: var(--pulse-radius-md, 8px);
+    font-size: var(--pulse-text-small, 13px);
+    line-height: var(--pulse-lh-body, 1.6);
+}
+
 .triggers-list {
     list-style: none;
     margin: 0;

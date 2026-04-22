@@ -9,6 +9,49 @@
             </c-pulse-card>
         </template>
         <template lwc:else>
+            <!-- Setup Status -->
+            <c-pulse-card>
+                <div class="section-header">
+                    <h3 class="section-title">Setup status</h3>
+                    <c-pulse-badge label={setupSummary} variant={setupSummaryVariant}></c-pulse-badge>
+                </div>
+                <p class="section-subtitle">
+                    Prerequisites Pulse needs to work end-to-end. Click any row for setup instructions.
+                </p>
+                <ul class="setup-check-list">
+                    <template for:each={setupCheckRows} for:item="c">
+                        <li key={c.key} class={c.rowClass}>
+                            <button class="setup-check-button"
+                                    data-key={c.key}
+                                    onclick={handleToggleCheck}>
+                                <div class="setup-check-main">
+                                    <span class="setup-check-label">{c.label}</span>
+                                    <span class="setup-check-description">{c.description}</span>
+                                    <template lwc:if={c.details}>
+                                        <span class="setup-check-details">{c.details}</span>
+                                    </template>
+                                </div>
+                                <c-pulse-badge label={c.statusLabel} variant={c.statusVariant}></c-pulse-badge>
+                            </button>
+                            <template lwc:if={c.isExpanded}>
+                                <div class="setup-check-expanded">
+                                    <template lwc:if={c.fixInstructions}>
+                                        <div class="setup-check-fix">
+                                            <span class="setup-check-fix-label">How to fix</span>
+                                            <p class="setup-check-fix-body">{c.fixInstructions}</p>
+                                        </div>
+                                    </template>
+                                    <template lwc:if={c.hasSetupLink}>
+                                        <a href={c.setupPath} target="_blank" rel="noopener"
+                                           class="setup-link">Open in Setup →</a>
+                                    </template>
+                                </div>
+                            </template>
+                        </li>
+                    </template>
+                </ul>
+            </c-pulse-card>
+
             <!-- Feature Flags -->
             <c-pulse-card>
                 <div class="section-header">

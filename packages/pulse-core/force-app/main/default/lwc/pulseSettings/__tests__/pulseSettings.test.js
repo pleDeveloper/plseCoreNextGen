@@ -14,6 +14,12 @@ jest.mock(
     { virtual: true }
 );
 
+jest.mock(
+    '@salesforce/apex/PulseSetupCheckController.runChecks',
+    () => ({ default: jest.fn(() => Promise.resolve([])) }),
+    { virtual: true }
+);
+
 const MOCK_CONFIG = {
     featureFlags: [
         {

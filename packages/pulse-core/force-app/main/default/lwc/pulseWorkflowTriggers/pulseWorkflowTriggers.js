@@ -363,13 +363,22 @@ export default class PulseWorkflowTriggers extends LightningElement {
                 },
             });
             if (result.success) {
+                let status;
+                if (result.apexTriggerProvisioned) {
+                    status = result.apexTriggerAlreadyExisted
+                        ? `Using existing Apex trigger ${result.triggerName}`
+                        : `Provisioned ${result.triggerName}`;
+                } else {
+                    // Row saved but Apex trigger couldn't be auto-provisioned.
+                    status = null;
+                }
                 this._setTriggerState(triggerRowId, {
                     saving: false,
                     dirty: false,
                     recordId: result.recordId,
-                    apexTriggerStatus: result.apexTriggerAlreadyExisted
-                        ? `Using existing Apex trigger ${result.triggerName}`
-                        : `Provisioned ${result.triggerName}`,
+                    apexTriggerStatus: status,
+                    warning: result.warning || null,
+                    error: null,
                 });
             } else {
                 this._setTriggerState(triggerRowId, {
