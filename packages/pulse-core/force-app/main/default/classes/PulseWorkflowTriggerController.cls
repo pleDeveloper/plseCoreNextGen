@@ -73,6 +73,19 @@ global with sharing class PulseWorkflowTriggerController {
 
     @AuraEnabled
     global static UpsertResult upsertTrigger(TriggerDto payload) {
+        try {
+            return upsertTriggerInternal(payload);
+        } catch (Exception e) {
+            // Catch-all so the LWC gets a readable error string instead of
+            // Salesforce's opaque "internal server error" envelope.
+            UpsertResult out = new UpsertResult();
+            out.success = false;
+            out.error = e.getTypeName() + ': ' + e.getMessage();
+            return out;
+        }
+    }
+
+    private static UpsertResult upsertTriggerInternal(TriggerDto payload) {
         UpsertResult out = new UpsertResult();
 
         if (payload == null) {
