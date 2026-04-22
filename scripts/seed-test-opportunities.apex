@@ -124,6 +124,113 @@ for (Integer i = 0; i < names.size(); i++) {
         insert inst;
     }
 
+    // History steps + dwell facts — so the journey timeline has content
+    Integer existingSteps = [
+        SELECT COUNT() FROM plse__Workflow_Step_Result__c
+        WHERE plse__Workflow_Instance__c = :inst.Id
+    ];
+    if (existingSteps == 0) {
+        Datetime now   = Datetime.now();
+        Datetime tIntake    = now.addDays(-4);
+        Datetime tTour      = now.addDays(-3).addHours(-1);
+        Datetime tApp       = now.addDays(-2).addHours(-3);
+        Datetime tQualEntry = now.addHours(-18);
+
+        List<plse__Workflow_Step_Result__c> steps = new List<plse__Workflow_Step_Result__c>();
+        steps.add(new plse__Workflow_Step_Result__c(
+            plse__Workflow_Instance__c = inst.Id,
+            plse__State_Key__c        = 'intake',
+            plse__Signal__c           = 'schedule_tour',
+            plse__Outcome__c          = 'Completed',
+            plse__Actor_Type__c       = 'Human',
+            plse__Actor_User__c       = UserInfo.getUserId(),
+            plse__Started_Date__c     = tIntake,
+            plse__Completed_Date__c   = tTour,
+            plse__Values_JSON__c      = '{"applicant_name":"' + applicants[i] + '","requested_sqft":0,"intake_notes":"Inbound email inquiry"}'
+        ));
+        steps.add(new plse__Workflow_Step_Result__c(
+            plse__Workflow_Instance__c = inst.Id,
+            plse__State_Key__c        = 'tour_scheduled',
+            plse__Signal__c           = 'submit_application',
+            plse__Outcome__c          = 'Completed',
+            plse__Actor_Type__c       = 'Human',
+            plse__Actor_User__c       = UserInfo.getUserId(),
+            plse__Started_Date__c     = tTour,
+            plse__Completed_Date__c   = tApp,
+            plse__Values_JSON__c      = '{"tour_host_name":"Leasing Team"}'
+        ));
+        steps.add(new plse__Workflow_Step_Result__c(
+            plse__Workflow_Instance__c = inst.Id,
+            plse__State_Key__c        = 'application_submitted',
+            plse__Signal__c           = 'qualify',
+            plse__Outcome__c          = 'Completed',
+            plse__Actor_Type__c       = 'Human',
+            plse__Actor_User__c       = UserInfo.getUserId(),
+            plse__Started_Date__c     = tApp,
+            plse__Completed_Date__c   = tQualEntry,
+            plse__Values_JSON__c      = '{}'
+        ));
+        insert steps;
+
+        List<plse__Stage_Dwell__c> dwells = new List<plse__Stage_Dwell__c>();
+        dwells.add(new plse__Stage_Dwell__c(
+            plse__Workflow_Instance__c = inst.Id,
+            plse__Workflow_Key__c      = WORKFLOW_KEY,
+            plse__Subject_Kind__c      = 'Opportunity',
+            plse__State_Key__c         = 'intake',
+            plse__State_Label__c       = 'Intake',
+            plse__State_Type__c        = 'form',
+            plse__Entered_At__c        = tIntake,
+            plse__Exited_At__c         = tTour,
+            plse__Duration_Seconds__c  = Math.round((tTour.getTime() - tIntake.getTime()) / 1000.0),
+            plse__Next_State_Key__c    = 'tour_scheduled',
+            plse__Signal__c            = 'schedule_tour',
+            plse__Actor_Type__c        = 'Human'
+        ));
+        dwells.add(new plse__Stage_Dwell__c(
+            plse__Workflow_Instance__c = inst.Id,
+            plse__Workflow_Key__c      = WORKFLOW_KEY,
+            plse__Subject_Kind__c      = 'Opportunity',
+            plse__State_Key__c         = 'tour_scheduled',
+            plse__State_Label__c       = 'Tour Scheduled',
+            plse__State_Type__c        = 'form',
+            plse__Entered_At__c        = tTour,
+            plse__Exited_At__c         = tApp,
+            plse__Duration_Seconds__c  = Math.round((tApp.getTime() - tTour.getTime()) / 1000.0),
+            plse__Next_State_Key__c    = 'application_submitted',
+            plse__Signal__c            = 'submit_application',
+            plse__Actor_Type__c        = 'Human'
+        ));
+        dwells.add(new plse__Stage_Dwell__c(
+            plse__Workflow_Instance__c = inst.Id,
+            plse__Workflow_Key__c      = WORKFLOW_KEY,
+            plse__Subject_Kind__c      = 'Opportunity',
+            plse__State_Key__c         = 'application_submitted',
+            plse__State_Label__c       = 'Application Submitted',
+            plse__State_Type__c        = 'approval',
+            plse__Entered_At__c        = tApp,
+            plse__Exited_At__c         = tQualEntry,
+            plse__Duration_Seconds__c  = Math.round((tQualEntry.getTime() - tApp.getTime()) / 1000.0),
+            plse__Next_State_Key__c    = 'intake_qualification',
+            plse__Signal__c            = 'qualify',
+            plse__Actor_Type__c        = 'Human'
+        ));
+        dwells.add(new plse__Stage_Dwell__c(
+            plse__Workflow_Instance__c = inst.Id,
+            plse__Workflow_Key__c      = WORKFLOW_KEY,
+            plse__Subject_Kind__c      = 'Opportunity',
+            plse__State_Key__c         = 'intake_qualification',
+            plse__State_Label__c       = 'Intake Qualification',
+            plse__State_Type__c        = 'ai_driven',
+            plse__Entered_At__c        = tQualEntry,
+            plse__Exited_At__c         = null,
+            plse__Duration_Seconds__c  = null,
+            plse__Actor_Type__c        = 'AI'
+        ));
+        insert dwells;
+        System.debug('### Seeded history + dwells for: ' + oppName);
+    }
+
     String convExternalId = 'test-opp-' + inst.Id;
     plse__Conversation__c conv;
     List<plse__Conversation__c> existingConv = [
