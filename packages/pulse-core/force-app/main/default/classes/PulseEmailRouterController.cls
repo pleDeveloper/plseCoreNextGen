@@ -6,11 +6,17 @@
  * - listRoutingRules()   — Conversation_Routing_Rule__mdt
  * - routeToExistingRecord(conversationId, recordId) — sets Parent_Record_Id__c
  * - createOpportunityFromConversation(conversationId) — runs the default rule
- *
- * Write operations for CMDT (create/edit rules) are deliberately out of
- * scope in a subscriber-safe managed package — admins configure rules
- * via Setup → Custom Metadata Types. The LWC surfaces this with a
- * read-only editor.
+ * - upsertRoutingRule(payload)   — deploys Conversation_Routing_Rule__mdt via
+ *                                  Metadata.Operations.enqueueDeployment.
+ *                                  Accepts Map<String,Object> to dodge the
+ *                                  Aura typed-inner-class deserialization bug
+ *                                  (see PulseWorkflowTriggerController for
+ *                                  the full note; same pattern applies here).
+ * - deleteRoutingRule(developerName) — soft-delete: sets Active__c=false via
+ *                                      enqueueDeployment. The Apex Metadata
+ *                                      API cannot remove CMDT records, so we
+ *                                      deactivate instead of hard-deleting.
+ * - getDeployStatus(jobId)       — polls AsyncApexJob status for the UI.
  */
 global with sharing class PulseEmailRouterController {
 
@@ -195,6 +201,284 @@ global with sharing class PulseEmailRouterController {
         out.wasCreated = rr.wasCreated;
         out.ruleKey    = rr.ruleKey;
         return out;
+    }
+
+    // ── Routing rule CRUD (Metadata API) ──────────────────────────────
+    //
+    // upsertRoutingRule / deleteRoutingRule use the same pattern established
+    // by PulseActionStatusTemplateController.upsertTemplate and
+    // PulseGlobalActionHubController.upsertColumnConfig. Input arrives as
+    // Map<String,Object> because Aura's JSON→typed-DTO deserialization is
+    // broken for user-defined inner Apex classes on this org (empirically
+    // reproduced in docs/diagnostics/aura-upsertTrigger-repro.sh).
+    //
+    // Source deploy of new CMDT records hits UNKNOWN_EXCEPTION on the dev
+    // scratch; Metadata.Operations.enqueueDeployment is the one reliable
+    // write path — see scripts/seed-tool-registry.apex for precedent.
+
+    global class RoutingRuleInput {
+        public String  ruleKey;
+        public Boolean active;
+        public Integer priority;
+        public String  sourceAdapter;
+        public String  matchStrategy;
+        public String  targetObject;
+        public String  createDefaultsJson;
+        public String  triggerWorkflowKey;
+        // Optional explicit developer name for editing an existing rule; if
+        // absent we derive it from ruleKey. Also honoured on delete.
+        public String  developerName;
+    }
+
+    global class RuleDeployResult {
+        @AuraEnabled public Boolean success;
+        @AuraEnabled public Id      jobId;
+        @AuraEnabled public String  developerName;
+        @AuraEnabled public String  error;
+    }
+
+    global class DeployStatusView {
+        @AuraEnabled public String  status;     // Queued | Processing | Completed | Failed | Aborted | Unknown
+        @AuraEnabled public Boolean done;
+        @AuraEnabled public String  errors;
+    }
+
+    /**
+     * Test seam around Metadata.Operations.enqueueDeployment. Production
+     * code goes through here. Tests swap in a stub via
+     * PulseEmailRouterController.deployer = new StubDeployer().
+     */
+    public interface IRuleDeployer {
+        Id enqueue(Metadata.DeployContainer container);
+    }
+
+    public class DefaultRuleDeployer implements IRuleDeployer {
+        public Id enqueue(Metadata.DeployContainer container) {
+            return Metadata.Operations.enqueueDeployment(container, null);
+        }
+    }
+
+    @TestVisible
+    private static IRuleDeployer deployer = new DefaultRuleDeployer();
+
+    /**
+     * Last container we tried to deploy — exposed for tests so they can
+     * assert the prepared payload without going through the async pipeline.
+     */
+    @TestVisible
+    private static Metadata.DeployContainer lastDeployContainer;
+
+    @AuraEnabled
+    global static RuleDeployResult upsertRoutingRule(Map<String, Object> payload) {
+        RuleDeployResult out = new RuleDeployResult();
+        try {
+            RoutingRuleInput input = coerceToRoutingRuleInput(payload);
+            if (input == null || String.isBlank(input.ruleKey)) {
+                out.success = false;
+                out.error = 'ruleKey is required';
+                return out;
+            }
+            if (String.isBlank(input.targetObject)) {
+                out.success = false;
+                out.error = 'targetObject is required';
+                return out;
+            }
+            if (String.isBlank(input.matchStrategy)) {
+                out.success = false;
+                out.error = 'matchStrategy is required';
+                return out;
+            }
+            if (String.isNotBlank(input.createDefaultsJson)) {
+                // Shape validation — must parse as JSON object.
+                try {
+                    Object parsed = JSON.deserializeUntyped(input.createDefaultsJson);
+                    if (!(parsed instanceof Map<String, Object>)) {
+                        out.success = false;
+                        out.error = 'createDefaultsJson must be a JSON object';
+                        return out;
+                    }
+                } catch (Exception je) {
+                    out.success = false;
+                    out.error = 'createDefaultsJson is invalid JSON: ' + je.getMessage();
+                    return out;
+                }
+            }
+
+            String devName = String.isNotBlank(input.developerName)
+                ? toDeveloperName(input.developerName)
+                : toDeveloperName(input.ruleKey);
+
+            Metadata.CustomMetadata cm = new Metadata.CustomMetadata();
+            cm.fullName = 'Conversation_Routing_Rule.' + devName;
+            cm.label    = devName.replace('_', ' ');
+
+            cm.values.add(makeRuleValue('Rule_Key__c',        input.ruleKey));
+            cm.values.add(makeRuleValue('Active__c',
+                input.active != null ? input.active : true));
+            if (input.priority != null) {
+                cm.values.add(makeRuleValue('Priority__c', input.priority));
+            }
+            if (String.isNotBlank(input.sourceAdapter)) {
+                cm.values.add(makeRuleValue('Source_Adapter__c', input.sourceAdapter));
+            }
+            cm.values.add(makeRuleValue('Match_Strategy__c',  input.matchStrategy));
+            cm.values.add(makeRuleValue('Target_Object__c',   input.targetObject));
+            if (input.createDefaultsJson != null) {
+                cm.values.add(makeRuleValue('Create_Defaults_JSON__c',
+                    input.createDefaultsJson));
+            }
+            if (String.isNotBlank(input.triggerWorkflowKey)) {
+                cm.values.add(makeRuleValue('Trigger_Workflow_Key__c',
+                    input.triggerWorkflowKey));
+            }
+
+            Metadata.DeployContainer container = new Metadata.DeployContainer();
+            container.addMetadata(cm);
+            lastDeployContainer = container;
+
+            Id jobId = deployer.enqueue(container);
+            out.success = true;
+            out.jobId = jobId;
+            out.developerName = devName;
+            return out;
+        } catch (Exception e) {
+            out.success = false;
+            out.error = e.getTypeName() + ': ' + e.getMessage();
+            return out;
+        }
+    }
+
+    /**
+     * Soft-delete: the Apex Metadata API does not support removing
+     * CMDT records, so we deploy an Active__c=false update. This keeps
+     * the audit trail and lets admins re-activate via Setup if needed.
+     */
+    @AuraEnabled
+    global static RuleDeployResult deleteRoutingRule(String developerName) {
+        RuleDeployResult out = new RuleDeployResult();
+        try {
+            if (String.isBlank(developerName)) {
+                out.success = false;
+                out.error = 'developerName is required';
+                return out;
+            }
+            String devName = toDeveloperName(developerName);
+
+            Metadata.CustomMetadata cm = new Metadata.CustomMetadata();
+            cm.fullName = 'Conversation_Routing_Rule.' + devName;
+            cm.label    = devName.replace('_', ' ');
+            cm.values.add(makeRuleValue('Active__c', false));
+
+            Metadata.DeployContainer container = new Metadata.DeployContainer();
+            container.addMetadata(cm);
+            lastDeployContainer = container;
+
+            Id jobId = deployer.enqueue(container);
+            out.success = true;
+            out.jobId = jobId;
+            out.developerName = devName;
+            return out;
+        } catch (Exception e) {
+            out.success = false;
+            out.error = e.getTypeName() + ': ' + e.getMessage();
+            return out;
+        }
+    }
+
+    @AuraEnabled
+    global static DeployStatusView getDeployStatus(String jobId) {
+        DeployStatusView v = new DeployStatusView();
+        if (String.isBlank(jobId)) {
+            v.status = 'Unknown';
+            v.done = true;
+            v.errors = 'jobId is required';
+            return v;
+        }
+        List<AsyncApexJob> jobs = [
+            SELECT Id, Status, ExtendedStatus, NumberOfErrors
+            FROM   AsyncApexJob
+            WHERE  Id = :jobId
+            LIMIT 1
+        ];
+        if (jobs.isEmpty()) {
+            // Metadata deploy jobs are not always AsyncApexJob rows — the
+            // UI still gets a sane answer so it can stop polling.
+            v.status = 'Unknown';
+            v.done = true;
+            return v;
+        }
+        AsyncApexJob j = jobs[0];
+        v.status = j.Status;
+        v.done = (j.Status == 'Completed' || j.Status == 'Failed' || j.Status == 'Aborted');
+        if (j.NumberOfErrors != null && j.NumberOfErrors > 0) {
+            v.errors = j.ExtendedStatus;
+        }
+        return v;
+    }
+
+    @TestVisible
+    private static RoutingRuleInput coerceToRoutingRuleInput(Map<String, Object> raw) {
+        RoutingRuleInput out = new RoutingRuleInput();
+        if (raw == null) return out;
+
+        Object rk = raw.get('ruleKey');
+        if (rk instanceof String) out.ruleKey = (String) rk;
+        else if (rk != null) out.ruleKey = String.valueOf(rk);
+
+        Object act = raw.get('active');
+        if (act instanceof Boolean) out.active = (Boolean) act;
+        else if (act != null) out.active = Boolean.valueOf(String.valueOf(act));
+
+        Object pr = raw.get('priority');
+        if (pr instanceof Integer) out.priority = (Integer) pr;
+        else if (pr instanceof Decimal) out.priority = ((Decimal) pr).intValue();
+        else if (pr instanceof Double) out.priority = ((Double) pr).intValue();
+        else if (pr instanceof String && String.isNotBlank((String) pr)) {
+            try { out.priority = Integer.valueOf((String) pr); } catch (Exception ignored) {}
+        }
+
+        Object sa = raw.get('sourceAdapter');
+        if (sa instanceof String) out.sourceAdapter = (String) sa;
+
+        Object ms = raw.get('matchStrategy');
+        if (ms instanceof String) out.matchStrategy = (String) ms;
+
+        Object toObj = raw.get('targetObject');
+        if (toObj instanceof String) out.targetObject = (String) toObj;
+
+        Object cd = raw.get('createDefaultsJson');
+        if (cd instanceof String) {
+            out.createDefaultsJson = (String) cd;
+        } else if (cd != null) {
+            out.createDefaultsJson = JSON.serialize(cd);
+        }
+
+        Object tw = raw.get('triggerWorkflowKey');
+        if (tw instanceof String) out.triggerWorkflowKey = (String) tw;
+
+        Object dn = raw.get('developerName');
+        if (dn instanceof String) out.developerName = (String) dn;
+
+        return out;
+    }
+
+    private static Metadata.CustomMetadataValue makeRuleValue(String field, Object val) {
+        Metadata.CustomMetadataValue v = new Metadata.CustomMetadataValue();
+        v.field = field;
+        v.value = val;
+        return v;
+    }
+
+    @TestVisible
+    private static String toDeveloperName(String raw) {
+        if (String.isBlank(raw)) return 'Unnamed';
+        String cleaned = raw.replaceAll('[^A-Za-z0-9_]', '_');
+        while (cleaned.contains('__')) cleaned = cleaned.replace('__', '_');
+        if (cleaned.startsWith('_')) cleaned = cleaned.substring(1);
+        if (cleaned.endsWith('_'))   cleaned = cleaned.substring(0, cleaned.length() - 1);
+        if (String.isBlank(cleaned)) cleaned = 'Unnamed';
+        if (!Pattern.matches('[A-Za-z].*', cleaned)) cleaned = 'X_' + cleaned;
+        return cleaned;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────
