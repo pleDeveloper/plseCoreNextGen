@@ -1,0 +1,101 @@
+<template>
+    <c-pulse-modal open={open} size="lg" title="Publish workflow" dismissible onclose={handleClose}>
+        <div class="deploy-content">
+            <!-- Step 1: Review -->
+            <template lwc:if={isReviewStep}>
+                <div class="deploy-section">
+                    <h3 class="deploy-section-title">Deployment plan</h3>
+                    <p class="deploy-section-desc">
+                        Target object: <strong>{targetObject}</strong>
+                    </p>
+                </div>
+
+                <template lwc:if={hasFieldsToCreate}>
+                    <div class="deploy-section">
+                        <h4 class="deploy-label">Fields to create</h4>
+                        <ul class="deploy-field-list">
+                            <template for:each={fieldsToCreate} for:item="f">
+                                <li key={f.fieldApiName} class="deploy-field-item">
+                                    <span class="deploy-field-name">{f.fieldLabel}</span>
+                                    <span class="deploy-field-api">{f.fieldApiName}</span>
+                                    <c-pulse-badge label={f.fieldType} variant="gray"></c-pulse-badge>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+                </template>
+
+                <template lwc:if={hasProjections}>
+                    <div class="deploy-section">
+                        <h4 class="deploy-label">Projections to register</h4>
+                        <ul class="deploy-field-list">
+                            <template for:each={projections} for:item="p">
+                                <li key={p.compositeKey} class="deploy-field-item">
+                                    <span class="deploy-field-name">{p.label}</span>
+                                    <span class="deploy-field-api">{p.fieldKey}</span>
+                                    <c-pulse-badge label="Projected" variant="purple"></c-pulse-badge>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+                </template>
+
+                <template lwc:if={nothingToDeploy}>
+                    <div class="deploy-section">
+                        <p class="deploy-empty">No new fields or projections to deploy.</p>
+                    </div>
+                </template>
+
+                <div class="deploy-actions">
+                    <c-pulse-button label="Cancel" variant="ghost" onclick={handleClose}></c-pulse-button>
+                    <c-pulse-button label="Publish workflow" variant="primary" onclick={handlePublish}></c-pulse-button>
+                </div>
+            </template>
+
+            <!-- Step 2: Deploying -->
+            <template lwc:if={isDeployingStep}>
+                <div class="deploy-status">
+                    <div class="deploy-spinner"></div>
+                    <p class="deploy-status-text">Deploying to <strong>{targetObject}</strong>...</p>
+                    <template lwc:if={deploymentStatus}>
+                        <c-pulse-badge label={deploymentStatus} variant={statusBadgeVariant}></c-pulse-badge>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Step 3: Result -->
+            <template lwc:if={isResultStep}>
+                <div class="deploy-result">
+                    <template lwc:if={isSuccess}>
+                        <div class="deploy-result-icon deploy-result-success">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M20 6L9 17l-5-5"></path>
+                            </svg>
+                        </div>
+                        <p class="deploy-result-text">Workflow published</p>
+                    </template>
+                    <template lwc:if={isFailure}>
+                        <div class="deploy-result-icon deploy-result-failure">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="15" y1="9" x2="9" y2="15"></line>
+                                <line x1="9" y1="9" x2="15" y2="15"></line>
+                            </svg>
+                        </div>
+                        <p class="deploy-result-text">Deployment failed</p>
+                        <template lwc:if={deploymentMessage}>
+                            <p class="deploy-result-detail">{deploymentMessage}</p>
+                        </template>
+                    </template>
+                    <div class="deploy-actions">
+                        <c-pulse-button label="Close" variant="secondary" onclick={handleClose}></c-pulse-button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </c-pulse-modal>
+</template>

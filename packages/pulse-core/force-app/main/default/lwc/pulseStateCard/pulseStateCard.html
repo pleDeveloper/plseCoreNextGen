@@ -1,0 +1,34 @@
+<template>
+    <div class={cardClass}
+         draggable="true"
+         data-key={stateKey}
+         onclick={handleClick}
+         ondragstart={handleDragStart}
+         ondragover={handleDragOver}
+         ondrop={handleDrop}
+         role="button"
+         tabindex="0"
+         onkeydown={handleKeyDown}>
+        <div class="state-card-header">
+            <span class="state-card-key">{stateKey}</span>
+            <c-pulse-badge label={typeBadgeLabel} variant={typeBadgeVariant}></c-pulse-badge>
+        </div>
+        <div class="state-card-label">{label}</div>
+        <div class="state-card-meta">
+            <span class="state-card-count">{fieldCountLabel}</span>
+            <span class="state-card-divider"></span>
+            <span class="state-card-count">{transitionCountLabel}</span>
+        </div>
+        <template lwc:if={showActions}>
+            <div class="state-card-actions">
+                <button class="state-card-action-btn" title="Delete state" onclick={handleDelete}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+                    </svg>
+                </button>
+            </div>
+        </template>
+    </div>
+</template>

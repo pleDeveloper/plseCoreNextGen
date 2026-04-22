@@ -149,11 +149,18 @@
 /* ── Main panel ──────────────────────────────── */
 .studio-main {
     flex: 1;
+    overflow: hidden;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+}
+
+.studio-main > .studio-placeholder-card-wrap {
     padding: var(--pulse-space-10);
-    overflow-y: auto;
     display: flex;
     align-items: flex-start;
     justify-content: center;
+    width: 100%;
 }
 
 .studio-placeholder-card {

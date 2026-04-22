@@ -63,6 +63,10 @@ export default class PulseAdminStudio extends LightningElement {
         return this.activePanel.description;
     }
 
+    get isWorkflowBuilder() {
+        return this.activeNav === 'workflow-builder';
+    }
+
     handleNavClick(event) {
         const key = event.currentTarget.dataset.key;
         if (key) {

@@ -1,0 +1,47 @@
+<template>
+    <div class="pulse-surface preview-container">
+        <div class="preview-panel">
+            <h4 class="preview-heading">Record page preview</h4>
+            <p class="preview-subhead">Fields with projection enabled</p>
+            <template lwc:if={hasProjectedFields}>
+                <ul class="preview-field-list">
+                    <template for:each={projectedFields} for:item="f">
+                        <li key={f.compositeKey} class="preview-field-item">
+                            <span class="preview-field-label">{f.label}</span>
+                            <span class="preview-field-type">{f.type}</span>
+                            <template lwc:if={f.required}>
+                                <span class="preview-field-required">Required</span>
+                            </template>
+                        </li>
+                    </template>
+                </ul>
+            </template>
+            <template lwc:if={noProjectedFields}>
+                <p class="preview-empty">No fields projected yet</p>
+            </template>
+        </div>
+
+        <div class="preview-divider"></div>
+
+        <div class="preview-panel">
+            <h4 class="preview-heading">Step history entry</h4>
+            <p class="preview-subhead">Non-projected fields stored per step</p>
+            <template lwc:if={hasStepFields}>
+                <ul class="preview-field-list">
+                    <template for:each={stepFields} for:item="f">
+                        <li key={f.compositeKey} class="preview-field-item">
+                            <span class="preview-field-label">{f.label}</span>
+                            <span class="preview-field-type">{f.type}</span>
+                            <template lwc:if={f.required}>
+                                <span class="preview-field-required">Required</span>
+                            </template>
+                        </li>
+                    </template>
+                </ul>
+            </template>
+            <template lwc:if={noStepFields}>
+                <p class="preview-empty">All fields are projected</p>
+            </template>
+        </div>
+    </div>
+</template>
