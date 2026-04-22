@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Stage Dwell</label>
+    <pluralLabel>Stage Dwells</pluralLabel>
+    <nameField>
+        <label>Dwell Number</label>
+        <displayFormat>SD-{00000}</displayFormat>
+        <type>AutoNumber</type>
+    </nameField>
+    <deploymentStatus>Deployed</deploymentStatus>
+    <sharingModel>ControlledByParent</sharingModel>
+    <description>Append-only per-state-exit fact record for SLA tracking and predictor training. One row per state entry; Exited_At is set on transition out.</description>
+</CustomObject>

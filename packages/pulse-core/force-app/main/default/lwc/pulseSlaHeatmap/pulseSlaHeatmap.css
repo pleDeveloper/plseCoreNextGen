@@ -1,0 +1,129 @@
+.heatmap-container {
+    width: 100%;
+    font-family: var(--pulse-font-primary, sans-serif);
+}
+
+.heatmap-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--pulse-space-4, 16px);
+    margin-bottom: var(--pulse-space-6, 24px);
+    flex-wrap: wrap;
+}
+
+.heatmap-title {
+    font-size: var(--pulse-text-h3, 1.25rem);
+    font-weight: var(--pulse-weight-bold, 700);
+    color: var(--pulse-dark, #1e293b);
+    margin: 0;
+    line-height: var(--pulse-lh-heading, 1.3);
+}
+
+.heatmap-filters {
+    display: flex;
+    gap: var(--pulse-space-3, 12px);
+    align-items: flex-end;
+}
+
+/* ── Loading / Empty / Error ────────────────────── */
+
+.heatmap-loading,
+.heatmap-empty,
+.heatmap-error {
+    padding: var(--pulse-space-10, 40px) var(--pulse-space-6, 24px);
+    text-align: center;
+}
+
+.heatmap-muted {
+    color: var(--pulse-slate, #64748b);
+    font-size: var(--pulse-text-body, 0.875rem);
+    margin: 0 0 var(--pulse-space-2, 8px);
+}
+
+.heatmap-hint {
+    color: var(--pulse-slate, #64748b);
+    font-size: var(--pulse-text-caption, 0.75rem);
+    margin: 0;
+    opacity: 0.7;
+}
+
+/* ── Table ──────────────────────────────────────── */
+
+.heatmap-table-wrap {
+    overflow-x: auto;
+}
+
+.heatmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--pulse-text-small, 0.8125rem);
+}
+
+.heatmap-table th {
+    text-align: left;
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-slate, #64748b);
+    padding: var(--pulse-space-2, 8px) var(--pulse-space-3, 12px);
+    border-bottom: 2px solid var(--pulse-border, #e2e8f0);
+    font-size: var(--pulse-text-caption, 0.75rem);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.heatmap-table tbody tr {
+    cursor: pointer;
+    transition: background var(--pulse-transition-fast, 150ms);
+    border-bottom: 1px solid var(--pulse-border, #e2e8f0);
+}
+
+.heatmap-table tbody tr:hover {
+    filter: brightness(0.95);
+}
+
+.heatmap-table tbody tr:focus {
+    outline: none;
+    box-shadow: var(--pulse-shadow-focus-ring, 0 0 0 3px rgba(139, 92, 246, .35));
+}
+
+.heatmap-state-cell {
+    padding: var(--pulse-space-3, 12px);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.heatmap-state-key {
+    font-weight: var(--pulse-weight-semibold, 600);
+    color: var(--pulse-dark, #1e293b);
+}
+
+.heatmap-subject-kind {
+    font-size: var(--pulse-text-caption, 0.75rem);
+    color: var(--pulse-slate, #64748b);
+}
+
+.heatmap-metric-cell {
+    padding: var(--pulse-space-3, 12px);
+    font-family: var(--pulse-font-mono, monospace);
+    text-align: right;
+    color: var(--pulse-dark, #1e293b);
+}
+
+/* ── Color buckets ──────────────────────────────── */
+
+.heatmap-cell-success {
+    background: var(--pulse-success-bg, #f0fdf4);
+}
+
+.heatmap-cell-info {
+    background: var(--pulse-info-bg, #eff6ff);
+}
+
+.heatmap-cell-warning {
+    background: var(--pulse-warning-bg, #fffbeb);
+}
+
+.heatmap-cell-error {
+    background: var(--pulse-error-bg, #fef2f2);
+}

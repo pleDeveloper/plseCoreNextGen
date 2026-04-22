@@ -1,0 +1,80 @@
+<template>
+    <div class="heatmap-container">
+        <!-- Header / filters -->
+        <div class="heatmap-header">
+            <h2 class="heatmap-title">Stage dwell heatmap</h2>
+            <div class="heatmap-filters">
+                <c-pulse-input
+                    label="Workflow key"
+                    placeholder="All workflows"
+                    value={_workflowKeyFilter}
+                    onchange={handleWorkflowKeyChange}
+                ></c-pulse-input>
+                <c-pulse-input
+                    label="Lookback (days)"
+                    type="number"
+                    value={_lookbackDaysFilter}
+                    onchange={handleLookbackChange}
+                ></c-pulse-input>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <template lwc:if={isLoading}>
+            <div class="heatmap-loading">
+                <p class="heatmap-muted">Loading dwell data…</p>
+            </div>
+        </template>
+
+        <!-- Error -->
+        <template lwc:elseif={hasError}>
+            <div class="heatmap-error">
+                <c-pulse-badge label={errorMessage} variant="error"></c-pulse-badge>
+            </div>
+        </template>
+
+        <!-- Empty state -->
+        <template lwc:elseif={isEmpty}>
+            <div class="heatmap-empty">
+                <p class="heatmap-muted">No completed dwell records yet.</p>
+                <p class="heatmap-hint">Data accrues as workflow instances transition between states.</p>
+            </div>
+        </template>
+
+        <!-- Data table -->
+        <template lwc:elseif={hasData}>
+            <div class="heatmap-table-wrap">
+                <table class="heatmap-table" role="grid" aria-label="Stage dwell heatmap">
+                    <thead>
+                        <tr>
+                            <th scope="col">State</th>
+                            <th scope="col">Median</th>
+                            <th scope="col">p90</th>
+                            <th scope="col">N</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template for:each={rows} for:item="row">
+                            <tr key={row.id}
+                                class={row.colorClass}
+                                data-state-key={row.stateKey}
+                                onclick={handleRowClick}
+                                role="row"
+                                tabindex="0">
+                                <td class="heatmap-state-cell">
+                                    <span class="heatmap-state-key">{row.stateKey}</span>
+                                    <template lwc:if={row.subjectKind}>
+                                        <span class="heatmap-subject-kind">{row.subjectKind}</span>
+                                    </template>
+                                </td>
+                                <td class="heatmap-metric-cell">{row.medianFormatted}</td>
+                                <td class="heatmap-metric-cell">{row.p90Formatted}</td>
+                                <td class="heatmap-metric-cell">{row.sampleCount}</td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </template>
+    </div>
+</template>

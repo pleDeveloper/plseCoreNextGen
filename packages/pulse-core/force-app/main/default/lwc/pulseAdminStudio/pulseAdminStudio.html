@@ -56,6 +56,11 @@
                             <c-pulse-conversation-hub></c-pulse-conversation-hub>
                         </div>
                     </template>
+                    <template lwc:elseif={isSla}>
+                        <div class="studio-sla-wrap">
+                            <c-pulse-sla-heatmap></c-pulse-sla-heatmap>
+                        </div>
+                    </template>
                     <template lwc:else>
                     <div class="pulse-card studio-placeholder-card">
                         <div class="pulse-card-icon studio-placeholder-icon">
