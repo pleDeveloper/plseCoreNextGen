@@ -24,6 +24,9 @@ export default class PulseWorkflowBuilder extends LightningElement {
     newSubjectKinds = '';
     showCreateForm = false;
 
+    // ── Tab state ─────────────────────────────────────────────────
+    activeTab = 'states';
+
     // ── Add-state form state ──────────────────────────────────────
     showAddStateForm = false;
     newStateKey = '';
@@ -127,6 +130,37 @@ export default class PulseWorkflowBuilder extends LightningElement {
 
     get showCreatePanel() {
         return this.isCreating && this.showCreateForm;
+    }
+
+    get recordId() {
+        return this._recordId;
+    }
+
+    get isStatesTab() {
+        return this.activeTab === 'states';
+    }
+
+    get isTriggersTab() {
+        return this.activeTab === 'triggers';
+    }
+
+    get tabStatesClass() {
+        return this.activeTab === 'states'
+            ? 'builder-tab builder-tab-active'
+            : 'builder-tab';
+    }
+
+    get tabTriggersClass() {
+        return this.activeTab === 'triggers'
+            ? 'builder-tab builder-tab-active'
+            : 'builder-tab';
+    }
+
+    handleTabClick(event) {
+        const tab = event.currentTarget.dataset.tab;
+        if (tab) {
+            this.activeTab = tab;
+        }
     }
 
     get createDisabled() {

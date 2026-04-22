@@ -1,0 +1,201 @@
+<template>
+    <div class="triggers-shell">
+        <div class="triggers-header">
+            <div>
+                <h3 class="triggers-heading">Auto-start triggers</h3>
+                <p class="triggers-desc">
+                    Start a workflow instance automatically when a record matches these conditions.
+                    An Apex trigger on the target object is provisioned on first save.
+                </p>
+            </div>
+            <c-pulse-button label="Add trigger" variant="primary" size="sm"
+                            onclick={handleAddTrigger}>
+            </c-pulse-button>
+        </div>
+
+        <template lwc:if={loading}>
+            <div class="triggers-loading">Loading…</div>
+        </template>
+
+        <template lwc:if={listError}>
+            <div class="triggers-error-banner">{listError}</div>
+        </template>
+
+        <template lwc:if={hasTriggers}>
+            <ul class="triggers-list">
+                <template for:each={decoratedTriggers} for:item="t">
+                    <li key={t.rowId} class="trigger-card">
+                        <div class="trigger-card-grid">
+                            <label class="trigger-field">
+                                <span class="trigger-field-label">Target object</span>
+                                <c-pulse-input value={t.targetObject}
+                                               placeholder="Opportunity"
+                                               data-row-id={t.rowId}
+                                               onchange={handleTargetObjectChange}>
+                                </c-pulse-input>
+                            </label>
+
+                            <label class="trigger-field">
+                                <span class="trigger-field-label">Fires on</span>
+                                <select class="trigger-select"
+                                        data-row-id={t.rowId}
+                                        onchange={handleEventTypeChange}>
+                                    <template for:each={t.eventTypeOptions} for:item="opt">
+                                        <option key={opt.value}
+                                                value={opt.value}
+                                                selected={opt.selected}>
+                                            {opt.label}
+                                        </option>
+                                    </template>
+                                </select>
+                            </label>
+
+                            <label class="trigger-field">
+                                <span class="trigger-field-label">Start at state</span>
+                                <select class="trigger-select"
+                                        data-row-id={t.rowId}
+                                        onchange={handleInitialStateChange}>
+                                    <template for:each={t.stateOptions} for:item="opt">
+                                        <option key={opt.value}
+                                                value={opt.value}
+                                                selected={opt.selected}>
+                                            {opt.label}
+                                        </option>
+                                    </template>
+                                </select>
+                            </label>
+
+                            <div class="trigger-active-wrap">
+                                <c-pulse-toggle label="Active"
+                                                checked={t.active}
+                                                data-row-id={t.rowId}
+                                                onchange={handleActiveToggle}>
+                                </c-pulse-toggle>
+                            </div>
+                        </div>
+
+                        <div class="trigger-conditions">
+                            <div class="trigger-conditions-header">
+                                <span class="trigger-conditions-label">Start when</span>
+                                <template lwc:if={t.showLogicSelector}>
+                                    <button class="trigger-logic-toggle"
+                                            data-row-id={t.rowId}
+                                            onclick={handleLogicToggle}>
+                                        {t.logicLabel}
+                                    </button>
+                                </template>
+                                <template lwc:else>
+                                    <span class="trigger-logic-static">{t.logicLabel}</span>
+                                </template>
+                                <span class="trigger-conditions-label">match</span>
+                            </div>
+
+                            <ul class="trigger-rules">
+                                <template for:each={t.rules} for:item="r">
+                                    <li key={r.rowId} class="trigger-rule-row">
+                                        <select class="trigger-select trigger-rule-field"
+                                                data-row-id={t.rowId}
+                                                data-rule-row-id={r.rowId}
+                                                onchange={handleRuleFieldChange}>
+                                            <option value="" selected={r.fieldEmpty}>— field —</option>
+                                            <template for:each={r.fieldOptions} for:item="opt">
+                                                <option key={opt.value}
+                                                        value={opt.value}
+                                                        selected={opt.selected}>
+                                                    {opt.label}
+                                                </option>
+                                            </template>
+                                        </select>
+
+                                        <select class="trigger-select trigger-rule-op"
+                                                data-row-id={t.rowId}
+                                                data-rule-row-id={r.rowId}
+                                                onchange={handleRuleOpChange}>
+                                            <template for:each={r.opOptions} for:item="opt">
+                                                <option key={opt.value}
+                                                        value={opt.value}
+                                                        selected={opt.selected}>
+                                                    {opt.label}
+                                                </option>
+                                            </template>
+                                        </select>
+
+                                        <template lwc:if={r.hideValue}>
+                                            <div class="trigger-rule-value-placeholder">—</div>
+                                        </template>
+                                        <template lwc:elseif={r.isPicklist}>
+                                            <select class="trigger-select"
+                                                    data-row-id={t.rowId}
+                                                    data-rule-row-id={r.rowId}
+                                                    onchange={handleRuleValueChange}>
+                                                <option value="" selected={r.valueEmpty}>— value —</option>
+                                                <template for:each={r.picklistOptions} for:item="opt">
+                                                    <option key={opt.value}
+                                                            value={opt.value}
+                                                            selected={opt.selected}>
+                                                        {opt.label}
+                                                    </option>
+                                                </template>
+                                            </select>
+                                        </template>
+                                        <template lwc:else>
+                                            <c-pulse-input value={r.value}
+                                                           placeholder="Value"
+                                                           data-row-id={t.rowId}
+                                                           data-rule-row-id={r.rowId}
+                                                           onchange={handleRuleValueChange}>
+                                            </c-pulse-input>
+                                        </template>
+
+                                        <button class="trigger-rule-delete"
+                                                title="Remove rule"
+                                                data-row-id={t.rowId}
+                                                data-rule-row-id={r.rowId}
+                                                onclick={handleRemoveRule}>
+                                            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                                <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                            </svg>
+                                        </button>
+                                    </li>
+                                </template>
+                            </ul>
+
+                            <c-pulse-button label="+ Add rule" variant="ghost" size="sm"
+                                            data-row-id={t.rowId}
+                                            onclick={handleAddRule}>
+                            </c-pulse-button>
+                        </div>
+
+                        <template lwc:if={t.apexTriggerStatus}>
+                            <div class="trigger-status-hint">{t.apexTriggerStatus}</div>
+                        </template>
+
+                        <template lwc:if={t.error}>
+                            <div class="trigger-error-banner">{t.error}</div>
+                        </template>
+
+                        <div class="trigger-actions">
+                            <c-pulse-button label={t.saveLabel} variant="primary" size="sm"
+                                            disabled={t.saveDisabled}
+                                            data-row-id={t.rowId}
+                                            onclick={handleSave}>
+                            </c-pulse-button>
+                            <c-pulse-button label="Delete" variant="ghost" size="sm"
+                                            data-row-id={t.rowId}
+                                            onclick={handleDelete}>
+                            </c-pulse-button>
+                        </div>
+                    </li>
+                </template>
+            </ul>
+        </template>
+        <template lwc:else>
+            <template lwc:if={loading}></template>
+            <template lwc:else>
+                <div class="triggers-empty">
+                    No triggers yet. Click <strong>Add trigger</strong> to configure when this workflow starts.
+                </div>
+            </template>
+        </template>
+    </div>
+</template>

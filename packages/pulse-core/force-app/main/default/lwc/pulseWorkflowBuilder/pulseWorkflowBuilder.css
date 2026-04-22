@@ -217,6 +217,49 @@
     font-size: var(--pulse-text-small);
 }
 
+/* ── Tabs (States vs Triggers) ─────────────── */
+.builder-tabs {
+    display: flex;
+    gap: var(--pulse-space-1, 4px);
+    padding: 0 var(--pulse-space-5);
+    border-bottom: 1px solid var(--pulse-border);
+    background: var(--pulse-white);
+}
+
+.builder-tab {
+    appearance: none;
+    background: transparent;
+    border: none;
+    padding: var(--pulse-space-3, 12px) var(--pulse-space-4, 16px);
+    font-family: var(--pulse-font-primary, 'Poppins', sans-serif);
+    font-size: var(--pulse-text-body, 14px);
+    font-weight: var(--pulse-weight-medium, 500);
+    color: var(--pulse-slate, #64748b);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+
+.builder-tab:hover {
+    color: var(--pulse-dark, #0f172a);
+}
+
+.builder-tab-active {
+    color: var(--pulse-purple-700, #5b21b6);
+    border-bottom-color: var(--pulse-purple-500, #7B2FF2);
+    font-weight: var(--pulse-weight-semibold, 600);
+}
+
+.builder-triggers-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--pulse-space-6, 24px) var(--pulse-space-8, 32px);
+    max-width: 1000px;
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
 /* ── Three-panel body ──────────────────────── */
 .builder-body {
     flex: 1;

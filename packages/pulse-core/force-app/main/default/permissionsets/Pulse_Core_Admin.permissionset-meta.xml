@@ -19,6 +19,15 @@
         <allowRead>true</allowRead>
         <modifyAllRecords>true</modifyAllRecords>
         <viewAllRecords>true</viewAllRecords>
+        <object>Workflow_Trigger__c</object>
+    </objectPermissions>
+    <objectPermissions>
+        <allowCreate>true</allowCreate>
+        <allowDelete>true</allowDelete>
+        <allowEdit>true</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>true</modifyAllRecords>
+        <viewAllRecords>true</viewAllRecords>
         <object>Workflow_Instance__c</object>
     </objectPermissions>
     <objectPermissions>
@@ -93,6 +102,21 @@
         <viewAllRecords>true</viewAllRecords>
         <object>Stage_Dwell__c</object>
     </objectPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Workflow_Trigger__c.Condition_JSON__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Workflow_Trigger__c.Initial_State_Key__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Workflow_Trigger__c.Active__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
         <field>Workflow_Definition__c.Checksum__c</field>
