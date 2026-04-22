@@ -218,6 +218,47 @@ public with sharing class WorkflowContract {
         //   { "type": "parent_owner" }                        (uses OwnerId of Parent_Record_Id__c)
         //   { "type": "group", "groupId": "00G..." } | { "type": "group", "groupName": "QueueName" }
         public Map<String, Object> assignmentRule;
+        // Configurable status machine per action (OfficeHC-inspired).
+        // When statuses is non-empty, runtime reads Status_Key__c as the
+        // canonical value and uses the declared machine. When empty, the
+        // legacy Status__c enum applies (Pending/Executed/Rejected/...).
+        public List<StatusDef> statuses;
+        public String initialStatusKey;  // defaults to first statuses[].key with isInitial=true, else statuses[0].key
+
+        public StatusDef getStatus(String statusKey) {
+            if (statuses == null) return null;
+            for (StatusDef sd : statuses) {
+                if (sd.key == statusKey) return sd;
+            }
+            return null;
+        }
+
+        public StatusDef resolveInitialStatus() {
+            if (statuses == null || statuses.isEmpty()) return null;
+            if (String.isNotBlank(initialStatusKey)) {
+                StatusDef hit = getStatus(initialStatusKey);
+                if (hit != null) return hit;
+            }
+            for (StatusDef sd : statuses) {
+                if (sd.isInitial == true) return sd;
+            }
+            return statuses[0];
+        }
+    }
+
+    /**
+     * One status on an action's state machine. Entry conditions can
+     * reference sibling action statuses via the `action_status` rule type
+     * on PulseWorkflowTriggerEvaluator.
+     */
+    public class StatusDef {
+        public String key;
+        public String label;
+        public Integer order;
+        public String category;            // 'open' | 'blocked' | 'terminal_success' | 'terminal_failure'
+        public Boolean isInitial;
+        public Map<String, Object> entryConditions;  // AND/OR tree
+        public Map<String, Object> onEntry;          // optional side-effects (future)
     }
 
     public class FieldDef {
@@ -502,7 +543,45 @@ public with sharing class WorkflowContract {
         if (actionAgentObj instanceof Map<String, Object>) {
             a.agent = (Map<String, Object>) actionAgentObj;
         }
+        // Status machine (configurable per action)
+        Object statusesObj = raw.get('statuses');
+        if (statusesObj instanceof List<Object>) {
+            a.statuses = new List<StatusDef>();
+            Integer idx = 0;
+            for (Object sObj : (List<Object>) statusesObj) {
+                if (sObj instanceof Map<String, Object>) {
+                    StatusDef sd = mapStatusDef((Map<String, Object>) sObj);
+                    if (sd.order == null) sd.order = idx;
+                    a.statuses.add(sd);
+                }
+                idx++;
+            }
+        }
+        a.initialStatusKey = (String) raw.get('initialStatusKey');
         return a;
+    }
+
+    private static StatusDef mapStatusDef(Map<String, Object> raw) {
+        StatusDef sd = new StatusDef();
+        sd.key      = (String) raw.get('key');
+        sd.label    = (String) raw.get('label');
+        sd.category = (String) raw.get('category');
+        sd.isInitial = raw.get('isInitial') == true;
+        Object orderObj = raw.get('order');
+        if (orderObj instanceof Decimal) {
+            sd.order = ((Decimal) orderObj).intValue();
+        } else if (orderObj instanceof Integer) {
+            sd.order = (Integer) orderObj;
+        }
+        Object ecObj = raw.get('entryConditions');
+        if (ecObj instanceof Map<String, Object>) {
+            sd.entryConditions = (Map<String, Object>) ecObj;
+        }
+        Object oeObj = raw.get('onEntry');
+        if (oeObj instanceof Map<String, Object>) {
+            sd.onEntry = (Map<String, Object>) oeObj;
+        }
+        return sd;
     }
 
     private static FieldDef mapFieldDef(Map<String, Object> raw) {

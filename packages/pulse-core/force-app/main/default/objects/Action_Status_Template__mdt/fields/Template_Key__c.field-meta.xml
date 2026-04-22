@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Template_Key__c</fullName>
+    <label>Template Key</label>
+    <description>Unique key admins reference when importing a status template into an action's state machine.</description>
+    <length>80</length>
+    <required>true</required>
+    <type>Text</type>
+    <unique>true</unique>
+</CustomField>

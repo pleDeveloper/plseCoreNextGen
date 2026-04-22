@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status_History_JSON__c</fullName>
+    <label>Status History JSON</label>
+    <description>Ring buffer of the last 20 status transitions. Each entry: {at, from, to, actor, reason}.</description>
+    <type>LongTextArea</type>
+    <length>32000</length>
+    <visibleLines>6</visibleLines>
+</CustomField>

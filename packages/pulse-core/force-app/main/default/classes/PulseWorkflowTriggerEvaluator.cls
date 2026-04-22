@@ -33,6 +33,19 @@ global with sharing class PulseWorkflowTriggerEvaluator {
      * @return             true if the record satisfies the condition
      */
     global static Boolean matches(SObject record, SObject oldRecord, String conditionJson) {
+        return matches(record, oldRecord, new Map<String, String>(), conditionJson);
+    }
+
+    /**
+     * Extended signature that also accepts `actionStatusesByKey` — a map of
+     * sibling action keys to their current status. Supports `action_status`
+     * rule types that reference another action's status in the same
+     * workflow instance.
+     */
+    global static Boolean matches(
+        SObject record, SObject oldRecord,
+        Map<String, String> actionStatusesByKey, String conditionJson
+    ) {
         if (String.isBlank(conditionJson) || conditionJson.trim() == '{}') {
             return true;
         }
@@ -45,15 +58,23 @@ global with sharing class PulseWorkflowTriggerEvaluator {
         if (!(parsed instanceof Map<String, Object>)) {
             throw new EvaluationException('Condition_JSON root must be an object');
         }
-        return evaluateNode((Map<String, Object>) parsed, record, oldRecord);
+        Map<String, String> statuses = actionStatusesByKey == null
+            ? new Map<String, String>() : actionStatusesByKey;
+        return evaluateNode((Map<String, Object>) parsed, record, oldRecord, statuses);
     }
 
     // ── Node evaluator ────────────────────────────────────────────────
 
     private static Boolean evaluateNode(
-        Map<String, Object> node, SObject record, SObject oldRecord
+        Map<String, Object> node, SObject record, SObject oldRecord,
+        Map<String, String> actionStatusesByKey
     ) {
-        // Rule leaf: has 'field' + 'op'
+        // Typed rule leaf (action_status / field_changed) — discriminator first
+        String ruleType = (String) node.get('type');
+        if (ruleType != null && ruleType != 'field') {
+            return evaluateTypedRule(node, ruleType, record, oldRecord, actionStatusesByKey);
+        }
+        // Field rule leaf: has 'field' + 'op' (default when 'type' absent)
         if (node.containsKey('field') && node.containsKey('op')) {
             return evaluateRule(node, record, oldRecord);
         }
@@ -71,7 +92,7 @@ global with sharing class PulseWorkflowTriggerEvaluator {
         if (logic == 'AND') {
             for (Object r : rulesRaw) {
                 if (!(r instanceof Map<String, Object>)) continue;
-                if (!evaluateNode((Map<String, Object>) r, record, oldRecord)) {
+                if (!evaluateNode((Map<String, Object>) r, record, oldRecord, actionStatusesByKey)) {
                     return false;
                 }
             }
@@ -79,7 +100,7 @@ global with sharing class PulseWorkflowTriggerEvaluator {
         } else if (logic == 'OR') {
             for (Object r : rulesRaw) {
                 if (!(r instanceof Map<String, Object>)) continue;
-                if (evaluateNode((Map<String, Object>) r, record, oldRecord)) {
+                if (evaluateNode((Map<String, Object>) r, record, oldRecord, actionStatusesByKey)) {
                     return true;
                 }
             }
@@ -87,6 +108,49 @@ global with sharing class PulseWorkflowTriggerEvaluator {
         } else {
             throw new EvaluationException('Unsupported logic operator: ' + logic);
         }
+    }
+
+    // ── Typed rule evaluator (action_status / field_changed) ─────────
+
+    private static Boolean evaluateTypedRule(
+        Map<String, Object> rule, String ruleType,
+        SObject record, SObject oldRecord,
+        Map<String, String> actionStatusesByKey
+    ) {
+        if (ruleType == 'action_status') {
+            String actionKey = (String) rule.get('action');
+            if (String.isBlank(actionKey)) return false;
+            String currentStatus = actionStatusesByKey.get(actionKey);
+            Object eq = rule.get('statusEquals');
+            if (eq instanceof String) {
+                return currentStatus == (String) eq;
+            }
+            Object inObj = rule.get('statusIn');
+            if (inObj instanceof List<Object>) {
+                for (Object s : (List<Object>) inObj) {
+                    if (String.valueOf(s) == currentStatus) return true;
+                }
+                return false;
+            }
+            Object neq = rule.get('statusNotEquals');
+            if (neq instanceof String) {
+                return currentStatus != (String) neq;
+            }
+            // Default: true if the action has ANY status set
+            return String.isNotBlank(currentStatus);
+        }
+        if (ruleType == 'field_changed') {
+            String field = (String) rule.get('field');
+            if (String.isBlank(field) || oldRecord == null) return false;
+            Object newVal = getFieldValue(record, field);
+            Object oldVal = getFieldValue(oldRecord, field);
+            Object to = rule.get('to');
+            if (to != null) {
+                return !objectEquals(newVal, oldVal) && objectEquals(newVal, to);
+            }
+            return !objectEquals(newVal, oldVal);
+        }
+        throw new EvaluationException('Unsupported rule type: ' + ruleType);
     }
 
     // ── Rule evaluator ────────────────────────────────────────────────
