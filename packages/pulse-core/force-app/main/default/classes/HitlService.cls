@@ -134,6 +134,15 @@ public with sharing class HitlService {
                 System.debug(LoggingLevel.ERROR,
                     'HitlService: post-execute action lifecycle failed: ' + e.getMessage());
             }
+            // Status machine reevaluation: this action's state changed,
+            // which may unblock or re-enter sibling statuses via
+            // `action_status` entryConditions. Reevaluate the instance.
+            try {
+                PulseActionStatusEngine.reevaluateForAction(action.Id);
+            } catch (Exception e) {
+                System.debug(LoggingLevel.ERROR,
+                    'HitlService: status reevaluate failed: ' + e.getMessage());
+            }
         }
 
         // Agent Mode: if any Agent_Decision__c points at this action, re-kick

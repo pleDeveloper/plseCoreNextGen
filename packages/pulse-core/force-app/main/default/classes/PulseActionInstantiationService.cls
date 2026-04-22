@@ -209,6 +209,21 @@ public with sharing class PulseActionInstantiationService {
             Request_JSON__c        = requestJson
         );
 
+        // When the contract declares a status machine, seed the canonical
+        // Status_Key__c + Status_Category__c from resolveInitialStatus().
+        // Legacy Status__c stays 'Pending' for back-compat with the picklist.
+        if (def.statuses != null && !def.statuses.isEmpty()) {
+            WorkflowContract.StatusDef initial = def.resolveInitialStatus();
+            if (initial != null) {
+                if (String.isNotBlank(initial.key)) {
+                    rec.Status_Key__c = initial.key;
+                }
+                if (String.isNotBlank(initial.category)) {
+                    rec.Status_Category__c = initial.category;
+                }
+            }
+        }
+
         // ── Resolve the assignmentRule ─────────────────────────────
         // Default: 'workflow_owner' — route to the user who created the
         // instance (fallback to the running user). Other types opt in via
