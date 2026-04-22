@@ -1,0 +1,238 @@
+You are executing Wave 6 (Admin Studio Backfill) for Pulse Core Next. Single-lane session on branch `wave6-admin-studio-backfill` off `main`.
+
+Admin Studio shell has 8 nav slots. Four are wired (Workflow Builder, Action Hub, Conversations, SLA). Four still fall through to a "Coming in wave 3c+" placeholder badge — which is product-hostile copy that ships to end users. This wave kills three of those placeholders (AI Config, Integrations Hub, Settings) and cleans up the Library placeholder copy so it's not internal-wave-reference text. Library's real LWC arrives in Wave 7.
+
+# Canonical references (read first)
+- `docs/pulse-nextgen-architecture-review-and-build-plan.md` v4.1 §4.7 (AI config), §4.11 (channels/integrations), §5
+- `docs/brand-kit/README.md` — loader pattern
+- Existing Admin Studio shell: `packages/pulse-core/force-app/main/default/lwc/pulseAdminStudio/pulseAdminStudio.{html,js,css}`
+- Existing CMDT objects you'll query from the panels (spot-check each to confirm field names before writing SOQL):
+  - `packages/pulse-core/force-app/main/default/objects/AI_Provider_Registration__mdt/`
+  - `packages/pulse-core/force-app/main/default/objects/Workflow_Tool_Registration__mdt/`
+  - `packages/pulse-core/force-app/main/default/objects/Channel_Adapter_Registration__mdt/`
+  - `packages/pulse-conversations-core/force-app/main/default/objects/Conversation_Source_Registration__mdt/`
+  - `packages/pulse-core/force-app/main/default/objects/Extraction_Profile__mdt/`
+  - `packages/pulse-core/force-app/main/default/objects/Feature_Flag__mdt/`
+  - `packages/pulse-core/force-app/main/default/objects/Calendar_Auto_Dispatch_Rule__mdt/`
+- Existing runtime record types you'll query for settings panel:
+  - `packages/pulse-core/force-app/main/default/objects/Deployment_Request__c/`
+
+# Goal — scope discipline
+**Three panels + placeholder cleanup, read-only.** CMDT CRUD from Apex requires async Metadata API plumbing we already built for schema provisioning, but hooking each of these CMDTs into the Tooling API pipeline is too much for one wave. The panels are **read views** with deep links into Setup for editing. This matches v4.1's philosophy: make admins immediately see the current config state, defer the full in-app editor until those flows are load-bearing.
+
+Each read-only panel has:
+- Title + short description
+- List of relevant records with key fields
+- Badge indicators for `Active__c` / `Priority` / policy
+- A muted "Edit in Setup →" link that opens `/lightning/setup/CustomMetadata/home` scoped to the right CMDT (open in a new tab)
+- Empty state when no rows exist
+
+## 1. PulseAdminConfigController (Apex)
+
+Path: `packages/pulse-core/force-app/main/default/classes/PulseAdminConfigController.cls`
+
+```
+global with sharing class PulseAdminConfigController {
+
+    // ── AI Config ──────────────────────────────────────────────────────
+    global class AiProviderView {
+        @AuraEnabled public String developerName;
+        @AuraEnabled public String providerName;
+        @AuraEnabled public String modelId;
+        @AuraEnabled public String namedCredential;
+        @AuraEnabled public Integer priority;
+        @AuraEnabled public Boolean active;
+    }
+
+    global class ToolRegistrationView {
+        @AuraEnabled public String developerName;
+        @AuraEnabled public String toolKey;
+        @AuraEnabled public String apexClass;
+        @AuraEnabled public String defaultHitlPolicy;
+        @AuraEnabled public Boolean active;
+    }
+
+    global class ExtractionProfileView {
+        @AuraEnabled public String developerName;
+        @AuraEnabled public String profileKey;
+        @AuraEnabled public String medium;
+        @AuraEnabled public Integer schemaSize; // char length, for display
+    }
+
+    global class AiConfigView {
+        @AuraEnabled public List<AiProviderView>      providers;
+        @AuraEnabled public List<ToolRegistrationView> tools;
+        @AuraEnabled public List<ExtractionProfileView> extractionProfiles;
+    }
+
+    @AuraEnabled(cacheable=true)
+    global static AiConfigView getAiConfig() {
+        // SELECT from AI_Provider_Registration__mdt, Workflow_Tool_Registration__mdt,
+        // Extraction_Profile__mdt. Return populated AiConfigView.
+    }
+
+    // ── Integrations Hub ───────────────────────────────────────────────
+    global class NamedCredentialView {
+        @AuraEnabled public String developerName;
+        @AuraEnabled public String label;
+        @AuraEnabled public String endpoint;
+        @AuraEnabled public String principalType;
+    }
+
+    global class ChannelAdapterView {
+        @AuraEnabled public String developerName;
+        @AuraEnabled public String channelKey;
+        @AuraEnabled public String adapterClass;
+        @AuraEnabled public Boolean active;
+    }
+
+    global class ConversationSourceView {
+        @AuraEnabled public String developerName;
+        @AuraEnabled public String sourceKey;
+        @AuraEnabled public String adapterClass;
+        @AuraEnabled public Boolean active;
+    }
+
+    global class IntegrationsHubView {
+        @AuraEnabled public List<NamedCredentialView>    namedCredentials;
+        @AuraEnabled public List<ChannelAdapterView>     channelAdapters;
+        @AuraEnabled public List<ConversationSourceView> conversationSources;
+    }
+
+    @AuraEnabled(cacheable=true)
+    global static IntegrationsHubView getIntegrationsHub() {
+        // Named Credentials: query via SOQL on NamedCredential (standard SObject).
+        // Channel adapters: Channel_Adapter_Registration__mdt.
+        // Conversation sources: Conversation_Source_Registration__mdt.
+    }
+
+    // ── Settings ───────────────────────────────────────────────────────
+    global class FeatureFlagView {
+        @AuraEnabled public String developerName;
+        @AuraEnabled public String featureKey;
+        @AuraEnabled public Boolean enabled;
+        @AuraEnabled public String description;
+    }
+
+    global class PermissionSetView {
+        @AuraEnabled public String developerName;
+        @AuraEnabled public String label;
+        @AuraEnabled public Boolean assignedToCurrentUser;
+    }
+
+    global class DeploymentHistoryView {
+        @AuraEnabled public Id       deploymentRequestId;
+        @AuraEnabled public String   targetObject;
+        @AuraEnabled public String   status;
+        @AuraEnabled public Datetime completedDate;
+        @AuraEnabled public String   errorMessage;
+    }
+
+    global class SettingsView {
+        @AuraEnabled public List<FeatureFlagView>      featureFlags;
+        @AuraEnabled public List<PermissionSetView>    pulsePermissionSets;
+        @AuraEnabled public List<DeploymentHistoryView> recentDeployments;
+    }
+
+    @AuraEnabled(cacheable=true)
+    global static SettingsView getSettings() {
+        // Feature flags: Feature_Flag__mdt.
+        // Pulse permission sets: SELECT from PermissionSet where Name starts with 'Pulse_'.
+        //   For each, SELECT assignment count for current user.
+        // Recent deployments: top 10 from Deployment_Request__c by CreatedDate DESC.
+    }
+}
+```
+
+Test class `PulseAdminConfigControllerTest` with ≥90% coverage:
+- Each getter returns populated DTOs when data exists.
+- Each getter returns empty-list DTOs when nothing exists (no NPE).
+- Deployment history respects the 10-row limit and ordering.
+- `assignedToCurrentUser` correctly reflects the test user's PermissionSetAssignment.
+
+All classes `global` for LWC wire compatibility.
+
+## 2. LWCs — three new components
+
+All paths under `packages/pulse-core/force-app/main/default/lwc/`.
+
+### `pulseAiConfig/`
+
+`js-meta.xml`:
+- `isExposed = true`
+- `targets = lightning__AppPage`
+- `masterLabel = 'Pulse AI Config'`
+
+JS / HTML behavior:
+- `connectedCallback` loads brand tokens, wires `getAiConfig`.
+- Renders three sections each as a pulseCard:
+  - **AI Providers** — one sub-card per provider: name + model + Named Credential + priority badge + active/inactive status badge (success/gray).
+  - **Tool Registrations** — one sub-card per tool: tool key + apex class + HITL policy as colored badge (Approval_Required = warning, Review_After = info, Autonomous = success, other = gray).
+  - **Extraction Profiles** — list rows with profile key + medium badge + small muted "schema size: N chars" caption.
+- Each section header has a subtle "Edit in Setup →" link that opens `/lightning/setup/CustomMetadata/home` in a new tab. Use a plain `<a target="_blank" rel="noopener">`; no lightning-* base components.
+- Empty states for each section with useful instructional copy (not generic "no records").
+
+### `pulseIntegrationsHub/`
+
+`js-meta.xml` same targets/exposure as above.
+
+Sections:
+- **Named Credentials** — list with label, developerName, endpoint (truncated to 40 chars), principal type. Link to `/lightning/setup/NamedCredential/home`.
+- **Channel Adapters** — list of Channel_Adapter_Registration__mdt rows.
+- **Conversation Sources** — list of Conversation_Source_Registration__mdt rows.
+- Same "Edit in Setup →" pattern for each.
+
+### `pulseSettings/`
+
+`js-meta.xml` same targets/exposure.
+
+Sections:
+- **Feature Flags** — each flag with a colored toggle-status pulseBadge (purple if enabled, gray if disabled) + description.
+- **Pulse Permission Sets** — list with label + an "Assigned to you" pulseBadge when true, "Not assigned" muted text when false. Link to `/lightning/setup/PermSets/home`.
+- **Recent Deployments** — last 10 from Deployment_Request__c, with target object + status pulseBadge (success/warning/error based on Completed/Pending/Failed) + completed date + error message preview when present.
+
+### Tests
+Each LWC gets a Jest test covering: empty state, populated state (at least one row per sub-section), section heading rendered, Setup link has `target="_blank"`.
+
+## 3. Admin Studio shell changes
+
+Edit `packages/pulse-core/force-app/main/default/lwc/pulseAdminStudio/pulseAdminStudio.{html,js,css}`:
+
+1. Add three new getters: `isAiConfig`, `isIntegrationsHub`, `isSettings` (same pattern as existing `isWorkflowBuilder` etc.).
+2. Add three new `<template lwc:if={isX}>` blocks rendering `<c-pulse-ai-config>`, `<c-pulse-integrations-hub>`, `<c-pulse-settings>` respectively.
+3. **Kill the "Coming in wave 3c+" badge** entirely. Replace the fallback `<template lwc:else>` placeholder with:
+   - For nav keys that have real content now (workflow-builder, action-hub, conversations, sla, ai-config, integrations-hub, settings): the else branch never fires because an `isX` block matched.
+   - For nav key `library`: render a cleaner placeholder pulseCard with heading "Pulse Library", description "Browse, install, and manage workflow bundles from trusted publishers.", and a small muted "In development." caption (no wave-reference badge, no internal jargon).
+4. Update `pulseAdminStudio.test.js`: one test case per new nav panel confirming the right LWC tag renders when that nav key is active.
+
+## 4. Bonus cleanup (while you're in there)
+
+The existing `studio-placeholder-icon` SVG / CSS classes that only the old placeholder used can stay — they'll still render for Library. Don't delete them.
+
+# Discipline
+- Brand tokens everywhere; no hardcoded hex outside `var()` fallbacks.
+- No lightning-* base components. Use Pulse primitives (pulseButton, pulseBadge, pulseCard).
+- Sentence case headings. No wave references anywhere in shipping copy.
+- `global` discipline: Controller + DTOs `global`; LWCs are internal consumers.
+- `./scripts/check-global-discipline.sh` must pass.
+
+# Out of scope
+- No CMDT edits from Apex (that's a deferred wave — the Tooling API pattern we have is for custom *fields*, extending it to CMDT records is a separate engineering effort).
+- No Named Credential CRUD — just read + Setup link.
+- No Feature Flag toggle from the UI — read + Setup link.
+- No Deployment Request re-run button.
+- Do not touch `packages/pulse-channels-slack/` or Wave 7's future Library LWC.
+
+# Validation gate
+1. `sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages --ignore-conflicts --json` → 0 errors.
+2. `./scripts/check-global-discipline.sh` → OK.
+3. `sf apex run test -o pulse-core-next-dev --test-level RunLocalTests --wait 30` → test count grows by ≥8 (controller tests), 100% pass rate held.
+4. `npx jest --no-cache pulseAiConfig pulseIntegrationsHub pulseSettings pulseAdminStudio` → all green.
+5. Visual verification (if a Reviewer runs it): open the Admin Studio, click through all 8 nav items — only Library shows a "In development" muted caption; the other 7 show real content.
+
+# Commit
+```
+git add -A && git commit -m "wave6: Admin Studio backfill — AI Config, Integrations Hub, Settings panels"
+```
+
+Do not push. Orchestrator handles merge.

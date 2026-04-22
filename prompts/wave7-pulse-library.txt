@@ -1,0 +1,307 @@
+You are executing Wave 6 (Pulse Library Distribution) for Pulse Core Next. Single-lane session on branch `wave6-pulse-library` off `main`.
+
+Phase 2 per v4.1 §4.7. Implements the distribution mechanism for shareable workflow bundles: export a workflow (or set of workflows) as a signed JSON bundle, import/install that bundle in another org, and manage versions + rollback.
+
+# Canonical references (read first)
+- `docs/pulse-nextgen-architecture-review-and-build-plan.md` v4.1:
+  - §4.7 Pulse Library distribution
+  - §5 Phase 2 scope
+- `docs/brand-kit/README.md`
+- Existing infrastructure to reuse — DO NOT rebuild these:
+  - `packages/pulse-core/force-app/main/default/classes/WorkflowContract.cls` — `parse()` + `validate()` + the strongly-typed `Workflow` AST. Use this for bundle load/validate.
+  - `packages/pulse-core/force-app/main/default/objects/Workflow_Definition__c/` — the record the installer creates.
+  - `packages/pulse-core/force-app/main/default/classes/PulseWorkflowBuilderController.cls` — example of Apex-Aura patterns to match.
+
+# Goal
+Distribution is three concerns: **sign** (publisher emits a trusted bundle), **trust** (subscriber knows which publishers to accept), **install** (subscriber validates the bundle, imports the workflow, pins the version, and can roll back). All three in this wave. UI is the `pulseLibraryBrowser` for the Admin Studio.
+
+All artifacts in `packages/pulse-core/` — Library is part of Core per v4.1 §3.
+
+## 1. Objects (and one CMDT)
+
+Path: `packages/pulse-core/force-app/main/default/objects/`
+
+### `Pulse_Library_Bundle__c` (SObject, not CMDT — record-per-install for rollback)
+Fields:
+- `Bundle_Key__c` — Text(80), unique, indexed. Publisher-chosen stable id (e.g. `healthcare-intake-v3`).
+- `Display_Name__c` — Text(120).
+- `Publisher_Id__c` — Text(80) — matches Trusted_Publisher__mdt.DeveloperName on the subscriber side.
+- `Version__c` — Text(20) — semver-ish, publisher-managed.
+- `Status__c` — Text(40) — `Installed` / `Superseded` / `Rolled_Back` / `Pending`.
+- `Bundle_JSON__c` — LongTextArea(131072) — the full signed payload (contract + metadata), stored for audit and rollback.
+- `Signature_B64__c` — Text(2048) — detached signature over `Bundle_JSON__c` bytes (base64 RSA-SHA256).
+- `Public_Key_Fingerprint__c` — Text(80) — which trusted publisher key validated this. Stored for forensic replay when the trust list changes.
+- `Installed_Date__c` — DateTime.
+- `Installed_By__c` — Lookup(User).
+- `Workflow_Definition__c` — Lookup(Workflow_Definition__c) — the Definition record this install created. Nullable for failed installs.
+- `Previous_Bundle__c` — Self-lookup — links to the row this one superseded. Drives rollback.
+- `Dependencies_JSON__c` — LongTextArea(8192) — array of `{bundleKey, minVersion}` entries the installer must resolve before accepting.
+
+### `Trusted_Publisher__mdt` (CMDT — subscriber configures once per org)
+Fields:
+- `DeveloperName` (standard) — matches `Publisher_Id__c` on installed bundles.
+- `Display_Name__c` — Text(120).
+- `Public_Key_PEM__c` — LongTextArea(8192) — RSA public key in PEM format. Validator parses this and uses it with `Crypto.verify('RSA', ...)`.
+- `Active__c` — Checkbox. Inactive rows cause install to reject even if signature is valid (revocation mechanism).
+- `Notes__c` — LongTextArea(4000), optional.
+
+No picklists on either — keep text for flexibility, same philosophy as the other Pulse objects.
+
+## 2. Apex — Publisher
+
+Path: `packages/pulse-core/force-app/main/default/classes/PulseLibraryPublisher.cls`
+
+```
+global with sharing class PulseLibraryPublisher {
+
+    global class PublishRequest {
+        @AuraEnabled public Id    workflowDefinitionId;  // required
+        @AuraEnabled public String bundleKey;            // required, stable
+        @AuraEnabled public String displayName;
+        @AuraEnabled public String publisherId;
+        @AuraEnabled public String version;              // required, e.g. '1.2.0'
+        @AuraEnabled public List<DependencySpec> dependencies;  // optional
+        @AuraEnabled public String privateKeyPem;        // RSA private key for signing
+    }
+
+    global class DependencySpec {
+        @AuraEnabled public String bundleKey;
+        @AuraEnabled public String minVersion;
+    }
+
+    global class PublishResult {
+        @AuraEnabled public Boolean success;
+        @AuraEnabled public String  bundleJson;    // the signed payload (store or export)
+        @AuraEnabled public String  signatureB64;  // detached signature
+        @AuraEnabled public String  publicKeyFingerprint;
+        @AuraEnabled public String  error;
+    }
+
+    @AuraEnabled
+    global static PublishResult publish(PublishRequest req) {
+        // 1. Load Workflow_Definition__c by id. Parse Definition_JSON__c via
+        //    WorkflowContract.parse to catch malformed sources early.
+        // 2. Build the bundle payload:
+        //    {
+        //      "schema": "pulse.bundle.v1",
+        //      "bundleKey": req.bundleKey,
+        //      "displayName": req.displayName,
+        //      "publisherId": req.publisherId,
+        //      "version": req.version,
+        //      "dependencies": req.dependencies ?? [],
+        //      "workflowDefinitionJson": <the verbatim Definition_JSON__c>,
+        //      "publishedAt": <ISO8601 now>,
+        //      "publishedBy": UserInfo.getUserId(),
+        //      "publishedByName": UserInfo.getName()
+        //    }
+        // 3. JSON.serialize the payload with deterministic key ordering so
+        //    signature-over-bytes is reproducible. (Apex JSON.serialize is
+        //    stable for Map<String,Object> if keys are added in insertion
+        //    order — preserve that.)
+        // 4. Sign: Blob payloadBytes = Blob.valueOf(bundleJson);
+        //    Blob privateKeyBlob = EncodingUtil.base64Decode(stripPemHeaders(privateKeyPem));
+        //    Blob sig = Crypto.sign('RSA-SHA256', payloadBytes, privateKeyBlob);
+        //    String sigB64 = EncodingUtil.base64Encode(sig);
+        // 5. Compute publicKeyFingerprint: SHA-256 of the canonical public key
+        //    derived from the private key — since Apex can't derive a pub key
+        //    from a private key natively, accept an optional req.publicKeyPem
+        //    for fingerprinting. If not supplied, use SHA-256(sig) prefix as a
+        //    stable-per-publisher identifier (less ideal but workable for v1).
+        // 6. Return PublishResult with payload + signature.
+    }
+
+    private static String stripPemHeaders(String pem) {
+        // Remove BEGIN/END PRIVATE KEY lines and whitespace; return base64 body.
+    }
+}
+```
+
+Security posture: the private key is provided by the caller per-invocation and is NEVER persisted. It's the admin's responsibility to keep it secret (e.g., stored in a password manager). Document this in a header comment.
+
+## 3. Apex — Installer
+
+Path: `packages/pulse-core/force-app/main/default/classes/PulseLibraryInstaller.cls`
+
+```
+global with sharing class PulseLibraryInstaller {
+
+    global class InstallResult {
+        @AuraEnabled public Boolean success;
+        @AuraEnabled public Id      bundleRecordId;
+        @AuraEnabled public Id      workflowDefinitionId;
+        @AuraEnabled public String  message;
+        @AuraEnabled public List<String> validationErrors;
+    }
+
+    @AuraEnabled
+    global static InstallResult installBundle(
+        String bundleJson,    // the signed payload
+        String signatureB64   // detached signature
+    ) {
+        // 1. Parse bundleJson → Map<String,Object>. Extract bundleKey, version,
+        //    publisherId, workflowDefinitionJson, dependencies.
+        // 2. Validate schema version is 'pulse.bundle.v1'. Reject otherwise.
+        // 3. Look up Trusted_Publisher__mdt where DeveloperName = publisherId.
+        //    If none, or row.Active__c = false, return failure
+        //    "Publisher not trusted: <id>".
+        // 4. Verify signature:
+        //    Blob payloadBytes = Blob.valueOf(bundleJson);
+        //    Blob signatureBytes = EncodingUtil.base64Decode(signatureB64);
+        //    Blob pubKeyBlob = EncodingUtil.base64Decode(stripPemHeaders(pub.Public_Key_PEM__c));
+        //    Boolean ok = Crypto.verify('RSA-SHA256', payloadBytes, signatureBytes, pubKeyBlob);
+        //    If !ok, reject.
+        // 5. Validate dependencies: for each dep, confirm a
+        //    Pulse_Library_Bundle__c with Status='Installed', Bundle_Key = dep.bundleKey,
+        //    Version >= dep.minVersion (use semver compare) exists. If any missing,
+        //    reject with the list of unsatisfied deps in the result.
+        // 6. Validate the contained workflow JSON via WorkflowContract.parse
+        //    + validate. If the contract is malformed, reject.
+        // 7. Insert a new Workflow_Definition__c with the bundle's
+        //    workflowDefinitionJson and a synthesized Workflow_Key/Name.
+        //    Use a unique suffix if the key collides (append '-' + bundleKey).
+        // 8. Insert Pulse_Library_Bundle__c with:
+        //    - Bundle_JSON, Signature_B64, Public_Key_Fingerprint (from CMDT record)
+        //    - Workflow_Definition__c = the inserted def's Id
+        //    - Status = 'Installed'
+        //    - Installed_Date = now, Installed_By = current user
+        //    - Previous_Bundle = most recent Installed bundle with same Bundle_Key,
+        //      if any. Also mark that one Status = 'Superseded'.
+        // 9. Return InstallResult with success=true, the bundle record Id, and
+        //    the workflow definition Id.
+    }
+
+    @AuraEnabled
+    global static InstallResult rollback(Id bundleRecordId) {
+        // 1. Load the Pulse_Library_Bundle__c. If Status != 'Installed', reject.
+        // 2. If Previous_Bundle__c is null, reject with
+        //    "No previous version to roll back to."
+        // 3. Mark this bundle Status = 'Rolled_Back'.
+        // 4. Mark Previous_Bundle Status = 'Installed' (re-activate it).
+        // 5. Re-point any Workflow_Instance__c records currently using this
+        //    Workflow_Definition__c back to the Previous_Bundle's Workflow_Definition__c.
+        //    CAREFUL: this might change the Current_State interpretation. The
+        //    prompt asks you to FLAG this concern in the commit message and
+        //    document it in docs/pulse-library.md — do not auto-advance any
+        //    instances. The rollback rebinds the definition pointer; instances
+        //    stay at their current state key, which must exist in the prior
+        //    bundle's contract for the rollback to be safe. Add a pre-check
+        //    that validates every active instance's Current_State__c is also
+        //    present in the target bundle's contract states; if not, reject
+        //    the rollback and list the blocking instance ids.
+    }
+
+    @AuraEnabled(cacheable=true)
+    global static List<BundleView> listInstalledBundles() {
+        // Return all Pulse_Library_Bundle__c where Status in
+        // ('Installed', 'Superseded') ordered by Installed_Date desc.
+        // Typed DTO with the bundle key, version, status, workflow def id,
+        // publisher id, installed date, installed by name.
+    }
+
+    global class BundleView {
+        @AuraEnabled public Id       bundleId;
+        @AuraEnabled public String   bundleKey;
+        @AuraEnabled public String   displayName;
+        @AuraEnabled public String   version;
+        @AuraEnabled public String   publisherId;
+        @AuraEnabled public String   status;
+        @AuraEnabled public Datetime installedDate;
+        @AuraEnabled public String   installedByName;
+        @AuraEnabled public Id       workflowDefinitionId;
+        @AuraEnabled public Id       previousBundleId;
+    }
+}
+```
+
+### Semver helper
+`PulseLibraryInstaller` needs a minimal semver comparator. Ship a tiny static helper `semverGte(String a, String b)` that handles `"1.2.3"` vs `"1.2.0"` via `split('.')` + integer compare, three components. Patch-numeric comparison only — no pre-release tags in v1.
+
+### Shared key-stripper
+Both Publisher and Installer strip PEM headers identically. Extract to a private utility class `PulseCrypto` with static `stripPemHeaders(String pem)` and `sha256Fingerprint(String input)` (the latter returns a short base64 fingerprint).
+
+## 4. Tests
+
+### PulseLibraryPublisherTest
+- `publish_validDefinition_returnsSignedBundle` — generate a short-lived RSA-2048 key pair via `Crypto.generateAesKey()` + test harness, sign, verify with the paired public key locally.
+- `publish_missingWorkflow_returnsError`
+- `publish_invalidContract_returnsError` (inject a bad Definition_JSON__c)
+- At least 4 tests, ≥90% coverage.
+
+### PulseLibraryInstallerTest
+- `installBundle_trustedPublisher_succeeds` — happy path, verifies Workflow_Definition__c + Pulse_Library_Bundle__c rows created.
+- `installBundle_untrustedPublisher_rejects` — no CMDT row or Active=false.
+- `installBundle_badSignature_rejects` — tamper with payload after signing.
+- `installBundle_missingDependency_rejects` — dependency list includes a bundle not installed.
+- `installBundle_supersedesPrevious` — install v1, then v2; verify v1 marked Superseded, v2 Installed, v2.Previous_Bundle = v1.
+- `rollback_supersededBundle_reactivates` — install v1, v2, then rollback v2 → v2 Rolled_Back, v1 Installed.
+- `rollback_noPrevious_rejects`.
+- `rollback_instanceStateMissing_rejects` — seed an instance at state key 'review' under v2 contract; v1 contract doesn't have 'review' → rollback rejected.
+
+Cryptography in tests: use `PulseLibraryInstaller.trustedPublisherOverride = new List<Trusted_Publisher__mdt>{...}` pattern (add the override static the same way ProjectionWriteService does for CMDT) to stub the trust list.
+
+## 5. LWC — pulseLibraryBrowser
+
+Path: `packages/pulse-core/force-app/main/default/lwc/pulseLibraryBrowser/`
+
+`js-meta.xml`:
+- `isExposed = true`
+- `targets = lightning__AppPage`
+- `masterLabel = 'Pulse Library Browser'`
+
+Behavior:
+- `connectedCallback()` → `loadPulseBrandTokens(this)`, `@wire(listInstalledBundles)`.
+- Header card: "Pulse Library" title + install-count badge.
+- List view: each installed bundle as a pulseCard row with:
+  - Display name (h4) + bundle key (muted caption)
+  - Version + status pill (Installed/Superseded/Rolled_Back color-coded via pulseBadge variants)
+  - Publisher id + installed date/user
+  - Actions: "Roll back" pulseButton (visible only if Status='Installed' AND Previous_Bundle__c != null).
+- Rollback click: confirm via pulseModal → call `rollback(bundleId)` → refreshApex on success, render error banner on failure.
+- Install flow: a "Paste bundle" pulseButton opens a pulseModal with two pulseInput textareas (bundle JSON, signature) + "Install" pulseButton → calls `installBundle(bundleJson, signatureB64)` → refresh.
+- Empty state: "No library bundles installed yet. Paste a signed bundle above to get started."
+
+Jest test:
+- Empty state render
+- One-bundle render with Installed status; rollback button hidden when Previous_Bundle is null; shown when present
+- Rollback click → confirm modal → resolve action calls `rollback` with right id
+- Install flow: paste modal → resolve calls `installBundle` with right args
+
+## 6. Admin Studio integration
+
+Add a **Library** nav item to the Admin Studio sidebar (next to SLA or before Settings — your call). Active panel renders `<c-pulse-library-browser></c-pulse-library-browser>`. Update `pulseAdminStudio.test.js` with the new-nav case.
+
+## 7. Documentation
+
+Write `docs/pulse-library.md` (≤200 lines) covering:
+- What a Pulse bundle is and why it exists.
+- Publisher workflow: generate keypair (document the one-liner — `openssl genrsa -out key.pem 2048` etc.); call `PulseLibraryPublisher.publish` from anonymous Apex or a CLI wrapper; distribute the bundle JSON + signature.
+- Subscriber workflow: configure `Trusted_Publisher__mdt` with the publisher's PEM; install via the Library Browser UI OR Apex.
+- **Rollback safety constraint** (spelled out in the Installer spec above): rollback is rejected when any active instance is in a state the rollback target doesn't have. Document this explicitly so admins understand why a rollback might be blocked.
+- Limitations in v1: no pre-release semver tags, no multi-workflow bundles (single workflow per bundle), no auto-fetch from a central registry.
+
+# Discipline
+- Brand tokens everywhere; no hardcoded hex outside var() fallbacks.
+- `global` on Publisher + Installer + their DTOs (cross-package consumers may want to wrap them in future channels / apps).
+- Anti-buzzword UI copy. "Install" and "Roll back" — not "Deploy your success."
+- `./scripts/check-global-discipline.sh` must pass.
+- Every new Apex class and LWC has tests.
+
+# Out of scope
+- No central registry server — admins hand-paste bundles for v1.
+- No multi-workflow bundles. One definition per bundle.
+- No auto-update. Subscribers pull new bundles explicitly.
+- No audit export or reporting dashboards for installs — that's a later wave.
+- Do not touch `packages/pulse-channels-slack/` or any extension package.
+
+# Validation gate
+1. `sf project deploy start -o pulse-core-next-dev --dry-run --source-dir packages --ignore-conflicts --json` → 0 errors.
+2. `./scripts/check-global-discipline.sh` → OK.
+3. `sf apex run test -o pulse-core-next-dev --test-level RunLocalTests --wait 30` → test count grows by ≥12; 100% pass rate held.
+4. `npx jest --no-cache pulseLibraryBrowser` → all green.
+
+# Commit
+```
+git add -A && git commit -m "wave6: Pulse Library distribution — signed bundles + trust list + rollback"
+```
+
+Do not push. Orchestrator handles merge; reviewer inspects.

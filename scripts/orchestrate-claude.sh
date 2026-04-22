@@ -55,6 +55,14 @@ LANES_WAVE5=(
   "wave5-sla|wave5-sla-bi|prompts/wave5-sla-bi.txt|wave5: Stage_Dwell__c + SLA heatmap + exit-time predictor"
 )
 
+LANES_WAVE6=(
+  "wave6-admin|wave6-admin-studio-backfill|prompts/wave6-admin-studio-backfill.txt|wave6: Admin Studio backfill — AI Config, Integrations Hub, Settings panels"
+)
+
+LANES_WAVE7=(
+  "wave7-library|wave7-pulse-library|prompts/wave7-pulse-library.txt|wave7: Pulse Library distribution — signed bundles + trust list + rollback"
+)
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -511,6 +519,36 @@ wave5() {
   say "Wave 5 lane completed."
 }
 
+wave6() {
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/wave6-admin.log"
+
+  for lane in "${LANES_WAVE6[@]}"; do
+    setup_wave3_lane_inline "$lane"
+    IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    say "Follow log with: ./scripts/orchestrate-claude.sh logs wave6-admin"
+    run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
+  done
+
+  say "Wave 6 lane completed."
+}
+
+wave7() {
+  cd "$ROOT_DIR"
+  mkdir -p "$LOG_DIR"
+  touch "$LOG_DIR/wave7-library.log"
+
+  for lane in "${LANES_WAVE7[@]}"; do
+    setup_wave3_lane_inline "$lane"
+    IFS='|' read -r lane_name branch prompt_rel commit_msg <<<"$lane"
+    say "Follow log with: ./scripts/orchestrate-claude.sh logs wave7-library"
+    run_lane "$lane_name" "$branch" "$prompt_rel" "$commit_msg"
+  done
+
+  say "Wave 7 lane completed."
+}
+
 logs() {
   cd "$ROOT_DIR"
   mkdir -p "$LOG_DIR"
@@ -672,6 +710,8 @@ main() {
     wave3c) wave3c ;;
     wave4a) wave4a ;;
     wave5) wave5 ;;
+    wave6) wave6 ;;
+    wave7) wave7 ;;
     merge-wave1) merge_wave1 ;;
     merge-wave2) merge_wave2 ;;
     validate) validate ;;
