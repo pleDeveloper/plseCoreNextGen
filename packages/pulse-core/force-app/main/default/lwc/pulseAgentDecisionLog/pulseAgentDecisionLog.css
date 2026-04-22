@@ -1,0 +1,193 @@
+.log-root {
+    margin-top: var(--pulse-space-3, 12px);
+    background: var(--pulse-surface, #fff);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-lg, 12px);
+    box-shadow: var(--pulse-shadow-sm, 0 1px 2px rgba(16, 24, 40, .06));
+    overflow: hidden;
+}
+
+.log-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-2, 8px);
+    width: 100%;
+    padding: var(--pulse-space-3, 12px) var(--pulse-space-4, 16px);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    font-family: "Poppins", system-ui, sans-serif;
+    color: var(--pulse-text-strong, #111827);
+    text-align: left;
+}
+
+.log-toggle:hover {
+    background: var(--pulse-surface-hover, #f9fafb);
+}
+
+.log-chevron {
+    color: #7B2FF2;
+    font-size: 12px;
+    width: 12px;
+    flex-shrink: 0;
+}
+
+.log-title {
+    font-weight: 600;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.log-count {
+    color: var(--pulse-text-muted, #6b7280);
+    font-size: 12px;
+    margin-left: auto;
+}
+
+.log-error {
+    display: flex;
+    align-items: center;
+    gap: var(--pulse-space-2, 8px);
+    padding: var(--pulse-space-2, 8px) var(--pulse-space-4, 16px);
+    border-top: 1px solid var(--pulse-border, #e5e7eb);
+}
+
+.log-empty {
+    padding: var(--pulse-space-3, 12px) var(--pulse-space-4, 16px);
+    color: var(--pulse-text-muted, #6b7280);
+    font-size: 12px;
+    margin: 0;
+    border-top: 1px solid var(--pulse-border, #e5e7eb);
+}
+
+.log-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--pulse-border, #e5e7eb);
+}
+
+.log-row {
+    border-bottom: 1px solid var(--pulse-border, #e5e7eb);
+}
+
+.log-row:last-child {
+    border-bottom: 0;
+}
+
+.log-row-muted .log-row-summary,
+.log-row-muted .log-row-response {
+    color: var(--pulse-text-muted, #6b7280);
+}
+
+.log-row-auto .log-row-icon {
+    color: #7B2FF2;
+}
+
+.log-row-refined .log-row-icon {
+    color: #D946EF;
+}
+
+.log-row-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px var(--pulse-space-4, 16px);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    text-align: left;
+    font-family: "Poppins", system-ui, sans-serif;
+    font-size: 12px;
+    color: var(--pulse-text, #374151);
+}
+
+.log-row-head:hover {
+    background: var(--pulse-surface-hover, #f9fafb);
+}
+
+.log-row-time {
+    color: var(--pulse-text-muted, #6b7280);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    min-width: 68px;
+}
+
+.log-row-sep {
+    color: var(--pulse-text-muted, #9ca3af);
+    flex-shrink: 0;
+}
+
+.log-row-icon {
+    color: #7B2FF2;
+    font-weight: 600;
+    flex-shrink: 0;
+    min-width: 14px;
+    text-align: center;
+}
+
+.log-row-summary {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.log-row-response {
+    color: var(--pulse-text, #374151);
+    font-style: italic;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.log-row-body {
+    padding: 8px var(--pulse-space-4, 16px) var(--pulse-space-3, 12px) var(--pulse-space-4, 16px);
+    background: linear-gradient(
+        180deg,
+        rgba(217, 70, 239, 0.03),
+        rgba(123, 47, 242, 0.03)
+    );
+    border-top: 1px dashed var(--pulse-border, #e5e7eb);
+}
+
+.log-body-section {
+    margin-bottom: 8px;
+}
+
+.log-body-section:last-child {
+    margin-bottom: 0;
+}
+
+.log-body-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #7B2FF2;
+    margin-bottom: 2px;
+}
+
+.log-body-text {
+    font-size: 12px;
+    color: var(--pulse-text-strong, #111827);
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.log-body-pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    background: #0f172a;
+    color: #e5e7eb;
+    padding: 8px 10px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0;
+    max-height: 200px;
+    overflow-y: auto;
+}

@@ -22,6 +22,15 @@
 
     <!-- Active instance -->
     <template lwc:else>
+        <!-- Agent Mode: status rail + decision queue at top (enabled only) -->
+        <template lwc:if={agentEnabled}>
+            <c-pulse-agent-status-rail instance-id={instance.instanceId}
+                                       onagentkicked={handleAgentKicked}>
+            </c-pulse-agent-status-rail>
+            <c-pulse-agent-decision-queue instance-id={instance.instanceId}>
+            </c-pulse-agent-decision-queue>
+        </template>
+
         <!-- Header card: trim summary -->
         <c-pulse-card elevated>
             <div class="stepper-header">
@@ -716,6 +725,12 @@
                     </ul>
                 </template>
             </div>
+        </template>
+
+        <!-- Agent Mode: decision log at the bottom (enabled only) -->
+        <template lwc:if={agentEnabled}>
+            <c-pulse-agent-decision-log instance-id={instance.instanceId}>
+            </c-pulse-agent-decision-log>
         </template>
 
         <!-- Advance modal -->

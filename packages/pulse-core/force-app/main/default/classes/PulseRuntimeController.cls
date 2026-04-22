@@ -26,6 +26,11 @@ global with sharing class PulseRuntimeController {
         @AuraEnabled public List<PhaseFieldView> phaseFields;
         // ── Journey overview: every phase in the workflow, with status ──
         @AuraEnabled public List<PhaseOverviewView> allPhases;
+        // ── Agent Mode enablement for the current phase ──
+        // True when the merged agent config (workflow + state) resolves to
+        // enabled for inst.Current_State__c. Used by pulseRecordStepper to
+        // decide whether to mount pulseAgentStatusRail + queue + log.
+        @AuraEnabled public Boolean agentEnabled;
     }
 
     /**
@@ -515,6 +520,21 @@ global with sharing class PulseRuntimeController {
 
         // Journey overview — every phase in the workflow with status
         view.allPhases = buildAllPhases(inst, wf);
+
+        // Agent Mode — enabled if workflow/state agent block resolves with
+        // enabled=true for the current phase. Back-compat default: false.
+        view.agentEnabled = false;
+        if (wf != null) {
+            try {
+                Map<String, Object> agentCfg = wf.agentConfigForPhase(inst.Current_State__c);
+                if (agentCfg != null) {
+                    Object enabledVal = agentCfg.get('enabled');
+                    view.agentEnabled = enabledVal == true;
+                }
+            } catch (Exception ignore) {
+                view.agentEnabled = false;
+            }
+        }
 
         return view;
     }

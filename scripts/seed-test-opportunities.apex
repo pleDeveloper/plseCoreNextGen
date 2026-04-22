@@ -17,7 +17,7 @@
 final String WORKFLOW_KEY = 'real_estate_leasing_v1';
 
 List<plse__Workflow_Definition__c> defs = [
-    SELECT Id FROM plse__Workflow_Definition__c
+    SELECT Id, plse__Definition_JSON__c FROM plse__Workflow_Definition__c
     WHERE plse__Workflow_Key__c = :WORKFLOW_KEY LIMIT 1
 ];
 if (defs.isEmpty()) {
@@ -25,6 +25,28 @@ if (defs.isEmpty()) {
         'Workflow definition "' + WORKFLOW_KEY + '" not found. Run seed-real-estate-demo.apex first.');
 }
 Id defId = defs[0].Id;
+
+// Ensure the definition carries the Agent Mode block so these test
+// Opportunities exercise the new record-page agent surfaces. If someone
+// seeded this org before the agent block was introduced in seed-real-estate-demo,
+// we patch it here idempotently rather than leaving the demo silently disabled.
+{
+    plse__Workflow_Definition__c d = defs[0];
+    if (String.isNotBlank(d.plse__Definition_JSON__c)
+        && !d.plse__Definition_JSON__c.contains('"agent"')) {
+        Map<String, Object> parsed =
+            (Map<String, Object>) JSON.deserializeUntyped(d.plse__Definition_JSON__c);
+        parsed.put('agent', new Map<String, Object>{
+            'enabled'      => true,
+            'persona'      => 'Claude',
+            'autonomy'     => 'Act_With_Approval',
+            'systemPrompt' => 'You are a leasing qualification specialist. Draft outbound emails, ask the user for missing info, and propose phase transitions when the applicant is qualified. Be decisive but deferential.'
+        });
+        d.plse__Definition_JSON__c = JSON.serialize(parsed);
+        update d;
+        System.debug('### Patched Workflow_Definition__c with agent config');
+    }
+}
 
 // Build scenarios as parallel lists to avoid anonymous-Apex map-literal-as-arg issues.
 List<String> names = new List<String>();

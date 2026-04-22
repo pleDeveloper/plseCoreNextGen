@@ -81,6 +81,14 @@ export default class PulseRecordStepper extends LightningElement {
 
     get hasInstance() { return this.instance != null; }
     get noInstance() { return this.instance == null; }
+    // Agent Mode is only surfaced when the contract says so for the current
+    // phase. When disabled the record layout is unchanged (back-compat).
+    get agentEnabled() { return this.instance?.agentEnabled === true; }
+
+    // When the agent is kicked or a decision is resolved we want to re-pull
+    // the instance so any new Workflow_Action__c or phase transition shows
+    // up in the stepper without a page refresh.
+    handleAgentKicked() { this._loadInstance(); }
     get hasError() { return this.error != null; }
     get hasAdvanceError() { return this.advanceError != null; }
     get hasActionError() { return this.actionError != null; }

@@ -37,6 +37,8 @@ String contractJson =
     '"workflowKey":"' + WORKFLOW_KEY + '",' +
     '"version":1,' +
     '"subjectKinds":["Opportunity"],' +
+    '"agent":{"enabled":true,"persona":"Claude","autonomy":"Act_With_Approval",' +
+      '"systemPrompt":"You are a leasing qualification specialist. Draft outbound emails, ask the user for missing info, and propose phase transitions when the applicant is qualified. Be decisive but deferential."},' +
     '"states":[' +
       '{"key":"intake","label":"Intake","type":"form",' +
         '"fields":[' +

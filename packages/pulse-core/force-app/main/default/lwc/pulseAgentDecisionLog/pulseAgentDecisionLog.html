@@ -1,0 +1,80 @@
+<template>
+    <div class="log-root">
+        <button class="log-toggle"
+                type="button"
+                aria-expanded={isCollapsed}
+                onclick={handleToggleCollapsed}>
+            <span class="log-chevron" aria-hidden="true">{chevronChar}</span>
+            <span class="log-title">Agent decision log</span>
+            <span class="log-count">{countLabel}</span>
+        </button>
+
+        <template lwc:if={error}>
+            <div class="log-error">
+                <c-pulse-badge label={error} variant="error"></c-pulse-badge>
+                <c-pulse-button label="Dismiss" variant="ghost" size="sm"
+                                onclick={handleDismissError}></c-pulse-button>
+            </div>
+        </template>
+
+        <template lwc:if={isCollapsed}></template>
+        <template lwc:else>
+            <template lwc:if={loading}>
+                <p class="log-empty">Loading decisions…</p>
+            </template>
+            <template lwc:elseif={hasRows}>
+                <ul class="log-list" role="list">
+                    <template for:each={decoratedRows} for:item="row">
+                        <li key={row.decisionId} class={row.rowClass}>
+                            <button class="log-row-head"
+                                    type="button"
+                                    data-id={row.decisionId}
+                                    aria-expanded={row.expanded}
+                                    onclick={handleRowClick}>
+                                <span class="log-row-time">{row.timeLabel}</span>
+                                <span class="log-row-sep" aria-hidden="true">·</span>
+                                <span class="log-row-icon" aria-hidden="true">{row.typeIcon}</span>
+                                <span class="log-row-summary">{row.shortSummary}</span>
+                                <template lwc:if={row.hasUserResponse}>
+                                    <span class="log-row-sep" aria-hidden="true">·</span>
+                                    <span class="log-row-response">{row.userResponse}</span>
+                                </template>
+                                <c-pulse-badge label={row.statusLabel}
+                                               variant={row.statusVariant}></c-pulse-badge>
+                            </button>
+                            <template lwc:if={row.expanded}>
+                                <div class={row.bodyClass}>
+                                    <div class="log-body-section">
+                                        <span class="log-body-label">Rationale</span>
+                                        <p class="log-body-text">{row.rationale}</p>
+                                    </div>
+                                    <template lwc:if={row.hasProposal}>
+                                        <div class="log-body-section">
+                                            <span class="log-body-label">Proposal</span>
+                                            <pre class="log-body-pre">{row.prettyProposal}</pre>
+                                        </div>
+                                    </template>
+                                    <template lwc:if={row.hasQuestion}>
+                                        <div class="log-body-section">
+                                            <span class="log-body-label">Question</span>
+                                            <pre class="log-body-pre">{row.prettyQuestion}</pre>
+                                        </div>
+                                    </template>
+                                    <template lwc:if={row.hasResponseJson}>
+                                        <div class="log-body-section">
+                                            <span class="log-body-label">User response</span>
+                                            <pre class="log-body-pre">{row.prettyResponse}</pre>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </li>
+                    </template>
+                </ul>
+            </template>
+            <template lwc:else>
+                <p class="log-empty">No past agent decisions for this workflow yet.</p>
+            </template>
+        </template>
+    </div>
+</template>
