@@ -29,6 +29,48 @@ private class PulseRuntimeControllerTest {
         System.assertEquals('initial', view.history[0].stateKey);
     }
 
+    // ─── getInstanceForRecord: Stage_Status__c round-trips ──────
+
+    @IsTest
+    static void getInstanceForRecordSurfacesStageStatus() {
+        Workflow_Definition__c def = insertDefinition();
+        Account acc = insertAccount();
+        Workflow_Instance__c inst = insertInstance(def.Id, 'intake', acc.Id);
+        inst.Stage_Status__c = 'On_Hold';
+        update inst;
+
+        Test.startTest();
+        PulseRuntimeController.InstanceView view =
+            PulseRuntimeController.getInstanceForRecord(acc.Id);
+        Test.stopTest();
+
+        System.assertNotEquals(null, view, 'Should find active instance');
+        System.assertEquals('On_Hold', view.stageStatus,
+            'stageStatus should surface from Stage_Status__c on the DTO');
+    }
+
+    @IsTest
+    static void getInstanceForRecordStageStatusNullWhenUnset() {
+        Workflow_Definition__c def = insertDefinition();
+        Account acc = insertAccount();
+        insertInstance(def.Id, 'intake', acc.Id);
+
+        Test.startTest();
+        PulseRuntimeController.InstanceView view =
+            PulseRuntimeController.getInstanceForRecord(acc.Id);
+        Test.stopTest();
+
+        // Picklist default is 'Active' per field-meta; view should reflect
+        // whatever Salesforce stored (null when default didn't fire in test
+        // context, or 'Active' when it did). Either way the runtime UI
+        // treats both as quiet.
+        System.assert(
+            view.stageStatus == null || view.stageStatus == 'Active',
+            'Unset Stage_Status__c should be null or the Active default, got: '
+                + view.stageStatus
+        );
+    }
+
     // ─── getInstanceForRecord: no instance ──────────────────────
 
     @IsTest

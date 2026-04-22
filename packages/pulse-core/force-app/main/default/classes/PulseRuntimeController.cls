@@ -15,6 +15,11 @@ global with sharing class PulseRuntimeController {
         @AuraEnabled public String   currentStateLabel;
         @AuraEnabled public String   currentStateType;
         @AuraEnabled public String   status;
+        // Operational override for the current phase (Active / On_Hold /
+        // Escalated / Paused / Waiting_External). Null / 'Active' means
+        // business-as-usual — the record-page header renders a badge only
+        // for non-default values so the UI stays quiet when things are fine.
+        @AuraEnabled public String   stageStatus;
         @AuraEnabled public List<SignalView> availableSignals;
         @AuraEnabled public List<StepView>   history;
         @AuraEnabled public Integer  pendingActionCount;
@@ -149,7 +154,7 @@ global with sharing class PulseRuntimeController {
         }
 
         List<Workflow_Instance__c> instances = [
-            SELECT Id, Current_State__c, Status__c, Pinned_Version__c,
+            SELECT Id, Current_State__c, Status__c, Stage_Status__c, Pinned_Version__c,
                    Context_JSON__c, Parent_Record_Id__c, Parent_Object_Type__c,
                    Workflow_Definition__c,
                    Workflow_Definition__r.Name,
@@ -204,7 +209,7 @@ global with sharing class PulseRuntimeController {
         if (result.success) {
             // Re-fetch the instance to build a refreshed view
             List<Workflow_Instance__c> refreshed = [
-                SELECT Id, Current_State__c, Status__c, Pinned_Version__c,
+                SELECT Id, Current_State__c, Status__c, Stage_Status__c, Pinned_Version__c,
                        Context_JSON__c, Parent_Record_Id__c, Parent_Object_Type__c,
                        Workflow_Definition__c,
                        Workflow_Definition__r.Name,
@@ -262,7 +267,7 @@ global with sharing class PulseRuntimeController {
         saveFieldValuesInternal(instanceId, values);
 
         List<Workflow_Instance__c> refreshed = [
-            SELECT Id, Current_State__c, Status__c, Pinned_Version__c,
+            SELECT Id, Current_State__c, Status__c, Stage_Status__c, Pinned_Version__c,
                    Context_JSON__c, Parent_Record_Id__c, Parent_Object_Type__c,
                    Workflow_Definition__c,
                    Workflow_Definition__r.Name,
@@ -431,6 +436,7 @@ global with sharing class PulseRuntimeController {
         InstanceView view = new InstanceView();
         view.instanceId = inst.Id;
         view.status = inst.Status__c;
+        view.stageStatus = inst.Stage_Status__c;
         view.currentStateKey = inst.Current_State__c;
 
         // Parse definition contract

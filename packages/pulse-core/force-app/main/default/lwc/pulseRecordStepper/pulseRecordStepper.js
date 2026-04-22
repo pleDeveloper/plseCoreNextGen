@@ -106,6 +106,40 @@ export default class PulseRecordStepper extends LightningElement {
         return 'purple';
     }
 
+    // ─── Stage Status badge (header) ────────────────────────────
+    // Stage_Status__c is the operational override for the current phase.
+    // 'Active' is the default — we intentionally render nothing for it so
+    // the header stays quiet when things are fine. Other values surface as
+    // a category-colored badge next to the workflow name.
+
+    get hasStageStatus() {
+        const s = this.instance?.stageStatus;
+        if (s == null) return false;
+        if (typeof s !== 'string') return false;
+        const trimmed = s.trim();
+        if (!trimmed) return false;
+        return trimmed.toLowerCase() !== 'active';
+    }
+
+    get stageStatusLabel() {
+        const s = this.instance?.stageStatus;
+        if (!s) return '';
+        // Replace underscores with spaces so picklist API values render
+        // as human-friendly text (Waiting_External → Waiting External).
+        return String(s).replace(/_/g, ' ');
+    }
+
+    get stageStatusVariant() {
+        const s = (this.instance?.stageStatus || '').toLowerCase();
+        // Mapping aligned with the action-status engine so runtime badges
+        // feel coherent across the record page.
+        if (s === 'escalated') return 'error';
+        if (s === 'on_hold' || s === 'paused') return 'warning';
+        if (s === 'waiting_external') return 'purple';
+        if (s === 'complete' || s === 'completed' || s === 'success') return 'success';
+        return 'gray';
+    }
+
     // ─── Journey (allPhases) ────────────────────────────────────
 
     get journey() {
