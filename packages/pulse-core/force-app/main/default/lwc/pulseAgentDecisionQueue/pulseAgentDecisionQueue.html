@@ -1,7 +1,27 @@
 <template>
-    <template lwc:if={loading}>
-        <c-pulse-card>
-            <p class="decision-loading">Loading agent decisions…</p>
+    <!-- Loading state intentionally renders nothing — re-mounts (FlexiPage
+         refreshes) would otherwise flash a "Loading…" placeholder. The
+         decision card / thinking placeholder appears the instant data
+         lands. -->
+    <template lwc:if={showThinking}>
+        <c-pulse-card elevated>
+            <div class="decision-thinking">
+                <div class="thinking-avatar">
+                    <span class="thinking-sparkle">✦</span>
+                    <span class="thinking-initial">{personaInitial}</span>
+                </div>
+                <div class="thinking-text-wrap">
+                    <span class="thinking-text">{thinkingMessage}</span>
+                    <span class="thinking-dots">
+                        <span class="thinking-dot"></span>
+                        <span class="thinking-dot"></span>
+                        <span class="thinking-dot"></span>
+                    </span>
+                </div>
+                <p class="thinking-subtext">
+                    Drafting the next step — this usually takes a few seconds.
+                </p>
+            </div>
         </c-pulse-card>
     </template>
 
@@ -91,11 +111,28 @@
                     </div>
                 </template>
 
+                <template lwc:elseif={active.preview.isTool}>
+                    <div class="decision-preview decision-preview-record">
+                        <div class="decision-row">
+                            <span class="decision-row-label">Action</span>
+                            <span class="decision-row-value">{active.preview.toolLabel}</span>
+                        </div>
+                        <ul class="decision-record-rows">
+                            <template for:each={active.preview.rows} for:item="r">
+                                <li key={r.key} class="decision-record-row">
+                                    <span class="decision-record-key">{r.key}</span>
+                                    <span class="decision-record-value">{r.value}</span>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+                </template>
+
                 <template lwc:else>
                     <pre class="decision-preview-raw">{active.preview.raw}</pre>
                 </template>
 
-                <!-- Refine editor -->
+                <!-- Refine editor (§4.2) — email | record | tool | raw -->
                 <template lwc:if={refining}>
                     <div class="decision-refine">
                         <template lwc:if={activeDraft.mode}>
@@ -113,6 +150,51 @@
                                     <textarea class="decision-refine-textarea" rows="6"
                                               onchange={handleRefineEmailBody}>{activeDraft.email.body}</textarea>
                                 </label>
+                            </template>
+                            <template lwc:elseif={activeDraft.tool}>
+                                <ul class="decision-refine-tool-list">
+                                    <template for:each={activeDraft.tool.fields} for:item="f" for:index="idx">
+                                        <li key={f.key} class="decision-refine-tool-row">
+                                            <div class="decision-refine-tool-head">
+                                                <span class="decision-refine-tool-label">{f.label}</span>
+                                                <button type="button" class="decision-refine-tool-remove"
+                                                        data-index={idx}
+                                                        title="Remove this field"
+                                                        onclick={handleRefineToolRemove}>×</button>
+                                            </div>
+                                            <template lwc:if={f.isLongText}>
+                                                <textarea class="decision-refine-textarea"
+                                                          rows="3"
+                                                          data-index={idx}
+                                                          onchange={handleRefineToolField}>{f.value}</textarea>
+                                            </template>
+                                            <template lwc:elseif={f.isNumber}>
+                                                <input type="number"
+                                                       class="decision-refine-input"
+                                                       data-index={idx}
+                                                       value={f.value}
+                                                       onchange={handleRefineToolField} />
+                                            </template>
+                                            <template lwc:elseif={f.isDate}>
+                                                <input type="date"
+                                                       class="decision-refine-input"
+                                                       data-index={idx}
+                                                       value={f.value}
+                                                       onchange={handleRefineToolField} />
+                                            </template>
+                                            <template lwc:else>
+                                                <input type="text"
+                                                       class="decision-refine-input"
+                                                       data-index={idx}
+                                                       value={f.value}
+                                                       onchange={handleRefineToolField} />
+                                            </template>
+                                        </li>
+                                    </template>
+                                </ul>
+                                <button type="button"
+                                        class="decision-refine-tool-add"
+                                        onclick={handleRefineToolAdd}>+ Add field</button>
                             </template>
                             <template lwc:elseif={activeDraft.raw}>
                                 <label class="decision-refine-field">
@@ -145,30 +227,12 @@
                     </div>
                 </template>
 
-                <!-- Ask Claude hint picker -->
-                <template lwc:if={askingClaude}>
-                    <div class="decision-ask">
-                        <p class="decision-ask-title">Ask Claude to adjust:</p>
-                        <ul class="decision-ask-hints">
-                            <template for:each={askHints} for:item="h">
-                                <li key={h.value}>
-                                    <c-pulse-button label={h.label} variant="ghost" size="sm"
-                                                    data-value={h.value}
-                                                    onclick={handleAskHint}></c-pulse-button>
-                                </li>
-                            </template>
-                        </ul>
-                        <c-pulse-button label="Cancel" variant="ghost" size="sm" onclick={handleAskCancel}></c-pulse-button>
-                    </div>
-                </template>
-
                 <!-- Primary actions -->
                 <template lwc:if={active.isPropose}>
                     <div class="decision-actions decision-actions-main">
                         <c-pulse-button label="Approve" variant="primary" size="md" onclick={handleApprove}></c-pulse-button>
                         <c-pulse-button label="Refine" variant="secondary" size="md" onclick={handleRefineOpen}></c-pulse-button>
                         <c-pulse-button label="Reject" variant="ghost" size="md" onclick={handleReject}></c-pulse-button>
-                        <c-pulse-button label="✦ Ask Claude" variant="ghost" size="md" onclick={handleAskOpen}></c-pulse-button>
                     </div>
                 </template>
 
