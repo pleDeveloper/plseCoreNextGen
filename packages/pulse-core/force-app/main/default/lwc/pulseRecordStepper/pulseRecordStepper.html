@@ -1,10 +1,9 @@
 <template>
-    <!-- Loading state -->
-    <template lwc:if={isLoading}>
-        <c-pulse-card>
-            <p class="stepper-loading">Loading workflow…</p>
-        </c-pulse-card>
-    </template>
+    <!-- Loading state intentionally renders NOTHING (proposal §2.4). With
+         sessionStorage hydration the user almost never sees the empty state;
+         when they do, an empty container is less disruptive than a flash of
+         "Loading workflow…" text on every re-mount. -->
+    <template lwc:if={isLoading}></template>
 
     <!-- Error state -->
     <template lwc:elseif={hasError}>
@@ -20,16 +19,26 @@
         </c-pulse-card>
     </template>
 
-    <!-- Active instance -->
+    <!-- Active instance: side-by-side layout (proposal §5).
+         LEFT  — agent rail + decision queue ("what's next").
+         RIGHT — workflow header + journey ("where we are").
+         The two columns are layout-isolated: height changes on either side
+         do NOT push the other (`align-items: start`, `min-height` on left,
+         `min-width: 0` on right). Stacks below 1100px via media query. -->
     <template lwc:else>
-        <!-- Agent Mode: status rail + decision queue at top (enabled only) -->
-        <template lwc:if={agentEnabled}>
-            <c-pulse-agent-status-rail instance-id={instance.instanceId}
-                                       onagentkicked={handleAgentKicked}>
-            </c-pulse-agent-status-rail>
-            <c-pulse-agent-decision-queue instance-id={instance.instanceId}>
-            </c-pulse-agent-decision-queue>
-        </template>
+    <div class="stepper-split">
+        <div class="stepper-split-left">
+            <!-- Agent Mode: status rail + decision queue (enabled only) -->
+            <template lwc:if={agentEnabled}>
+                <c-pulse-agent-status-rail instance-id={instance.instanceId}
+                                           onagentkicked={handleAgentKicked}>
+                </c-pulse-agent-status-rail>
+                <c-pulse-agent-decision-queue instance-id={instance.instanceId}>
+                </c-pulse-agent-decision-queue>
+            </template>
+        </div>
+
+        <div class="stepper-split-right">
 
         <!-- Header card: trim summary -->
         <c-pulse-card elevated>
@@ -824,5 +833,8 @@
                 </div>
             </div>
         </c-pulse-modal>
+
+        </div><!-- /stepper-split-right -->
+    </div><!-- /stepper-split -->
     </template>
 </template>

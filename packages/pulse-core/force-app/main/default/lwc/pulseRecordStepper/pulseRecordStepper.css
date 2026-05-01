@@ -824,3 +824,41 @@
     display: flex;
     gap: var(--pulse-space-2, 8px);
 }
+
+/* ── Side-by-side stepper layout (proposal §5) ─────────────────
+   Two-column grid: agent surfaces on the left ("what's next"),
+   workflow journey on the right ("where we are"). Stacks below
+   1100px viewports. The three load-bearing rules are:
+
+   1. `align-items: start` — without it both columns stretch to the
+      tallest, so a height change on one side pushes the other.
+   2. `min-height: 280px` on the left — keeps the left column from
+      growing/shrinking when the agent's thinking placeholder
+      appears or clears, so the right column reads as stable.
+   3. `min-width: 0` on the right — lets long unbreakable strings
+      (URLs, identifiers, JSON) wrap inside the grid cell instead
+      of overflowing and breaking the layout. */
+.stepper-split {
+    display: grid;
+    grid-template-columns: minmax(460px, 600px) 1fr;
+    gap: var(--pulse-space-4, 16px);
+    align-items: start;
+}
+.stepper-split-left {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-3, 12px);
+    min-height: 280px;
+}
+.stepper-split-right {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-3, 12px);
+    min-width: 0;
+    align-self: start;
+}
+@media (max-width: 1100px) {
+    .stepper-split {
+        grid-template-columns: 1fr;
+    }
+}
