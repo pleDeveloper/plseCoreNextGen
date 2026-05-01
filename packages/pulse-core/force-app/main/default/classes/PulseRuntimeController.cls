@@ -57,15 +57,17 @@ global with sharing class PulseRuntimeController {
     }
 
     /**
-     * Preview-level field metadata for the journey overview. Intentionally
-     * no values — the current phase's rich editable form already travels
-     * in InstanceView.phaseFields.
+     * Preview-level field metadata for the journey overview. Now includes
+     * the current value (resolved from Context_JSON__c) so completed
+     * phases can show captured data in the journey trail. The current
+     * phase's rich editable form still travels in InstanceView.phaseFields.
      */
     global class PhaseFieldSummary {
         @AuraEnabled public String  key;
         @AuraEnabled public String  label;
         @AuraEnabled public String  fieldType;
         @AuraEnabled public Boolean required;
+        @AuraEnabled public String  currentValue;  // serialized from Context_JSON__c; null if not set
     }
 
     /**
@@ -146,13 +148,21 @@ global with sharing class PulseRuntimeController {
     }
 
     // ─── getInstanceForRecord ───────────────────────────────────
+    // NOT cacheable: imperative refreshes (Platform Event → push, safety
+    // poll, post-action mfrefresh) need to see fresh server state every
+    // call. Caching would force consumers through refreshApex with
+    // explicit @wire, which doesn't fit the push-driven flow.
 
-    @AuraEnabled(cacheable=true)
+    @AuraEnabled
     public static InstanceView getInstanceForRecord(Id recordId) {
         if (recordId == null) {
             return null;
         }
 
+        // Prefer the active workflow if there is one; fall back to the most
+        // recent completed/terminal one so the LWC keeps showing the journey
+        // (with all phases marked done) after the workflow finishes — users
+        // can still click through to see what happened in each step.
         List<Workflow_Instance__c> instances = [
             SELECT Id, Current_State__c, Status__c, Stage_Status__c, Pinned_Version__c,
                    Context_JSON__c, Parent_Record_Id__c, Parent_Object_Type__c,
@@ -166,6 +176,22 @@ global with sharing class PulseRuntimeController {
             ORDER BY CreatedDate DESC
             LIMIT 1
         ];
+
+        if (instances.isEmpty()) {
+            instances = [
+                SELECT Id, Current_State__c, Status__c, Stage_Status__c, Pinned_Version__c,
+                       Context_JSON__c, Parent_Record_Id__c, Parent_Object_Type__c,
+                       Workflow_Definition__c,
+                       Workflow_Definition__r.Name,
+                       Workflow_Definition__r.Workflow_Key__c,
+                       Workflow_Definition__r.Definition_JSON__c
+                FROM Workflow_Instance__c
+                WHERE Parent_Record_Id__c = :recordId
+                  AND Status__c IN ('Completed', 'Terminated')
+                ORDER BY CreatedDate DESC
+                LIMIT 1
+            ];
+        }
 
         if (instances.isEmpty()) {
             return null;
@@ -631,6 +657,10 @@ global with sharing class PulseRuntimeController {
                     fs.label     = String.isNotBlank(fd.label) ? fd.label : fd.key;
                     fs.fieldType = fd.fieldType != null ? fd.fieldType : 'Text';
                     fs.required  = fd.required == true;
+                    Object v = ctx.get(fd.key);
+                    if (v != null) {
+                        fs.currentValue = v instanceof String ? (String) v : JSON.serialize(v);
+                    }
                     p.fields.add(fs);
                     checkpoints.add('Capture ' + fs.label);
                 }

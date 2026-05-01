@@ -518,10 +518,35 @@ public with sharing class PulseAgentOrchestrator {
             + '(if appropriate) or `observe` that you are waiting on the client to reply.'
             + '\n- Never call the same tool twice with identical args without new input.'
             + '\n- All side-effecting tool calls are gated by human approval unless autonomy allows.'
+            + '\n\nDECISIVENESS — DO NOT OBSERVE WHEN YOU SHOULD ACT:'
+            + '\n- If the current phase is ai_driven AND there is a pending placeholder action in '
+            + 'context.pendingActions[] AND you have everything needed in context to fill it, you '
+            + 'MUST propose_action THIS TURN. Do NOT observe with rationale "I will scan first and '
+            + 'then act on the next turn" — that is a wasted turn and breaks the workflow.'
+            + '\n- If the agent\'s prior turn was an Error (e.g. transient platform error caught), '
+            + 'the next turn should RETRY the action — propose_action again, do not observe.'
+            + '\n- If the current phase has no pending action but the required fields are populated '
+            + 'and a transition signal exists, propose advance_phase — do not observe.'
+            + '\n- Observe ONLY when (a) you are at a phase with no actions and waiting on an external '
+            + 'event (a customer reply, an integration webhook, a scheduled callback) AND (b) '
+            + 'propose_action / advance_phase truly have nothing to add. This is a rare case.'
             + '\n\nWorkflow system prompt:\n' + (String.isBlank(userPrompt) ? '(none provided)' : userPrompt);
         if (String.isNotBlank(rolling)) {
             sp += '\n\nRolling summary of prior decisions (for your future self):\n' + rolling;
         }
+        // Rationale-style appendix — placed LAST so it overrides earlier
+        // mentions of internal terms when the model writes user-facing text.
+        sp += '\n\n=== RATIONALE STYLE (overrides anything above for the rationale field) ==='
+            + '\nThe `rationale` you write on each decision is shown DIRECTLY to a non-technical '
+            + 'business user (account manager, ops admin, reviewer). They are NOT engineers and '
+            + 'don\'t know your internals. Write 1–3 plain-English sentences in a helpful, '
+            + 'professional tone. Use the customer or contact first name when known. Speak in '
+            + 'business language and field LABELS, not API names: "the requested square footage", '
+            + 'NOT "requested_sqft"; "the move-in date", NOT "desired_move_in".'
+            + '\nNEVER use any of these words in rationale: placeholder, action_key, action key, '
+            + 'toolKey, tool key, propose_action, advance_phase, ai_tool, context.conversations, '
+            + 'turn 0, turn timestamp, payload, instance, JSON, populate, fill the placeholder, '
+            + 'pending placeholder, parallel decision.';
         return sp;
     }
 
