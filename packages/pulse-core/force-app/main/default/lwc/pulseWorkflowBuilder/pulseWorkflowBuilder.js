@@ -1,4 +1,4 @@
-import { LightningElement, track } from 'lwc';
+import { LightningElement, track, wire } from 'lwc';
 import { loadPulseBrandTokens } from 'c/pulseBrandTokens';
 import {
     getState,
@@ -10,13 +10,32 @@ import saveWorkflow from '@salesforce/apex/PulseWorkflowBuilderController.saveWo
 import publishWorkflow from '@salesforce/apex/PulseWorkflowBuilderController.publishWorkflow';
 import listWorkflows from '@salesforce/apex/PulseWorkflowBuilderController.listWorkflows';
 import loadWorkflow from '@salesforce/apex/PulseWorkflowBuilderController.loadWorkflow';
+import listActiveRoleSummaries from '@salesforce/apex/PulseAgentRoleController.listActiveRoleSummaries';
 
 export default class PulseWorkflowBuilder extends LightningElement {
     @track _storeState;
     @track _existingWorkflows = [];
     @track _listError = null;
+    @track _agentRoles = [];        // Active role summaries from listActiveRoleSummaries
+    @track _agentRoleError = null;
+    @track _showAgentOverrides = false; // disclosure state for "Customize this role"
     _unsubscribe;
     _recordId; // Workflow_Definition__c Id once saved
+
+    // Active role summaries — drives the role picker in the agent panel.
+    // We use @wire here because the Apex method is cacheable=true and the
+    // role library mutates rarely, so cached reads are the right default.
+    @wire(listActiveRoleSummaries)
+    _wiredAgentRoles({ data, error }) {
+        if (data) {
+            this._agentRoles = data;
+            this._agentRoleError = null;
+        } else if (error) {
+            this._agentRoles = [];
+            this._agentRoleError = error?.body?.message || error?.message
+                || 'Failed to load agent roles';
+        }
+    }
 
     // ── Create-workflow form state ────────────────────────────────
     newWorkflowKey = '';
@@ -472,36 +491,145 @@ export default class PulseWorkflowBuilder extends LightningElement {
 
     // ── Agent Mode panel (per-phase) ──────────────────────────────
     //
-    // Mirrors the autonomy levels that PulseAgentOrchestrator actually
-    // reads (Propose_Only / Act_With_Approval / Autonomous_Safe). The
-    // `agent` block lives under the current state in the contract so it
-    // round-trips through save/load.
+    // Phases pick a reusable role from Agent_Role__mdt via the role library;
+    // overrides (provider, autonomy, prompt addendum) layer on top. The new
+    // shape on state.agent is:
+    //   { enabled, roleKey, providerOverride, autonomyOverride, promptAddendum }
+    //
+    // Backwards-compat: contracts created before role support set
+    // { persona, autonomy, systemPrompt } directly. We surface those as a
+    // virtual "Custom (legacy)" entry in the dropdown so the admin can keep
+    // them or pick a real role. WorkflowContract.resolveAgent already
+    // accepts both shapes at runtime.
 
     get selectedStateAgent() {
         const s = this.states.find((st) => st.key === this.selectedStateKey);
         return (s && s.agent) || {};
     }
 
+    /** True when the agent block carries legacy freeform fields and no roleKey. */
+    get isLegacyAgentConfig() {
+        const a = this.selectedStateAgent;
+        if (!a) return false;
+        if (a.roleKey) return false;
+        return !!(a.persona || a.systemPrompt
+            || (a.autonomy && a.autonomy !== ''));
+    }
+
     get agentEnabled() {
         return this.selectedStateAgent.enabled === true;
     }
 
-    get agentPersona() {
-        return this.selectedStateAgent.persona || '';
+    /**
+     * The role currently selected on this phase. For legacy contracts (no
+     * roleKey but persona/prompt set), returns the synthetic '__legacy__'
+     * value so the dropdown can highlight the legacy entry.
+     */
+    get selectedRoleKey() {
+        const a = this.selectedStateAgent;
+        if (a.roleKey) return a.roleKey;
+        if (this.isLegacyAgentConfig) return '__legacy__';
+        return '';
     }
 
-    get agentSystemPrompt() {
-        return this.selectedStateAgent.systemPrompt || '';
+    /**
+     * Dropdown options. Always starts with a blank "Pick a role" placeholder;
+     * appends the legacy entry when the current phase has freeform config.
+     */
+    get agentRoleOptions() {
+        const opts = [{ label: 'Pick a role…', value: '', selected: false }];
+        const sel = this.selectedRoleKey;
+        for (const r of (this._agentRoles || [])) {
+            opts.push({
+                label: r.displayName || r.roleKey,
+                value: r.roleKey,
+                selected: r.roleKey === sel
+            });
+        }
+        if (this.isLegacyAgentConfig) {
+            opts.push({
+                label: 'Custom (legacy)',
+                value: '__legacy__',
+                selected: sel === '__legacy__'
+            });
+        }
+        // Ensure the placeholder is selected when nothing else matches.
+        if (!opts.some((o) => o.selected)) {
+            opts[0].selected = true;
+        }
+        return opts;
     }
 
-    get agentAutonomyOptions() {
-        const current = this.selectedStateAgent.autonomy || 'Act_With_Approval';
+    /** The role record (summary) matching the current selection, or null. */
+    get selectedRoleRecord() {
+        const key = this.selectedStateAgent.roleKey;
+        if (!key) return null;
+        return (this._agentRoles || []).find((r) => r.roleKey === key) || null;
+    }
+
+    get hasSelectedRole() {
+        return !!this.selectedRoleRecord;
+    }
+
+    get selectedRoleDisplayName() {
+        return this.selectedRoleRecord ? this.selectedRoleRecord.displayName : '';
+    }
+
+    get selectedRoleDescription() {
+        return this.selectedRoleRecord ? (this.selectedRoleRecord.description || '') : '';
+    }
+
+    get selectedRoleProviderHint() {
+        const r = this.selectedRoleRecord;
+        return r && r.providerName
+            ? `Default provider: ${r.providerName}`
+            : 'Default provider: (use platform default)';
+    }
+
+    get selectedRoleAutonomyHint() {
+        const r = this.selectedRoleRecord;
+        return r && r.defaultAutonomy
+            ? `Default autonomy: ${r.defaultAutonomy.replace(/_/g, ' ')}`
+            : 'Default autonomy: Act With Approval';
+    }
+
+    /** True when the legacy entry is the active selection. */
+    get isLegacySelected() {
+        return this.selectedRoleKey === '__legacy__';
+    }
+
+    /** Override fields */
+    get agentProviderOverride() {
+        return this.selectedStateAgent.providerOverride || '';
+    }
+
+    get agentPromptAddendum() {
+        return this.selectedStateAgent.promptAddendum || '';
+    }
+
+    get agentAutonomyOverrideOptions() {
+        const current = this.selectedStateAgent.autonomyOverride || '';
         const opts = [
+            { label: 'Use role default', value: '' },
             { label: 'Propose Only', value: 'Propose_Only' },
             { label: 'Act With Approval', value: 'Act_With_Approval' },
             { label: 'Autonomous (safe)', value: 'Autonomous_Safe' }
         ];
         return opts.map((o) => ({ ...o, selected: o.value === current }));
+    }
+
+    get agentRoleError() {
+        return this._agentRoleError;
+    }
+
+    get showAgentOverrides() {
+        return this._showAgentOverrides;
+    }
+
+    get agentOverridesToggleLabel() {
+        return this._showAgentOverrides
+            ? 'Hide overrides'
+            : 'Customize this role';
     }
 
     handleAgentEnabledToggle(event) {
@@ -514,34 +642,60 @@ export default class PulseWorkflowBuilder extends LightningElement {
         });
     }
 
-    handleAgentPersonaChange(event) {
+    handleAgentRoleChange(event) {
         if (!this.selectedStateKey) return;
-        const persona = event.detail?.value ?? event.target.value ?? '';
+        const roleKey = event.detail?.value ?? event.target.value ?? '';
+        // Picking a real role wipes any prior legacy freeform fields so the
+        // contract is unambiguous — the role drives defaults from there on.
+        // Picking the legacy entry is a no-op (already legacy).
+        // Picking the placeholder clears the role.
+        if (roleKey === '__legacy__') {
+            return;
+        }
         dispatch({
             type: 'UPDATE_AGENT_CONFIG',
             stateKey: this.selectedStateKey,
-            patch: { persona }
+            patch: {
+                roleKey: roleKey || null,
+                persona: null,
+                systemPrompt: null,
+                autonomy: null
+            }
         });
     }
 
-    handleAgentAutonomyChange(event) {
+    handleAgentProviderOverrideChange(event) {
         if (!this.selectedStateKey) return;
-        const autonomy = event.detail?.value ?? event.target.value ?? '';
+        const providerOverride = event.detail?.value ?? event.target.value ?? '';
         dispatch({
             type: 'UPDATE_AGENT_CONFIG',
             stateKey: this.selectedStateKey,
-            patch: { autonomy }
+            patch: { providerOverride: providerOverride || null }
         });
     }
 
-    handleAgentSystemPromptChange(event) {
+    handleAgentAutonomyOverrideChange(event) {
         if (!this.selectedStateKey) return;
-        const systemPrompt = event.detail?.value ?? event.target.value ?? '';
+        const autonomyOverride = event.detail?.value ?? event.target.value ?? '';
         dispatch({
             type: 'UPDATE_AGENT_CONFIG',
             stateKey: this.selectedStateKey,
-            patch: { systemPrompt }
+            patch: { autonomyOverride: autonomyOverride || null }
         });
+    }
+
+    handleAgentPromptAddendumChange(event) {
+        if (!this.selectedStateKey) return;
+        const promptAddendum = event.detail?.value ?? event.target.value ?? '';
+        dispatch({
+            type: 'UPDATE_AGENT_CONFIG',
+            stateKey: this.selectedStateKey,
+            patch: { promptAddendum: promptAddendum || null }
+        });
+    }
+
+    handleAgentOverridesToggle() {
+        this._showAgentOverrides = !this._showAgentOverrides;
     }
 
     get selectedField() {

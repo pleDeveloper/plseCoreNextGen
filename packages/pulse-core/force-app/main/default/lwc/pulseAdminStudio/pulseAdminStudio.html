@@ -76,6 +76,11 @@
                             <c-pulse-ai-config></c-pulse-ai-config>
                         </div>
                     </template>
+                    <template lwc:elseif={isAgentRoles}>
+                        <div class="studio-panel-wrap">
+                            <c-pulse-agent-role-library></c-pulse-agent-role-library>
+                        </div>
+                    </template>
                     <template lwc:elseif={isIntegrationsHub}>
                         <div class="studio-panel-wrap">
                             <c-pulse-integrations-hub></c-pulse-integrations-hub>
