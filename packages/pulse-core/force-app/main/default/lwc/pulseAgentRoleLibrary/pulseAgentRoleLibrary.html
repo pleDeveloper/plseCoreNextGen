@@ -1,0 +1,233 @@
+<template>
+    <div class="roles-shell">
+        <header class="roles-header">
+            <div>
+                <h2 class="roles-title pulse-gradient-text">Agent role library</h2>
+                <p class="roles-desc">
+                    Define reusable agent roles — system prompts, tool allowlists,
+                    autonomy defaults — once. Workflow phases pick a role from the
+                    library instead of repeating the configuration inline.
+                </p>
+            </div>
+        </header>
+
+        <template lwc:if={toast}>
+            <div class={toast.class}>
+                <span>{toast.message}</span>
+                <button class="roles-toast-close" onclick={handleDismissToast} aria-label="Dismiss">
+                    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+        </template>
+
+        <section class="roles-panel">
+            <div class="roles-panel-head">
+                <div>
+                    <h3 class="roles-panel-title">Roles</h3>
+                    <p class="roles-panel-sub">{countLabel}</p>
+                </div>
+                <div class="roles-panel-actions">
+                    <c-pulse-button label="Refresh" variant="ghost" size="sm"
+                                    onclick={handleRefresh}>
+                    </c-pulse-button>
+                    <c-pulse-button label="Add role" variant="primary" size="sm"
+                                    data-testid="add-role"
+                                    onclick={handleAddRole}>
+                    </c-pulse-button>
+                </div>
+            </div>
+
+            <template lwc:if={loading}>
+                <div class="roles-loading">Loading…</div>
+            </template>
+
+            <template lwc:if={loadError}>
+                <div class="roles-error-banner">{loadError}</div>
+            </template>
+
+            <template lwc:if={hasRoles}>
+                <ul class="roles-list">
+                    <template for:each={roles} for:item="r">
+                        <li key={r.developerName} class="role-card">
+                            <div class="role-card-head">
+                                <div class="role-card-title-wrap">
+                                    <span class="role-card-title">{r.displayName}</span>
+                                    <span class={r.statusClass}>{r.statusLabel}</span>
+                                </div>
+                                <div class="role-card-actions">
+                                    <c-pulse-button label="Edit" variant="ghost" size="sm"
+                                                    data-developer-name={r.developerName}
+                                                    data-testid="edit-role"
+                                                    onclick={handleEditRole}>
+                                    </c-pulse-button>
+                                    <c-pulse-button label="Deactivate" variant="ghost" size="sm"
+                                                    data-developer-name={r.developerName}
+                                                    data-testid="deactivate-role"
+                                                    onclick={handleDeactivateRole}>
+                                    </c-pulse-button>
+                                </div>
+                            </div>
+                            <p class="role-card-desc">{r.description}</p>
+                            <dl class="role-card-grid">
+                                <div class="role-card-kv">
+                                    <dt>Role key</dt><dd>{r.roleKey}</dd>
+                                </div>
+                                <div class="role-card-kv">
+                                    <dt>Provider</dt><dd>{r.providerLabel}</dd>
+                                </div>
+                                <div class="role-card-kv">
+                                    <dt>Default autonomy</dt><dd>{r.autonomyLabel}</dd>
+                                </div>
+                                <div class="role-card-kv">
+                                    <dt>Tool allowlist</dt><dd>{r.allowlistLabel}</dd>
+                                </div>
+                                <div class="role-card-kv">
+                                    <dt>Phase types</dt><dd>{r.phaseTypesLabel}</dd>
+                                </div>
+                            </dl>
+                        </li>
+                    </template>
+                </ul>
+            </template>
+
+            <template lwc:if={hasNoRoles}>
+                <div class="roles-empty">
+                    No agent roles defined yet. Click "Add role" to create one.
+                </div>
+            </template>
+        </section>
+
+        <!-- Editor modal -->
+        <c-pulse-modal open={editorOpen}
+                       size="lg"
+                       title={editorTitle}
+                       dismissible="true"
+                       onclose={handleEditorClose}>
+            <div class="roles-form">
+                <div class="roles-form-grid">
+                    <c-pulse-input label="Role key"
+                                   value={editorRoleKey}
+                                   data-field="roleKey"
+                                   placeholder="e.g. lease_qualifier"
+                                   required="true"
+                                   disabled={editorRoleKeyDisabled}
+                                   onchange={handleFieldChange}>
+                    </c-pulse-input>
+                    <c-pulse-input label="Display name"
+                                   value={editorDisplayName}
+                                   data-field="displayName"
+                                   placeholder="Lease Qualifier"
+                                   required="true"
+                                   onchange={handleFieldChange}>
+                    </c-pulse-input>
+                    <c-pulse-input label="Provider"
+                                   value={editorProviderName}
+                                   data-field="providerName"
+                                   placeholder="Anthropic_Claude"
+                                   onchange={handleFieldChange}>
+                    </c-pulse-input>
+                    <label class="roles-form-label-wrap">
+                        <span class="roles-form-label">Default autonomy</span>
+                        <select class="roles-form-select"
+                                onchange={handleAutonomyChange}>
+                            <template for:each={autonomyOptions} for:item="opt">
+                                <option key={opt.value}
+                                        value={opt.value}
+                                        selected={opt.selected}>
+                                    {opt.label}
+                                </option>
+                            </template>
+                        </select>
+                    </label>
+                    <c-pulse-input label="Suggested phase types"
+                                   value={editorSuggestedPhaseTypes}
+                                   data-field="suggestedPhaseTypes"
+                                   placeholder="ai_driven,approval"
+                                   onchange={handleFieldChange}>
+                    </c-pulse-input>
+                </div>
+
+                <div class="roles-form-field">
+                    <label class="roles-form-label" for="role-description">Description</label>
+                    <textarea id="role-description"
+                              class="roles-form-textarea"
+                              data-field="description"
+                              rows="2"
+                              placeholder="Short admin-facing description of when to use this role"
+                              oninput={handleFieldChange}>{editorDescription}</textarea>
+                </div>
+
+                <div class="roles-form-field">
+                    <label class="roles-form-label" for="role-system-prompt">System prompt</label>
+                    <textarea id="role-system-prompt"
+                              class="roles-form-textarea"
+                              data-field="systemPrompt"
+                              rows="6"
+                              placeholder="You are a helpful assistant for…"
+                              oninput={handleFieldChange}>{editorSystemPrompt}</textarea>
+                </div>
+
+                <div class="roles-form-field">
+                    <label class="roles-form-label" for="role-allowlist">
+                        Tool allowlist (JSON array)
+                    </label>
+                    <textarea id="role-allowlist"
+                              class="roles-form-textarea roles-form-mono"
+                              data-field="toolAllowlistJson"
+                              rows="3"
+                              placeholder='["update_field","add_note"]'
+                              oninput={handleFieldChange}>{editorToolAllowlistJson}</textarea>
+                    <p class="roles-form-help">
+                        Optional. Empty means any registered tool is allowed.
+                    </p>
+                </div>
+
+                <c-pulse-toggle label="Active"
+                                checked={editorActive}
+                                data-field="active"
+                                onchange={handleFieldChange}>
+                </c-pulse-toggle>
+
+                <template lwc:if={editorError}>
+                    <div class="roles-error-banner">{editorError}</div>
+                </template>
+
+                <div class="roles-form-actions">
+                    <c-pulse-button label="Cancel" variant="ghost"
+                                    disabled={editorBusy}
+                                    onclick={handleEditorClose}>
+                    </c-pulse-button>
+                    <c-pulse-button label="Save role" variant="primary"
+                                    disabled={editorBusy}
+                                    data-testid="save-role"
+                                    onclick={handleSaveRole}>
+                    </c-pulse-button>
+                </div>
+            </div>
+        </c-pulse-modal>
+
+        <!-- Deactivate confirmation modal -->
+        <c-pulse-modal open={confirmOpen}
+                       size="sm"
+                       title="Deactivate agent role"
+                       dismissible="true"
+                       onclose={handleConfirmClose}>
+            <div class="roles-form">
+                <p class="roles-form-text">{confirmMessage}</p>
+                <div class="roles-form-actions">
+                    <c-pulse-button label="Cancel" variant="ghost"
+                                    disabled={confirmBusy}
+                                    onclick={handleConfirmClose}>
+                    </c-pulse-button>
+                    <c-pulse-button label="Deactivate" variant="primary"
+                                    disabled={confirmBusy}
+                                    data-testid="confirm-deactivate"
+                                    onclick={handleConfirmDeactivate}>
+                    </c-pulse-button>
+                </div>
+            </div>
+        </c-pulse-modal>
+    </div>
+</template>

@@ -1,6 +1,8 @@
 import { createElement } from 'lwc';
+import { registerApexTestWireAdapter } from '@salesforce/sfdx-lwc-jest';
 import PulseWorkflowBuilder from 'c/pulseWorkflowBuilder';
 import { resetStore, dispatch, getState } from 'c/pulseStore';
+import listActiveRoleSummaries from '@salesforce/apex/PulseAgentRoleController.listActiveRoleSummaries';
 
 jest.mock(
     'c/pulseBrandTokens',
@@ -53,6 +55,12 @@ jest.mock(
 );
 
 jest.mock(
+    '@salesforce/apex/PulseAgentRoleController.listActiveRoleSummaries',
+    () => ({ default: jest.fn() }),
+    { virtual: true }
+);
+
+jest.mock(
     '@salesforce/apex/PulseWorkflowBuilderController.loadWorkflow',
     () => ({
         default: jest.fn(() =>
@@ -78,6 +86,27 @@ jest.mock(
     }),
     { virtual: true }
 );
+
+const agentRolesAdapter = registerApexTestWireAdapter(listActiveRoleSummaries);
+
+const SAMPLE_AGENT_ROLES = [
+    {
+        developerName: 'Lease_Qualifier',
+        roleKey: 'lease_qualifier',
+        displayName: 'Lease Qualifier',
+        description: 'Qualifies inbound leasing inquiries.',
+        providerName: 'Anthropic_Claude',
+        defaultAutonomy: 'Act_With_Approval'
+    },
+    {
+        developerName: 'Donor_Matcher',
+        roleKey: 'donor_matcher',
+        displayName: 'Donor Matcher',
+        description: 'Matches nonprofit donors to projects.',
+        providerName: 'Anthropic_Claude',
+        defaultAutonomy: 'Propose_Only'
+    }
+];
 
 function createComponent() {
     const el = createElement('c-pulse-workflow-builder', {
@@ -417,10 +446,11 @@ describe('c-pulse-workflow-builder', () => {
         expect(dot).not.toBeNull();
     });
 
-    // ── Agent Mode panel ─────────────────────────────────────────
+    // ── Agent Mode panel (role picker) ───────────────────────────
 
-    it('renders the Agent Mode panel inside the phase settings drawer', async () => {
+    it('renders the role picker dropdown sourced from listActiveRoleSummaries', async () => {
         const el = createComponent();
+        agentRolesAdapter.emit(SAMPLE_AGENT_ROLES);
         dispatch({
             type: 'SET_WORKFLOW_META',
             workflowKey: 'test_wf',
@@ -430,34 +460,32 @@ describe('c-pulse-workflow-builder', () => {
         dispatch({ type: 'SELECT_STATE', stateKey: 'intake' });
         await flushPromises();
 
-        // Expand the phase settings drawer.
         const toggle = Array.from(
             el.shadowRoot.querySelectorAll('c-pulse-button')
         ).find((b) => b.label === 'Phase settings');
-        expect(toggle).toBeDefined();
         toggle.click();
         await flushPromises();
 
         const panel = el.shadowRoot.querySelector('.builder-agent-panel');
         expect(panel).not.toBeNull();
-        // Heading for the panel should render
         const heading = panel.querySelector('.builder-phase-group-title');
         expect(heading.textContent).toBe('Agent Mode');
 
-        // Autonomy dropdown renders the 3 expected values.
-        const select = panel.querySelector('select.builder-phase-select');
-        const optionValues = Array.from(select.querySelectorAll('option')).map(
-            (o) => o.value
-        );
+        const picker = panel.querySelector('[data-testid="agent-role-picker"]');
+        expect(picker).not.toBeNull();
+        const optionValues = Array.from(picker.querySelectorAll('option'))
+            .map((o) => o.value);
+        // Placeholder + the two sample roles
         expect(optionValues).toEqual([
-            'Propose_Only',
-            'Act_With_Approval',
-            'Autonomous_Safe'
+            '',
+            'lease_qualifier',
+            'donor_matcher'
         ]);
     });
 
-    it('editing the Agent panel persists patches onto state.agent', async () => {
+    it('changing the role dispatches UPDATE_AGENT_CONFIG with the new shape', async () => {
         const el = createComponent();
+        agentRolesAdapter.emit(SAMPLE_AGENT_ROLES);
         dispatch({
             type: 'SET_WORKFLOW_META',
             workflowKey: 'test_wf',
@@ -475,33 +503,83 @@ describe('c-pulse-workflow-builder', () => {
 
         const panel = el.shadowRoot.querySelector('.builder-agent-panel');
 
-        // Toggle enabled
+        // Enable agent.
         const toggleEnabled = panel.querySelector('c-pulse-toggle');
         toggleEnabled.dispatchEvent(
             new CustomEvent('change', { detail: { checked: true } })
         );
         await flushPromises();
 
-        // Change persona
-        const personaInput = panel.querySelector('c-pulse-input');
-        personaInput.dispatchEvent(
-            new CustomEvent('change', { detail: { value: 'Leasing Qualifier' } })
-        );
+        // Pick a role.
+        const picker = panel.querySelector('[data-testid="agent-role-picker"]');
+        picker.value = 'lease_qualifier';
+        picker.dispatchEvent(new CustomEvent('change'));
         await flushPromises();
 
-        // Change system prompt via textarea
-        const textarea = panel.querySelector('textarea.builder-phase-textarea');
-        textarea.value = 'Be helpful.';
-        textarea.dispatchEvent(new CustomEvent('change'));
+        // Open overrides and set them.
+        const overridesToggle = panel.querySelector(
+            '[data-testid="agent-overrides-toggle"]'
+        );
+        overridesToggle.dispatchEvent(new CustomEvent('click'));
+        await flushPromises();
+
+        const providerInput = panel.querySelector('c-pulse-input');
+        providerInput.dispatchEvent(
+            new CustomEvent('change', { detail: { value: 'Anthropic_Claude_Plus' } })
+        );
         await flushPromises();
 
         const intake = getState().workflow.states.find((s) => s.key === 'intake');
         expect(intake.agent).toEqual(
             expect.objectContaining({
                 enabled: true,
-                persona: 'Leasing Qualifier',
-                systemPrompt: 'Be helpful.'
+                roleKey: 'lease_qualifier',
+                providerOverride: 'Anthropic_Claude_Plus'
             })
         );
+        // Picking a role wipes legacy freeform fields explicitly.
+        expect(intake.agent.persona).toBeNull();
+        expect(intake.agent.systemPrompt).toBeNull();
+    });
+
+    it('shows a Custom (legacy) entry when phase has freeform agent fields without roleKey', async () => {
+        const el = createComponent();
+        agentRolesAdapter.emit(SAMPLE_AGENT_ROLES);
+        dispatch({
+            type: 'SET_WORKFLOW_META',
+            workflowKey: 'test_wf',
+            subjectKinds: ['Account']
+        });
+        dispatch({ type: 'ADD_STATE', stateKey: 'intake', label: 'Intake' });
+        dispatch({ type: 'SELECT_STATE', stateKey: 'intake' });
+        // Seed legacy-shape agent block.
+        dispatch({
+            type: 'UPDATE_AGENT_CONFIG',
+            stateKey: 'intake',
+            patch: {
+                enabled: true,
+                persona: 'Old Persona',
+                systemPrompt: 'Old prompt',
+                autonomy: 'Act_With_Approval'
+            }
+        });
+        await flushPromises();
+
+        const toggle = Array.from(
+            el.shadowRoot.querySelectorAll('c-pulse-button')
+        ).find((b) => b.label === 'Phase settings');
+        toggle.click();
+        await flushPromises();
+
+        const picker = el.shadowRoot.querySelector('[data-testid="agent-role-picker"]');
+        expect(picker).not.toBeNull();
+        const labels = Array.from(picker.querySelectorAll('option'))
+            .map((o) => o.textContent.trim());
+        expect(labels).toContain('Custom (legacy)');
+
+        // The legacy entry is the selected one.
+        const selected = Array.from(picker.querySelectorAll('option'))
+            .find((o) => o.selected);
+        expect(selected.value).toBe('__legacy__');
     });
 });

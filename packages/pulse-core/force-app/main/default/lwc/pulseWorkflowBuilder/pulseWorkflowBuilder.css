@@ -624,3 +624,53 @@
     border-top: 1px dashed var(--pulse-border, #e5e7eb);
     padding-top: var(--pulse-space-3, 12px);
 }
+
+.builder-agent-role-preview {
+    background: var(--pulse-off-white, #f9fafb);
+    border: 1px solid var(--pulse-border, #e5e7eb);
+    border-radius: var(--pulse-radius-md, 8px);
+    padding: var(--pulse-space-3, 12px);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.builder-agent-role-name {
+    font-weight: var(--pulse-weight-semibold, 600);
+    font-size: var(--pulse-text-body, 14px);
+    color: var(--pulse-dark, #0f172a);
+}
+
+.builder-agent-role-desc {
+    margin: 0;
+    font-size: var(--pulse-text-small, 13px);
+    color: var(--pulse-slate, #64748b);
+    line-height: var(--pulse-lh-body, 1.6);
+}
+
+.builder-agent-role-meta {
+    margin: 0;
+    font-size: var(--pulse-text-caption, 12px);
+    color: var(--pulse-slate, #64748b);
+}
+
+.builder-agent-error {
+    color: var(--pulse-red-700, #b91c1c);
+}
+
+.builder-agent-legacy {
+    color: #b45309;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: var(--pulse-radius-md, 8px);
+    padding: var(--pulse-space-2, 8px) var(--pulse-space-3, 12px);
+}
+
+.builder-agent-overrides {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pulse-space-3, 12px);
+    border-left: 2px solid var(--pulse-border, #e5e7eb);
+    padding-left: var(--pulse-space-3, 12px);
+    margin-top: var(--pulse-space-2, 8px);
+}

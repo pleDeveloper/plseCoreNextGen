@@ -109,7 +109,7 @@ describe('c-pulse-admin-studio', () => {
     it('renders all navigation items', () => {
         const el = createComponent();
         const items = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        expect(items.length).toBe(9);
+        expect(items.length).toBe(11);
     });
 
     it('defaults to Workflow builder as active nav', () => {
@@ -154,8 +154,8 @@ describe('c-pulse-admin-studio', () => {
     it('renders Settings panel when settings nav clicked', () => {
         const el = createComponent();
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        // Settings is at index 7
-        navItems[7].click();
+        // Settings is the last nav item (added agent-roles shifted later items by 1).
+        navItems[navItems.length - 1].click();
         return Promise.resolve().then(() => {
             const panel = el.shadowRoot.querySelector('c-pulse-settings');
             expect(panel).not.toBeNull();
@@ -177,7 +177,8 @@ describe('c-pulse-admin-studio', () => {
     it('renders Library Browser panel when Library nav clicked', () => {
         const el = createComponent();
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        navItems[6].click(); // Library
+        // Library is the second-to-last nav item (settings is last).
+        navItems[navItems.length - 2].click();
         return Promise.resolve().then(() => {
             const browser = el.shadowRoot.querySelector('c-pulse-library-browser');
             expect(browser).not.toBeNull();
@@ -189,8 +190,11 @@ describe('c-pulse-admin-studio', () => {
     it('renders conversation hub when Conversations nav clicked', () => {
         const el = createComponent();
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        // Conversations is at index 4 (after action-hub)
-        navItems[4].click();
+        // Find by label so the test is resilient to nav order changes.
+        const conv = Array.from(navItems).find(
+            (n) => n.querySelector('.studio-nav-label').textContent === 'Conversations'
+        );
+        conv.click();
         return Promise.resolve().then(() => {
             const hub = el.shadowRoot.querySelector('c-pulse-conversation-hub');
             expect(hub).not.toBeNull();
@@ -206,8 +210,10 @@ describe('c-pulse-admin-studio', () => {
     it('renders SLA heatmap when SLA nav clicked', () => {
         const el = createComponent();
         const navItems = el.shadowRoot.querySelectorAll('.studio-nav-item');
-        // SLA is at index 5
-        navItems[5].click();
+        const sla = Array.from(navItems).find(
+            (n) => n.querySelector('.studio-nav-label').textContent === 'SLA'
+        );
+        sla.click();
         return Promise.resolve().then(() => {
             const heatmap = el.shadowRoot.querySelector('c-pulse-sla-heatmap');
             expect(heatmap).not.toBeNull();

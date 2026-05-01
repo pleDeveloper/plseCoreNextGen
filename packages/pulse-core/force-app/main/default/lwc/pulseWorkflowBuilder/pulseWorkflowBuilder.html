@@ -426,23 +426,21 @@
                                         <div class="builder-phase-group builder-agent-panel">
                                             <h5 class="builder-phase-group-title">Agent Mode</h5>
                                             <p class="builder-phase-hint">
-                                                When enabled, Claude observes this phase and proposes or
-                                                takes actions based on the autonomy level below.
+                                                Pick a role from the Agent role library. Roles bundle the
+                                                system prompt, tool allowlist, and autonomy default. Use
+                                                the override fields below to tweak this phase only.
                                             </p>
                                             <c-pulse-toggle label="Enable agent for this phase"
                                                             checked={agentEnabled}
                                                             onchange={handleAgentEnabledToggle}>
                                             </c-pulse-toggle>
-                                            <c-pulse-input label="Persona"
-                                                           value={agentPersona}
-                                                           placeholder="e.g. Leasing Qualifier"
-                                                           onchange={handleAgentPersonaChange}>
-                                            </c-pulse-input>
+
                                             <label class="builder-phase-label">
-                                                <span class="builder-phase-label-text">Autonomy level</span>
+                                                <span class="builder-phase-label-text">Role</span>
                                                 <select class="builder-phase-select"
-                                                        onchange={handleAgentAutonomyChange}>
-                                                    <template for:each={agentAutonomyOptions} for:item="opt">
+                                                        data-testid="agent-role-picker"
+                                                        onchange={handleAgentRoleChange}>
+                                                    <template for:each={agentRoleOptions} for:item="opt">
                                                         <option key={opt.value}
                                                                 value={opt.value}
                                                                 selected={opt.selected}>
@@ -451,13 +449,66 @@
                                                     </template>
                                                 </select>
                                             </label>
-                                            <label class="builder-phase-label">
-                                                <span class="builder-phase-label-text">System prompt</span>
-                                                <textarea class="builder-phase-textarea"
-                                                          rows="5"
-                                                          placeholder="You are a helpful assistant for this phase…"
-                                                          onchange={handleAgentSystemPromptChange}>{agentSystemPrompt}</textarea>
-                                            </label>
+
+                                            <template lwc:if={agentRoleError}>
+                                                <p class="builder-phase-hint builder-agent-error">
+                                                    {agentRoleError}
+                                                </p>
+                                            </template>
+
+                                            <template lwc:if={hasSelectedRole}>
+                                                <div class="builder-agent-role-preview">
+                                                    <span class="builder-agent-role-name">{selectedRoleDisplayName}</span>
+                                                    <p class="builder-agent-role-desc">{selectedRoleDescription}</p>
+                                                    <p class="builder-agent-role-meta">{selectedRoleProviderHint}</p>
+                                                    <p class="builder-agent-role-meta">{selectedRoleAutonomyHint}</p>
+                                                </div>
+                                            </template>
+
+                                            <template lwc:if={isLegacySelected}>
+                                                <p class="builder-phase-hint builder-agent-legacy">
+                                                    This phase still uses inline agent fields from a previous
+                                                    builder version. Pick a role above to migrate, or leave
+                                                    as-is — the runtime accepts both shapes.
+                                                </p>
+                                            </template>
+
+                                            <c-pulse-button label={agentOverridesToggleLabel}
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            data-testid="agent-overrides-toggle"
+                                                            onclick={handleAgentOverridesToggle}>
+                                            </c-pulse-button>
+
+                                            <template lwc:if={showAgentOverrides}>
+                                                <div class="builder-agent-overrides">
+                                                    <c-pulse-input label="Provider override"
+                                                                   value={agentProviderOverride}
+                                                                   placeholder="Leave blank to use the role's default"
+                                                                   onchange={handleAgentProviderOverrideChange}>
+                                                    </c-pulse-input>
+                                                    <label class="builder-phase-label">
+                                                        <span class="builder-phase-label-text">Autonomy override</span>
+                                                        <select class="builder-phase-select"
+                                                                onchange={handleAgentAutonomyOverrideChange}>
+                                                            <template for:each={agentAutonomyOverrideOptions} for:item="opt">
+                                                                <option key={opt.value}
+                                                                        value={opt.value}
+                                                                        selected={opt.selected}>
+                                                                    {opt.label}
+                                                                </option>
+                                                            </template>
+                                                        </select>
+                                                    </label>
+                                                    <label class="builder-phase-label">
+                                                        <span class="builder-phase-label-text">Prompt addendum</span>
+                                                        <textarea class="builder-phase-textarea"
+                                                                  rows="4"
+                                                                  placeholder="Appended to the role's system prompt at runtime."
+                                                                  onchange={handleAgentPromptAddendumChange}>{agentPromptAddendum}</textarea>
+                                                    </label>
+                                                </div>
+                                            </template>
                                         </div>
                                     </div>
                                 </template>
