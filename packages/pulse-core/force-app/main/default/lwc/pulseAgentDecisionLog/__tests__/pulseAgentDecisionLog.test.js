@@ -1,6 +1,7 @@
 import { createElement } from 'lwc';
 import PulseAgentDecisionLog from 'c/pulseAgentDecisionLog';
 import getDecisionLog from '@salesforce/apex/PulseAgentController.getDecisionLog';
+import { subscribe, unsubscribe } from 'lightning/empApi';
 
 jest.mock(
     'c/pulseBrandTokens',
@@ -41,6 +42,7 @@ afterEach(() => {
     while (document.body.firstChild) {
         document.body.removeChild(document.body.firstChild);
     }
+    try { sessionStorage.clear(); } catch (_e) { /* ignore */ }
     jest.clearAllMocks();
 });
 
@@ -105,5 +107,92 @@ describe('c-pulse-agent-decision-log', () => {
         const empty = el.shadowRoot.querySelector('.log-empty');
         expect(empty).not.toBeNull();
         expect(empty.textContent).toMatch(/No past agent decisions/i);
+    });
+
+    it('subscribes to the workflow push channel after the initial load', async () => {
+        getDecisionLog.mockResolvedValue(SAMPLE);
+        subscribe.mockResolvedValueOnce({ id: 'sub-log' });
+
+        const el = createElement('c-pulse-agent-decision-log', { is: PulseAgentDecisionLog });
+        el.instanceId = 'a0Fxx0000000001';
+        document.body.appendChild(el);
+
+        await flush();
+        await flush();
+        await flush();
+
+        expect(subscribe).toHaveBeenCalledWith(
+            '/event/Pulse_Workflow_Update__e',
+            -1,
+            expect.any(Function)
+        );
+    });
+
+    it('refreshes on a matching push event when expanded; ignores mismatched instance', async () => {
+        getDecisionLog.mockResolvedValue(SAMPLE);
+        let pushHandler = null;
+        subscribe.mockImplementationOnce((_channel, _replay, cb) => {
+            pushHandler = cb;
+            return Promise.resolve({ id: 'sub-log' });
+        });
+
+        const el = createElement('c-pulse-agent-decision-log', { is: PulseAgentDecisionLog });
+        el.instanceId = 'a0Fxx0000000001';
+        document.body.appendChild(el);
+
+        await flush();
+        await flush();
+        await flush();
+        // Initial load (collapsed) is already 1 call.
+        expect(getDecisionLog).toHaveBeenCalledTimes(1);
+
+        // Expand — that triggers another load.
+        el.shadowRoot.querySelector('.log-toggle').click();
+        await flush();
+        await flush();
+        const beforePush = getDecisionLog.mock.calls.length;
+
+        // Matching 15-char prefix: refresh.
+        pushHandler({ data: { payload: { Instance_Id__c: 'a0Fxx0000000001AAA' } } });
+        await flush();
+        await flush();
+        expect(getDecisionLog.mock.calls.length).toBe(beforePush + 1);
+
+        // Mismatched instance: no refresh.
+        pushHandler({ data: { payload: { Instance_Id__c: 'a0Fzz0000000999AAA' } } });
+        await flush();
+        expect(getDecisionLog.mock.calls.length).toBe(beforePush + 1);
+    });
+
+    it('honors the terminal kill-switch (sessionStorage flag) at connectedCallback time', async () => {
+        try { sessionStorage.setItem('pulseTerminal:a0Fxx0000000001', '1'); } catch (_e) { /* ignore */ }
+        getDecisionLog.mockResolvedValue(SAMPLE);
+
+        const el = createElement('c-pulse-agent-decision-log', { is: PulseAgentDecisionLog });
+        el.instanceId = 'a0Fxx0000000001';
+        document.body.appendChild(el);
+
+        await flush();
+        await flush();
+
+        expect(getDecisionLog).not.toHaveBeenCalled();
+        expect(subscribe).not.toHaveBeenCalled();
+    });
+
+    it('stopUpdates @api hook unsubscribes', async () => {
+        getDecisionLog.mockResolvedValue(SAMPLE);
+        subscribe.mockResolvedValueOnce({ id: 'sub-log' });
+
+        const el = createElement('c-pulse-agent-decision-log', { is: PulseAgentDecisionLog });
+        el.instanceId = 'a0Fxx0000000001';
+        document.body.appendChild(el);
+
+        await flush();
+        await flush();
+        await flush();
+
+        el.stopUpdates();
+        await flush();
+        expect(unsubscribe).toHaveBeenCalled();
     });
 });

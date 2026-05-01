@@ -1,4 +1,5 @@
 import { LightningElement, api, track } from 'lwc';
+import { subscribe, unsubscribe, onError } from 'lightning/empApi';
 import { loadPulseBrandTokens } from 'c/pulseBrandTokens';
 import getDecisionLog from '@salesforce/apex/PulseAgentController.getDecisionLog';
 
@@ -22,6 +23,8 @@ const STATUS_ICON = {
     Expired: 'Exp',
 };
 
+const PUSH_CHANNEL = '/event/Pulse_Workflow_Update__e';
+
 export default class PulseAgentDecisionLog extends LightningElement {
     @api instanceId;
 
@@ -31,38 +34,115 @@ export default class PulseAgentDecisionLog extends LightningElement {
     @track collapsed = true;
     @track expandedId = null;
 
-    _pollHandle;
+    _empSubscription = null;
+    _stopped = false;
+    _lastSnapshot = null;
 
     connectedCallback() {
         loadPulseBrandTokens(this);
-        this._load();
-        // Gentle refresh — decisions grow when the queue resolves them.
-        this._pollHandle = setInterval(() => {
-            if (this.instanceId && !this.collapsed) this._load(true);
-        }, 6000);
+        // Honor the cross-component terminal kill-switch (proposal §2.3).
+        let isTerminal = false;
+        try {
+            if (this.instanceId) {
+                isTerminal = sessionStorage.getItem(`pulseTerminal:${this.instanceId}`) === '1';
+            }
+        } catch (e) { /* storage disabled */ }
+        if (isTerminal) {
+            this._stopped = true;
+            this.loading = false;
+            return;
+        }
+        this._load().then(() => {
+            if (this._stopped) return;
+            this._subscribePush();
+        });
     }
 
     disconnectedCallback() {
-        if (this._pollHandle) clearInterval(this._pollHandle);
+        this._unsubscribePush();
     }
 
     @api
     async refresh() {
+        if (this._stopped) return;
         await this._load(true);
+    }
+
+    /**
+     * Cooperative shutdown — parent stepper calls this when it detects
+     * terminal state. See proposal §4.3.
+     */
+    @api
+    stopUpdates() {
+        this._stopped = true;
+        this._unsubscribePush();
+    }
+
+    _subscribePush() {
+        if (this._empSubscription || this._stopped) return;
+        subscribe(PUSH_CHANNEL, -1, (msg) => {
+            if (this._stopped) return;
+            const eventId = msg && msg.data && msg.data.payload
+                ? msg.data.payload.Instance_Id__c
+                : null;
+            if (!eventId || !this.instanceId) return;
+            // Compare 15-char prefixes — payload is 18-char, prop may be 15.
+            if (String(eventId).substring(0, 15) !== String(this.instanceId).substring(0, 15)) {
+                return;
+            }
+            // Only refresh when the user is actually looking at the log.
+            if (this.collapsed) return;
+            this._load(true);
+        }).then((s) => {
+            if (this._stopped) {
+                try { unsubscribe(s, () => {}); } catch (e) { /* ignore */ }
+                return;
+            }
+            this._empSubscription = s;
+        }).catch(() => {
+            // empApi unavailable / channel missing — fall back to manual refresh.
+        });
+        try { onError(() => {}); } catch (e) { /* ignore */ }
+    }
+
+    _unsubscribePush() {
+        if (!this._empSubscription) return;
+        try { unsubscribe(this._empSubscription, () => {}); } catch (e) { /* ignore */ }
+        this._empSubscription = null;
     }
 
     async _load(quiet) {
         if (!this.instanceId) { this.loading = false; return; }
+        if (this._stopped) return;
         if (!quiet) this.loading = true;
         try {
             const list = await getDecisionLog({ instanceId: this.instanceId });
+            // Never null out previously-good state on a quiet refresh (§2.4).
+            if (quiet && (list == null)) return;
+            const sig = this._buildRenderSig(list);
+            if (quiet && sig === this._lastSnapshot) return;
+            this._lastSnapshot = sig;
             this.rows = (list || []).map((d) => this._decorate(d));
             this.error = null;
         } catch (e) {
-            this.error = e.body?.message || e.message || 'Failed to load decision log';
+            if (!quiet) {
+                this.error = e.body?.message || e.message || 'Failed to load decision log';
+            }
+            // On quiet error: keep previous rows.
         } finally {
             this.loading = false;
         }
+    }
+
+    /**
+     * Render signature for a decision list — proposal §2.1.
+     * Identity + status + resolved-state per row, joined.
+     */
+    _buildRenderSig(list) {
+        if (!list || list.length === 0) return '';
+        return list
+            .map((d) => `${d.decisionId}|${d.status}|${d.resolvedDate || ''}`)
+            .join(',');
     }
 
     _decorate(d) {
@@ -198,7 +278,8 @@ export default class PulseAgentDecisionLog extends LightningElement {
     handleToggleCollapsed() {
         this.collapsed = !this.collapsed;
         if (!this.collapsed) {
-            // Load fresh when opening.
+            // Load fresh when opening — bypass sig cache to force reseed.
+            this._lastSnapshot = null;
             this._load(true);
         } else {
             this.expandedId = null;
