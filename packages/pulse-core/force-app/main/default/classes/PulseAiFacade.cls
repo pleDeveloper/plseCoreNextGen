@@ -40,7 +40,8 @@ public with sharing class PulseAiFacade {
 
     // Provider class name convention: Provider_Name__c + 'Adapter'
     private static final Map<String, String> PROVIDER_CLASS_MAP = new Map<String, String>{
-        'Anthropic' => 'AnthropicAdapter'
+        'Anthropic'  => 'AnthropicAdapter',
+        'Agentforce' => 'AgentforceAdapter'
     };
 
     private static PulseAiProvider getProvider() {
