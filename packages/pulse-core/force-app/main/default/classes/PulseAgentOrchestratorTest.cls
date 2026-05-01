@@ -482,4 +482,123 @@ private class PulseAgentOrchestratorTest {
         System.assertEquals(false, r.success);
         System.assertNotEquals(null, r.error);
     }
+
+    // ─── tool allowlist enforcement (proposal §1 step-1) ───────────
+
+    @IsTest
+    static void proposeAction_toolNotInAllowlist_isRejected() {
+        // Contract whose agent restricts to update_record only.
+        String json =
+            '{"schema":"pulse.workflow.v1","workflowKey":"allowlist_test","version":1,' +
+            '"subjectKinds":["Opportunity"],' +
+            '"agent":{"enabled":true,"persona":"Restricted",' +
+                     '"autonomy":"Act_With_Approval",' +
+                     '"systemPrompt":"You can only update records.",' +
+                     '"toolAllowlist":["update_record"]},' +
+            '"states":[' +
+              '{"key":"intake","label":"Intake","type":"form","transitions":[]}' +
+            ']}';
+
+        Workflow_Definition__c def = new Workflow_Definition__c(
+            Workflow_Key__c = 'allowlist_test',
+            Version__c = 1, Status__c = 'Published',
+            Definition_JSON__c = json, Subject_Kinds__c = 'Opportunity'
+        );
+        insert def;
+        Opportunity opp = new Opportunity(
+            Name = 'Allowlist Test Opp', StageName = 'Qualification',
+            CloseDate = Date.today().addDays(30)
+        );
+        insert opp;
+        Workflow_Instance__c inst = new Workflow_Instance__c(
+            Workflow_Definition__c = def.Id, Current_State__c = 'intake',
+            Status__c = 'Active', Parent_Object_Type__c = 'Opportunity',
+            Parent_Record_Id__c = opp.Id
+        );
+        insert inst;
+
+        // Agent proposes send_email — NOT in the allowlist.
+        PulseAgentOrchestrator.setResponseForTest(responseWith(
+            PulseAgentOrchestrator.TOOL_PROPOSE,
+            new Map<String, Object>{
+                'toolKey' => 'send_email',
+                'arguments' => new Map<String, Object>{ 'toAddress' => 'x@y.com', 'subject' => 'x', 'body' => 'x' },
+                'rationale' => 'Trying to email despite restriction'
+            }
+        ));
+
+        Test.startTest();
+        PulseAgentOrchestrator.RunResult r = PulseAgentOrchestrator.advance(inst.Id);
+        Test.stopTest();
+        PulseAgentOrchestrator.clearResponseForTest();
+
+        System.assertEquals(true, r.success, 'turn itself succeeds; the proposal is what gets rejected');
+        Agent_Decision__c d = [
+            SELECT Decision_Type__c, Status__c, Rationale__c, Related_Action__c
+            FROM Agent_Decision__c WHERE Workflow_Instance__c = :inst.Id
+        ];
+        System.assertEquals('Propose_Action', d.Decision_Type__c);
+        System.assertEquals('Rejected', d.Status__c,
+            'Allowlist violation should mark the decision Rejected');
+        System.assert(d.Rationale__c.contains('Tool not allowed'),
+            'Rationale should explain the rejection: ' + d.Rationale__c);
+        System.assertEquals(null, d.Related_Action__c,
+            'No Workflow_Action__c should be created for a disallowed tool');
+    }
+
+    @IsTest
+    static void proposeAction_toolInAllowlist_executes() {
+        // Allowlist includes send_email — should behave like the existing
+        // Act_With_Approval path.
+        String json =
+            '{"schema":"pulse.workflow.v1","workflowKey":"allowlist_pass","version":1,' +
+            '"subjectKinds":["Opportunity"],' +
+            '"agent":{"enabled":true,"persona":"Permissive",' +
+                     '"autonomy":"Act_With_Approval",' +
+                     '"systemPrompt":"You can email.",' +
+                     '"toolAllowlist":["send_email","update_record"]},' +
+            '"states":[' +
+              '{"key":"intake","label":"Intake","type":"form","transitions":[]}' +
+            ']}';
+
+        Workflow_Definition__c def = new Workflow_Definition__c(
+            Workflow_Key__c = 'allowlist_pass',
+            Version__c = 1, Status__c = 'Published',
+            Definition_JSON__c = json, Subject_Kinds__c = 'Opportunity'
+        );
+        insert def;
+        Opportunity opp = new Opportunity(
+            Name = 'Allowlist Pass Opp', StageName = 'Qualification',
+            CloseDate = Date.today().addDays(30)
+        );
+        insert opp;
+        Workflow_Instance__c inst = new Workflow_Instance__c(
+            Workflow_Definition__c = def.Id, Current_State__c = 'intake',
+            Status__c = 'Active', Parent_Object_Type__c = 'Opportunity',
+            Parent_Record_Id__c = opp.Id
+        );
+        insert inst;
+
+        PulseAgentOrchestrator.setResponseForTest(responseWith(
+            PulseAgentOrchestrator.TOOL_PROPOSE,
+            new Map<String, Object>{
+                'toolKey' => 'send_email',
+                'arguments' => new Map<String, Object>{ 'toAddress' => 'x@y.com', 'subject' => 'x', 'body' => 'x' },
+                'rationale' => 'Allowed email'
+            }
+        ));
+
+        Test.startTest();
+        PulseAgentOrchestrator.RunResult r = PulseAgentOrchestrator.advance(inst.Id);
+        Test.stopTest();
+        PulseAgentOrchestrator.clearResponseForTest();
+
+        Agent_Decision__c d = [
+            SELECT Status__c, Related_Action__c
+            FROM Agent_Decision__c WHERE Workflow_Instance__c = :inst.Id
+        ];
+        System.assertEquals('Pending_User', d.Status__c);
+        System.assertNotEquals(null, d.Related_Action__c,
+            'Allowed tool should create the pending Workflow_Action_c');
+    }
 }

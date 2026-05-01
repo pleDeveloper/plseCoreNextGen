@@ -228,6 +228,27 @@ public with sharing class PulseAgentOrchestrator {
      * sees it and proposes yet another draft, producing an infinite
      * loop of duplicate drafts.
      */
+    /**
+     * Returns true when the agent's resolved role permits this toolKey, or
+     * when no allowlist is set (which means "all registered tools allowed").
+     * Reads `agentCfg.toolAllowlist` — a List<Object> populated either by
+     * an explicit per-level config or by the resolved Agent_Role__mdt.
+     */
+    private static Boolean isToolAllowed(String toolKey, Map<String, Object> agentCfg) {
+        if (String.isBlank(toolKey)) return false;
+        if (agentCfg == null) return true;
+        Object listObj = agentCfg.get('toolAllowlist');
+        if (!(listObj instanceof List<Object>)) return true;
+        List<Object> allow = (List<Object>) listObj;
+        if (allow.isEmpty()) return true;
+        for (Object item : allow) {
+            if (item instanceof String && ((String) item) == toolKey) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static Workflow_Action__c reusePlaceholderOrCreate(
         Id instanceId, String toolKey, String payload
     ) {
@@ -318,7 +339,13 @@ public with sharing class PulseAgentOrchestrator {
         // Invoke AI (or consume test response) — callout-before-DML discipline.
         PulseAiModels.Response resp;
         try {
-            resp = (responseForTest != null) ? responseForTest : PulseAiFacade.invoke(req);
+            // Provider override comes from the resolved agent config — when
+            // a role pinned itself to a specific provider (e.g. Agentforce
+            // for an internal-only role), respect it. Blank → org default.
+            String providerName = (String) agentCfg.get('provider');
+            resp = (responseForTest != null)
+                ? responseForTest
+                : PulseAiFacade.invoke(req, providerName);
         } catch (Exception e) {
             return markError(thread, r, 'AI call threw: ' + e.getMessage());
         }
@@ -354,8 +381,10 @@ public with sharing class PulseAgentOrchestrator {
             return r;
         }
 
-        // Apply autonomy policy
-        applyAutonomy(decision, thread, inst);
+        // Apply autonomy policy — passes the resolved agent config so the
+        // tool allowlist (if any) is enforced before a Workflow_Action_c is
+        // created.
+        applyAutonomy(decision, thread, inst, agentCfg);
 
         // Persist decision after any autonomy updates
         if (decision.Id == null) {
@@ -382,7 +411,8 @@ public with sharing class PulseAgentOrchestrator {
     }
 
     private static void applyAutonomy(
-        Agent_Decision__c d, Agent_Thread__c thread, Workflow_Instance__c inst
+        Agent_Decision__c d, Agent_Thread__c thread, Workflow_Instance__c inst,
+        Map<String, Object> agentCfg
     ) {
         String autonomy = String.isBlank(thread.Autonomy_Level__c)
             ? AUT_ACT_WITH_APPROVAL : thread.Autonomy_Level__c;
@@ -392,6 +422,18 @@ public with sharing class PulseAgentOrchestrator {
             String toolKey = proposal == null ? null : (String) proposal.get('toolKey');
             String payload = proposal == null ? '{}'
                 : JSON.serialize(proposal.get('arguments'));
+
+            // Tool allowlist enforcement — reject the proposal if the
+            // resolved agent role restricts toolKeys and this one isn't in
+            // the list. Surfaces clearly to the user instead of letting an
+            // unauthorized tool execute.
+            if (String.isNotBlank(toolKey) && !isToolAllowed(toolKey, agentCfg)) {
+                d.Status__c = 'Rejected';
+                d.Resolved_Date__c = Datetime.now();
+                String original = d.Rationale__c == null ? '' : d.Rationale__c;
+                d.Rationale__c = 'Tool not allowed by agent role: ' + toolKey + '. ' + original;
+                return;
+            }
 
             if (autonomy == AUT_AUTONOMOUS_SAFE
                 && String.isNotBlank(toolKey)

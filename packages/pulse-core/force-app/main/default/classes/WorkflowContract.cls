@@ -84,6 +84,16 @@ public with sharing class WorkflowContract {
     /**
      * Returns the merged agent config or null when not enabled. Defaults:
      *   persona="Claude", autonomy="Act_With_Approval".
+     *
+     * Inheritance: workflow → phase → action, most-specific wins on conflict.
+     * After the level merge, if the resolved config carries a `roleKey`, the
+     * matching Agent_Role__mdt record fills in any unset fields (system
+     * prompt, autonomy, provider, persona, tool allowlist). Role values are
+     * defaults — explicit per-level config still wins.
+     *
+     * `promptAddendum`, when set on any level, is appended to the role's
+     * (or explicit) system prompt at the end. This lets per-action overrides
+     * extend the role's instructions without rewriting them.
      */
     public static Map<String, Object> resolveAgent(
         Map<String, Object> wf, Map<String, Object> st, Map<String, Object> act
@@ -97,10 +107,87 @@ public with sharing class WorkflowContract {
         // treat missing 'enabled' as enabled when any scope set it true.
         Boolean enabled = isAgentEnabledMap(merged);
         if (!enabled) return null;
-        // Fill defaults
+
+        // Role library lookup — defaults from Agent_Role__mdt, then explicit
+        // overrides applied on top.
+        applyRoleDefaults(merged);
+
+        // Apply promptAddendum (any level may set it) by appending to system
+        // prompt. Cleared from the map afterwards so consumers don't re-apply.
+        Object addendumObj = merged.get('promptAddendum');
+        if (addendumObj instanceof String && String.isNotBlank((String) addendumObj)) {
+            String basePrompt = (String) merged.get('systemPrompt');
+            String combined = String.isBlank(basePrompt)
+                ? (String) addendumObj
+                : (basePrompt + '\n\n' + (String) addendumObj);
+            merged.put('systemPrompt', combined);
+            merged.remove('promptAddendum');
+        }
+
+        // Fill final defaults (after role + addendum so role values win)
         if (merged.get('persona') == null) merged.put('persona', 'Claude');
         if (merged.get('autonomy') == null) merged.put('autonomy', 'Act_With_Approval');
         return merged;
+    }
+
+    /**
+     * Test seam: when non-null, resolveAgent uses this map for role lookup
+     * instead of querying Agent_Role__mdt. Keeps tests hermetic.
+     */
+    @TestVisible private static Map<String, Agent_Role__mdt> roleOverrideForTest;
+
+    private static void applyRoleDefaults(Map<String, Object> merged) {
+        Object roleKeyObj = merged.get('roleKey');
+        if (!(roleKeyObj instanceof String)) return;
+        String roleKey = (String) roleKeyObj;
+        if (String.isBlank(roleKey)) return;
+
+        Agent_Role__mdt role = lookupRole(roleKey);
+        if (role == null) return;
+
+        // Each role field fills in only when the merged config doesn't
+        // already specify it (level overrides win over role defaults).
+        if (merged.get('persona') == null && String.isNotBlank(role.Display_Name__c)) {
+            merged.put('persona', role.Display_Name__c);
+        }
+        if (merged.get('systemPrompt') == null && String.isNotBlank(role.System_Prompt__c)) {
+            merged.put('systemPrompt', role.System_Prompt__c);
+        }
+        if (merged.get('autonomy') == null && String.isNotBlank(role.Default_Autonomy__c)) {
+            merged.put('autonomy', role.Default_Autonomy__c);
+        }
+        if (merged.get('provider') == null && String.isNotBlank(role.Provider_Name__c)) {
+            merged.put('provider', role.Provider_Name__c);
+        }
+        // Tool allowlist: parse the role's JSON if explicit `toolAllowlist`
+        // wasn't set at any level. Stored as List<Object> on the merged map.
+        if (merged.get('toolAllowlist') == null && String.isNotBlank(role.Tool_Allowlist_JSON__c)) {
+            try {
+                Object parsed = JSON.deserializeUntyped(role.Tool_Allowlist_JSON__c);
+                if (parsed instanceof List<Object>) {
+                    merged.put('toolAllowlist', parsed);
+                }
+            } catch (Exception ignore) {
+                // Malformed allowlist — treat as no restriction rather than fail the turn.
+            }
+        }
+    }
+
+    private static Agent_Role__mdt lookupRole(String roleKey) {
+        if (roleOverrideForTest != null) {
+            return roleOverrideForTest.get(roleKey);
+        }
+        for (Agent_Role__mdt r : [
+            SELECT DeveloperName, Role_Key__c, Display_Name__c, Description__c,
+                   Provider_Name__c, Default_Autonomy__c, System_Prompt__c,
+                   Tool_Allowlist_JSON__c, Active__c
+            FROM Agent_Role__mdt
+            WHERE Role_Key__c = :roleKey AND Active__c = true
+            LIMIT 1
+        ]) {
+            return r;
+        }
+        return null;
     }
 
     private static Boolean isAgentEnabledMap(Map<String, Object> m) {

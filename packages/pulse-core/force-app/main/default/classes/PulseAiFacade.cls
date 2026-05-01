@@ -23,7 +23,18 @@ public with sharing class PulseAiFacade {
     }
 
     public static PulseAiModels.Response invoke(PulseAiModels.Request req) {
-        PulseAiProvider provider = getProvider();
+        return invoke(req, null);
+    }
+
+    /**
+     * Invoke with an explicit provider name override (e.g. from the
+     * resolved Agent_Role__mdt.Provider_Name__c). When non-blank, the
+     * registered provider with that Provider_Name__c is used regardless of
+     * the active/priority lookup. Falls back to the default selection
+     * when blank or when the named provider isn't registered.
+     */
+    public static PulseAiModels.Response invoke(PulseAiModels.Request req, String providerName) {
+        PulseAiProvider provider = getProvider(providerName);
         return provider.chat(req);
     }
 
@@ -33,13 +44,30 @@ public with sharing class PulseAiFacade {
     };
 
     private static PulseAiProvider getProvider() {
+        return getProvider(null);
+    }
+
+    private static PulseAiProvider getProvider(String providerName) {
         if (providerOverride != null) {
             return providerOverride;
         }
 
-        AI_Provider_Registration__mdt reg = selectProvider();
+        AI_Provider_Registration__mdt reg = String.isBlank(providerName)
+            ? selectProvider()
+            : selectProviderByName(providerName);
         if (reg == null) {
-            throw new PulseAiException('No active AI provider configured');
+            // If a specific provider was requested but missing, fall back
+            // to the default rather than failing the turn — surfaces in the
+            // log without breaking the agent loop.
+            if (String.isNotBlank(providerName)) {
+                System.debug(LoggingLevel.WARN,
+                    'PulseAiFacade: requested provider "' + providerName +
+                    '" not registered; falling back to default.');
+                reg = selectProvider();
+            }
+            if (reg == null) {
+                throw new PulseAiException('No active AI provider configured');
+            }
         }
 
         String className = PROVIDER_CLASS_MAP.get(reg.Provider_Name__c);
@@ -72,6 +100,18 @@ public with sharing class PulseAiFacade {
             }
         }
         return selected;
+    }
+
+    private static AI_Provider_Registration__mdt selectProviderByName(String providerName) {
+        Iterable<AI_Provider_Registration__mdt> source = registrationsOverride != null
+            ? (Iterable<AI_Provider_Registration__mdt>) registrationsOverride
+            : (Iterable<AI_Provider_Registration__mdt>) AI_Provider_Registration__mdt.getAll().values();
+        for (AI_Provider_Registration__mdt reg : source) {
+            if (reg.Active__c == true && reg.Provider_Name__c == providerName) {
+                return reg;
+            }
+        }
+        return null;
     }
 
     @TestVisible
