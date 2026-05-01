@@ -2,6 +2,7 @@ import { createElement } from 'lwc';
 import PulseRecordStepper from 'c/pulseRecordStepper';
 import getInstanceForRecord from '@salesforce/apex/PulseRuntimeController.getInstanceForRecord';
 import advanceInstance from '@salesforce/apex/PulseRuntimeController.advanceInstance';
+import { subscribe } from 'lightning/empApi';
 
 jest.mock(
     'c/pulseBrandTokens',
@@ -128,6 +129,9 @@ afterEach(() => {
         document.body.removeChild(document.body.firstChild);
     }
     jest.clearAllMocks();
+    // Hydration cache + terminal flag are sessionStorage-keyed; clear
+    // between tests so each spec mounts with a clean slate.
+    try { sessionStorage.clear(); } catch (e) { /* ignore */ }
 });
 
 describe('c-pulse-record-stepper', () => {
@@ -716,5 +720,155 @@ describe('c-pulse-record-stepper', () => {
         expect(call).toBeDefined();
         const resp = JSON.parse(call.payload.responseJson);
         expect(resp.value).toBe('720');
+    });
+
+    // ── Upstream reactivity discipline (proposal §2) ─────────────
+
+    it('does not show a "Loading…" placeholder during initial fetch (proposal §2.4)', async () => {
+        // Initial mount: empty cache, fetch in-flight. The template should
+        // render NOTHING during the load — no loading placeholder, no flash.
+        getInstanceForRecord.mockResolvedValue(MOCK_INSTANCE);
+        const el = createComponent();
+
+        // Synchronously after mount, before promises resolve: no loading text.
+        expect(el.shadowRoot.querySelector('.stepper-loading')).toBeNull();
+
+        await flushPromises();
+        // Still no loading placeholder once the fetch settled.
+        expect(el.shadowRoot.querySelector('.stepper-loading')).toBeNull();
+    });
+
+    it('hydrates from sessionStorage on re-mount and skips the loading branch (§2.2)', async () => {
+        // Seed the cache with a known-good payload as if a previous mount
+        // had already populated it.
+        const cached = { ...MOCK_INSTANCE, currentStateLabel: 'Cached Phase' };
+        sessionStorage.setItem(
+            'pulseStepper:001xx0000000001',
+            JSON.stringify(cached),
+        );
+
+        // Make the network slow so we can observe pre-fetch render state.
+        let resolveFetch;
+        getInstanceForRecord.mockImplementation(
+            () => new Promise((r) => { resolveFetch = r; }),
+        );
+
+        const el = createComponent();
+        // Synchronously after mount: the journey is already on screen
+        // because hydration ran inside connectedCallback.
+        const name = el.shadowRoot.querySelector('.stepper-workflow-name');
+        expect(name).not.toBeNull();
+        const pill = el.shadowRoot.querySelector('.stepper-state-pill');
+        expect(pill.textContent).toBe('Cached Phase');
+
+        // Resolve the fetch with the same data; hydration shouldn't have
+        // shown a loading placeholder at any point.
+        resolveFetch(cached);
+        await flushPromises();
+        expect(el.shadowRoot.querySelector('.stepper-loading')).toBeNull();
+    });
+
+    /**
+     * Helper: capture the empApi subscribe callback so tests can deliver
+     * platform events synchronously. Returns a function that fires a
+     * `{ Instance_Id__c }` payload through the registered handler — the
+     * same code path a real Pulse_Workflow_Update__e push takes.
+     */
+    function captureEmpHandler() {
+        let handler = null;
+        subscribe.mockImplementation((channel, replayId, cb) => {
+            handler = cb;
+            return Promise.resolve({ id: 'sub-1', channel });
+        });
+        return (instanceId) => handler && handler({
+            data: { payload: { Instance_Id__c: instanceId } },
+        });
+    }
+
+    it('suppresses re-render when the render-signature is unchanged (§2.1)', async () => {
+        const fire = captureEmpHandler();
+        getInstanceForRecord.mockResolvedValue(MOCK_INSTANCE);
+        const el = createComponent();
+        await flushPromises();
+
+        // Capture the initial workflow-name node identity. If the render
+        // signature blocks the re-render, the same DOM node remains.
+        const before = el.shadowRoot.querySelector('.stepper-workflow-name');
+        expect(before).not.toBeNull();
+
+        // Re-issue the same instance with additional noise fields the
+        // template doesn't bind to. The sig must match.
+        getInstanceForRecord.mockResolvedValue({
+            ...MOCK_INSTANCE,
+            lastModifiedDate: '2026-05-01T00:00:00Z',
+        });
+        // Drive a push event — same code path a real platform event uses.
+        fire(MOCK_INSTANCE.instanceId);
+        await flushPromises();
+
+        // Same node identity → no template re-render happened.
+        const after = el.shadowRoot.querySelector('.stepper-workflow-name');
+        expect(after).toBe(before);
+    });
+
+    it('keeps previous good state on a quiet error (never-null-out, §2.4)', async () => {
+        const fire = captureEmpHandler();
+        getInstanceForRecord.mockResolvedValueOnce(MOCK_INSTANCE);
+        const el = createComponent();
+        await flushPromises();
+
+        const before = el.shadowRoot.querySelector('.stepper-workflow-name');
+        expect(before).not.toBeNull();
+
+        // Quiet refresh that throws — the journey must stay on screen.
+        getInstanceForRecord.mockRejectedValueOnce(new Error('network'));
+        fire(MOCK_INSTANCE.instanceId);
+        await flushPromises();
+
+        const after = el.shadowRoot.querySelector('.stepper-workflow-name');
+        expect(after).not.toBeNull();
+        expect(el.shadowRoot.querySelector('.stepper-empty')).toBeNull();
+    });
+
+    it('keeps previous good state when a quiet refresh returns null (§2.4)', async () => {
+        const fire = captureEmpHandler();
+        getInstanceForRecord.mockResolvedValueOnce(MOCK_INSTANCE);
+        const el = createComponent();
+        await flushPromises();
+
+        const before = el.shadowRoot.querySelector('.stepper-workflow-name');
+        expect(before).not.toBeNull();
+
+        // Push delivers a transient null. Must NOT unmount the journey.
+        getInstanceForRecord.mockResolvedValueOnce(null);
+        fire(MOCK_INSTANCE.instanceId);
+        await flushPromises();
+
+        const after = el.shadowRoot.querySelector('.stepper-workflow-name');
+        expect(after).not.toBeNull();
+        expect(el.shadowRoot.querySelector('.stepper-empty')).toBeNull();
+    });
+
+    it('terminal kill-switch persists a sessionStorage flag and no-ops further refreshes (§2.3)', async () => {
+        const fire = captureEmpHandler();
+        const TERMINAL_INSTANCE = {
+            ...MOCK_INSTANCE,
+            status: 'Completed',
+            currentStateType: 'terminal',
+        };
+        getInstanceForRecord.mockResolvedValueOnce(TERMINAL_INSTANCE);
+        const el = createComponent();
+        await flushPromises();
+
+        // sessionStorage marker is set so sibling components can self-detect.
+        expect(
+            sessionStorage.getItem(`pulseTerminal:${TERMINAL_INSTANCE.instanceId}`),
+        ).toBe('1');
+
+        // Any subsequent push event must be a no-op: no further Apex calls.
+        const callsBefore = getInstanceForRecord.mock.calls.length;
+        fire(TERMINAL_INSTANCE.instanceId);
+        await flushPromises();
+        expect(getInstanceForRecord.mock.calls.length).toBe(callsBefore);
     });
 });

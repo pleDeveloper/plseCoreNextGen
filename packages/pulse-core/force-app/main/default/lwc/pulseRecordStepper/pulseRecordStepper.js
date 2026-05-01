@@ -1,4 +1,5 @@
 import { LightningElement, api, track } from 'lwc';
+import { subscribe, unsubscribe, onError } from 'lightning/empApi';
 import { loadPulseBrandTokens } from 'c/pulseBrandTokens';
 import getInstanceForRecord from '@salesforce/apex/PulseRuntimeController.getInstanceForRecord';
 import advanceInstance from '@salesforce/apex/PulseRuntimeController.advanceInstance';
@@ -35,6 +36,11 @@ export default class PulseRecordStepper extends LightningElement {
 
     // Phase field form state — fieldKey -> current edited value (string|bool)
     @track fieldValues = {};
+    // Tracks keys the user actually typed into. Without this, every quiet
+    // refresh would either wipe in-flight edits (if we always reseeded from
+    // the server) or never let server values back in (if we always preserved
+    // local state). See proposal §2.6 for the user-edit-tracking pattern.
+    _userEditedKeys = new Set();
     @track isSavingFields = false;
 
     // Collapse state for the journey view. The current phase auto-expands
@@ -50,29 +56,225 @@ export default class PulseRecordStepper extends LightningElement {
     @track fieldQuestions = {};        // fieldKey -> { decisionId, prompt, inputType, expanded }
     @track fieldQuestionBusyId = null; // decisionId currently answering/dismissing
 
+    // Reactivity discipline (proposal §2): a render-signature-diff caches
+    // the last-good signature so a quiet refresh whose payload is byte-for-
+    // byte equivalent (modulo timestamps and other fields the template
+    // doesn't bind to) doesn't trigger a re-render.
+    _lastInstanceSnapshot = null;
+    _refreshInFlight = false;
+
+    // Terminal kill-switch (proposal §2.3): once we observe a workflow that
+    // has reached a terminal state, every refresh path becomes a no-op and
+    // we unsubscribe from the push channel. Belt-and-braces against late
+    // server-side events.
+    _terminalReached = false;
+
+    // Push channel — Pulse_Workflow_Update__e (proposal §1). The stepper
+    // subscribes once on mount and reloads ONLY when an event for THIS
+    // workflow lands. Events are filtered by 15-char Instance_Id__c prefix
+    // so we tolerate the 15-char vs 18-char id mismatch.
+    _empSubscription = null;
+    _empChannel = '/event/Pulse_Workflow_Update__e';
+
     connectedCallback() {
         loadPulseBrandTokens(this);
-        this._loadInstance();
+        // Hydrate from sessionStorage first (proposal §2.2). If the LWC
+        // re-mounts (FlexiPage refresh, navigation back to record) the user
+        // sees the journey at once instead of the empty placeholder while
+        // we re-fetch in the background.
+        this._hydrateFromCache();
+        // CRITICAL: never subscribe if hydration already showed terminal.
+        // Re-mounts of completed workflows must stay completely silent.
+        if (this._terminalReached) {
+            this._stopChildren();
+            return;
+        }
+        this._loadInstance(true).then(() => {
+            if (this._terminalReached) {
+                this._stopChildren();
+                return;
+            }
+            this._subscribePush();
+        });
+        onError(() => {});
     }
 
-    async _loadInstance() {
+    disconnectedCallback() {
+        this._unsubscribePush();
+    }
+
+    // ─── Cache + push ───────────────────────────────────────────
+
+    _cacheKey() {
+        return this.recordId ? `pulseStepper:${this.recordId}` : null;
+    }
+
+    _hydrateFromCache() {
+        try {
+            const k = this._cacheKey();
+            if (!k) return;
+            const raw = sessionStorage.getItem(k);
+            if (!raw) return;
+            const data = JSON.parse(raw);
+            if (!data) return;
+            this.instance = data;
+            this._lastInstanceSnapshot = this._buildRenderSig(data);
+            this._seedFieldValuesFromInstance();
+            // CRITICAL: flip isLoading off NOW so the empty-loading branch
+            // never renders on a re-mount. The user sees the cached journey
+            // instantly. The fresh fetch happens silently.
+            this.isLoading = false;
+            // If cache shows terminal, set the hard-stop flag immediately so
+            // we never even subscribe.
+            if (this._isTerminal(data)) this._terminalReached = true;
+        } catch (e) { /* ignore corrupt cache */ }
+    }
+
+    _writeCache(data) {
+        try {
+            const k = this._cacheKey();
+            if (!k || !data) return;
+            sessionStorage.setItem(k, JSON.stringify(data));
+        } catch (e) { /* quota / disabled storage */ }
+    }
+
+    _stopChildren() {
+        const dq = this.template.querySelector('c-pulse-agent-decision-queue');
+        if (dq && typeof dq.stopUpdates === 'function') dq.stopUpdates();
+        // Persist a sessionStorage flag so a sibling component that re-mounts
+        // independently (or in a race) can self-detect terminal and skip its
+        // own subscription. See proposal §2.3.
+        try {
+            const wfId = this.instance && this.instance.instanceId;
+            if (wfId) sessionStorage.setItem(`pulseTerminal:${wfId}`, '1');
+        } catch (e) {}
+    }
+
+    _isTerminal(data) {
+        if (!data) return false;
+        const status = (data.status || '').toLowerCase();
+        if (status === 'completed' || status === 'terminated' || status === 'cancelled') return true;
+        const stateType = (data.currentStateType || '').toLowerCase();
+        if (stateType === 'terminal') return true;
+        // Belt-and-braces: no phase is current AND no upcoming phase remains.
+        const phases = data.allPhases || [];
+        if (phases.length > 0) {
+            const anyOpen = phases.some(
+                (p) => p.status === 'current' || p.status === 'upcoming'
+            );
+            if (!anyOpen) return true;
+        }
+        return false;
+    }
+
+    _subscribePush() {
+        if (this._empSubscription) return;
+        if (this._terminalReached) return;
+        subscribe(this._empChannel, -1, (msg) => {
+            if (this._terminalReached) return;
+            const payloadInstanceId = msg && msg.data && msg.data.payload
+                && msg.data.payload.Instance_Id__c;
+            const myInstanceId = this.instance && this.instance.instanceId;
+            if (!payloadInstanceId || !myInstanceId) return;
+            // Compare 15-char prefixes — event payload is 18-char, prop may
+            // be 15. Either form prefixes consistently.
+            if (String(payloadInstanceId).substring(0, 15)
+                !== String(myInstanceId).substring(0, 15)) return;
+            this._doRefresh();
+        }).then((s) => { this._empSubscription = s; })
+          .catch(() => { /* fall back to user-action refresh */ });
+    }
+
+    _unsubscribePush() {
+        if (!this._empSubscription) return;
+        try { unsubscribe(this._empSubscription, () => {}); } catch (e) { /* ignore */ }
+        this._empSubscription = null;
+    }
+
+    async _doRefresh() {
+        if (this._refreshInFlight) return;
+        if (this._terminalReached) return;
+        this._refreshInFlight = true;
+        try {
+            await this._loadInstance(true);
+        } finally {
+            this._refreshInFlight = false;
+        }
+    }
+
+    async _loadInstance(quiet) {
         if (!this.recordId) {
             this.isLoading = false;
             return;
         }
-        this.isLoading = true;
+        if (!quiet) this.isLoading = true;
         try {
             const data = await getInstanceForRecord({ recordId: this.recordId });
-            this.instance = data || null;
+            // Quiet refresh that returned null: keep previous state on screen
+            // (proposal §2.4). A transient null must not unmount the journey.
+            if (quiet && !data) return;
             this.error = null;
+            const sig = this._buildRenderSig(data);
+            // Identical render signature: skip the @track reassignment so
+            // LWC's diff sees no work to do. This is what keeps the page
+            // visually still during a noisy push stream. Field questions
+            // are an independent stream (Ask_User decisions on a different
+            // object), so we still refresh them even when the instance
+            // signature is unchanged.
+            if (quiet && sig === this._lastInstanceSnapshot) {
+                await this._loadFieldQuestions();
+                return;
+            }
+            this._lastInstanceSnapshot = sig;
+            // Never overwrite previous good state with null on a quiet path.
+            this.instance = data || this.instance;
+            this._writeCache(this.instance);
             this._seedFieldValuesFromInstance();
             await this._loadFieldQuestions();
+            // Set the kill-switch BEFORE async work so subsequent refresh
+            // calls bail out immediately, then unsubscribe and tell children.
+            if (this._isTerminal(data)) {
+                this._terminalReached = true;
+                this._unsubscribePush();
+                this._stopChildren();
+            }
         } catch (err) {
-            this.instance = null;
-            this.error = err.body?.message || 'Failed to load workflow instance';
+            // Quiet error: leave the previous good state on screen. Only an
+            // explicit user-initiated load is allowed to surface error UI.
+            if (!quiet) {
+                this.instance = null;
+                this.error = err.body?.message || 'Failed to load workflow instance';
+            }
         } finally {
             this.isLoading = false;
         }
+    }
+
+    /**
+     * Render-signature diff (proposal §2.1). Builds a small string from the
+     * fields the template binds to. Excludes timestamps and any field the
+     * template never reads, so a quiet refresh whose payload is byte-equal
+     * modulo timestamps suppresses the re-render.
+     */
+    _buildRenderSig(data) {
+        if (!data) return '';
+        const phases = (data.allPhases || []).map((p) => {
+            const fields = (p.fields || [])
+                .map((f) => `${f.key}=${f.currentValue == null ? '' : String(f.currentValue)}`)
+                .join(';');
+            return `${p.key}:${p.status}:${fields}`;
+        }).join('|');
+        const actions = (data.phaseActions || [])
+            .map((a) => `${a.actionId}:${a.status}:${a.toolKey || ''}`)
+            .join(',');
+        return [
+            data.currentStateKey || '',
+            data.stageStatus || '',
+            data.agentEnabled === true ? '1' : '0',
+            data.pendingActionCount == null ? '' : String(data.pendingActionCount),
+            phases,
+            actions,
+        ].join('||');
     }
 
     /**
@@ -108,10 +310,15 @@ export default class PulseRecordStepper extends LightningElement {
         const fields = this.instance?.phaseFields || [];
         const next = {};
         fields.forEach((f) => {
-            // Preserve unsaved edits when the user has typed a value already.
-            next[f.key] = Object.prototype.hasOwnProperty.call(this.fieldValues, f.key)
-                ? this.fieldValues[f.key]
-                : (f.currentValue == null ? '' : f.currentValue);
+            // User-edit tracking (proposal §2.6): server values win for
+            // every field EXCEPT the ones the user is actively typing in.
+            // Without this, agent-pushed currentValues couldn't repopulate
+            // an empty seed once the form mounted.
+            if (this._userEditedKeys.has(f.key)) {
+                next[f.key] = this.fieldValues[f.key];
+            } else {
+                next[f.key] = f.currentValue == null ? '' : f.currentValue;
+            }
         });
         this.fieldValues = next;
     }
@@ -654,6 +861,11 @@ export default class PulseRecordStepper extends LightningElement {
         if (!actionId || this.resolvingActionId) return;
         this.resolvingActionId = actionId;
         this.actionError = null;
+        // Fire chat-style "thinking" feedback in the decision queue so the
+        // user sees activity while the agent processes the next turn
+        // (proposal §4.1 / §4.3 — startThinking is the public hook).
+        const dq = this.template.querySelector('c-pulse-agent-decision-queue');
+        if (dq && typeof dq.startThinking === 'function') dq.startThinking();
         try {
             const result = await resolveAction({
                 actionId,
@@ -668,7 +880,9 @@ export default class PulseRecordStepper extends LightningElement {
             this.actionError = err.body?.message || err?.message || 'Unexpected error';
         } finally {
             this.resolvingActionId = null;
-            await this._loadInstance();
+            // Quiet refresh — the platform-event push will also fire, but a
+            // local refresh here makes the post-action UI converge faster.
+            await this._doRefresh();
         }
     }
 
@@ -687,6 +901,7 @@ export default class PulseRecordStepper extends LightningElement {
             val = event.target?.value ?? '';
         }
         this.fieldValues = { ...this.fieldValues, [key]: val };
+        this._userEditedKeys.add(key);
     }
 
     handleFieldCheckboxChange(event) {
@@ -694,6 +909,7 @@ export default class PulseRecordStepper extends LightningElement {
         if (!key) return;
         const checked = event.target?.checked ?? event.detail?.checked ?? false;
         this.fieldValues = { ...this.fieldValues, [key]: checked };
+        this._userEditedKeys.add(key);
     }
 
     async handleSaveFields() {
@@ -708,6 +924,9 @@ export default class PulseRecordStepper extends LightningElement {
             });
             if (refreshed) {
                 this.instance = refreshed;
+                // Edits are now persisted server-side — let future pushes
+                // win over this local state (proposal §2.6).
+                this._userEditedKeys.clear();
                 this._seedFieldValuesFromInstance();
             }
         } catch (err) {
